@@ -1,0 +1,15 @@
+LICENSE
+README.md
+pyproject.toml
+blueshift_layer/__init__.py
+blueshift_layer/cli.py
+blueshift_layer/installer.py
+blueshift_layer/license_client.py
+blueshift_layer/update_client.py
+blueshift_layer.egg-info/PKG-INFO
+blueshift_layer.egg-info/SOURCES.txt
+blueshift_layer.egg-info/dependency_links.txt
+blueshift_layer.egg-info/entry_points.txt
+blueshift_layer.egg-info/requires.txt
+blueshift_layer.egg-info/top_level.txt
+tests/test_smoke.py

@@ -1,0 +1,22 @@
+# Config padrao do container BlueShift (camada sobre Hermes)
+blueshift:
+  versao: "0.1.0"
+  license_server: "http://localhost:9000/v1/validate"
+  update_channel: "http://localhost:9001/v1/channel"
+
+hermes:
+  bin: "hermes"
+  versao_base: "0.18.2"   # MIT, Nous Research
+
+modelo:
+  default: "finetuned-v1"
+  base_url: "http://localhost:8000/v1"   # vLLM local (GPU do cliente)
+  externo_opcional: true                  # OpenAI/Claude/Gemini sob controle
+
+perfil:
+  isolamento: "por_cliente"              # 1 profile Hermes por cliente
+  memoria: "por_usuario"                 # banco vetorial local
+
+acesso:
+  hierarquia: ["admin", "gestor", "usuario", "sistema"]
+  mcp_scope: "minimo"                    # principio do menor privilegio

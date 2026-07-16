@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueshift-layer"
+version = "0.1.0"
+description = "BlueShift IA Platform — camada sobre Hermes-Agent (on-premise, Docker + license key)"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+    "flask>=3.1",
+    "psycopg[binary]>=3.1",
+]
+
+[project.scripts]
+blueshift = "blueshift_layer.cli:main"
+
+[tool.setuptools]
+packages = ["blueshift_layer", "blueshift_layer.portal", "blueshift_layer.connector_pack", "blueshift_layer.template_skills"]
