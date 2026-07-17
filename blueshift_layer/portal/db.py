@@ -234,6 +234,9 @@ def _migrar_colunas() -> None:
             ("modelo_id", "INTEGER"),
             ("modelo_secundario_id", "INTEGER"),
         ],
+        "modelos": [
+            ("max_tokens", "INTEGER"),
+        ],
     }
     with get_conn() as conn:
         for tabela, cols in _ESPERADO.items():
@@ -522,12 +525,12 @@ def listar_documentos(cliente_id: int | None = None) -> list[dict]:
 
 # --- Modelos de IA (cadastro de LLMs por cliente) --------------------------
 
-def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1) -> int:
+def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1, max_tokens=None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, ativo, criado_em)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (cliente_id, nome, base_url, modelo, tipo, api_key, ativo, now_iso()),
+            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, ativo, criado_em)
+               VALUES (?,?,?,?,?,?,?,1,?)""",
+            (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, now_iso()),
         )
         return cur.lastrowid
 

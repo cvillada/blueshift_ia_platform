@@ -1142,7 +1142,8 @@ def modelos():
         if cid and nome and base_url and modelo:
             db.criar_modelo(cid, nome, base_url, modelo,
                             tipo=request.form.get("tipo", "local"),
-                            api_key=request.form.get("api_key") or None)
+                            api_key=request.form.get("api_key") or None,
+                            max_tokens=request.form.get("max_tokens") or None)
             db.registrar_auditoria(_user()["login"], _user()["papel"], "cadastrar_modelo",
                                    alvo=nome, cliente_id=cid, ip=request.remote_addr)
             flash("Modelo de IA cadastrado.", "ok")
@@ -1180,6 +1181,8 @@ def modelos():
         <label>Tipo</label>
           <select name="tipo"><option value="local">Local (LM Studio)</option><option value="hibrido">Híbrido externo</option></select>
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
+        <label>Max tokens</label><input name="max_tokens" type="number" value="4096" placeholder="4096" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking/reasoning (ex: 8192, 16384). Timeout: 180s.</div>
         <div style="margin-top:12px"><button class="btn" type="submit">Cadastrar</button></div>
       </form>
     </div>

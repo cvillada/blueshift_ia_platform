@@ -25,18 +25,21 @@ def _resolver_host(base_url: str) -> str:
     return base_url
 
 
-def chat(modelo: dict, mensagens: list[dict], max_tokens: int = 512,
+def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
          temperatura: float = 0.3) -> dict:
     """Envia chat completion. Retorna dict {ok, content, model, error}.
 
-    `mensagens` no formato OpenAI: [{"role": "...", "content": "..."}, ...]
+    Se o modelo tiver `max_tokens` configurado (na tela Modelos IA), usa esse valor.
+    Senao usa o padrao (4096). Timeout de 180s para modelos com thinking/reasoning.
     """
     base = _resolver_host(modelo["base_url"]).rstrip("/")
     url = f"{base}/v1/chat/completions"
+    # usa max_tokens configurado no modelo, ou padrao 4096
+    mt = max_tokens or modelo.get("max_tokens") or 4096
     payload = {
         "model": modelo["modelo"],
         "messages": mensagens,
-        "max_tokens": max_tokens,
+        "max_tokens": mt,
         "temperature": temperatura,
         "stream": False,
     }
@@ -46,7 +49,7 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int = 512,
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=180) as resp:
             out = json.loads(resp.read().decode("utf-8"))
         content = out["choices"][0]["message"]["content"]
         # Captura métricas de uso (OpenAI-compatible) quando o endpoint as retorna.
