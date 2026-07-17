@@ -48,10 +48,21 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
 def _nav(active: str, user: dict | None) -> str:
     itens = [
         ("monitorar", "Monitorar", "/portal/monitorar"),
+        ("workspace", "Workspace", "/portal/workspace"),
         ("clientes", "Clientes", "/portal/clientes"),
         ("usuarios", "Usuários", "/portal/usuarios"),
         ("agentes", "Agentes", "/portal/agentes"),
+        ("memoria", "Memória", "/portal/memoria"),
+        ("conhecimento", "Conhecimento", "/portal/conhecimento"),
+        ("modelos", "Modelos IA", "/portal/modelos"),
+        ("chat", "Chat", "/portal/chat"),
         ("conectores", "Conectores", "/portal/conectores"),
+        ("canais", "Canais", "/portal/canais"),
+        ("billing", "Billing", "/portal/billing"),
+        ("suporte", "Suporte", "/portal/suporte"),
+        ("auditoria", "Auditoria", "/portal/auditoria"),
+        ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
+        ("sso", "SSO (OIDC)", "/portal/sso/config"),
     ]
     links = ""
     for key, label, href in itens:
@@ -78,7 +89,7 @@ def badge(status: str) -> str:
     cor = {
         "ativo": "ok", "online": "ok", "saudavel": "ok", "ok": "ok",
         "suspenso": "warn", "pausado": "warn", "degradado": "warn",
-        "expirado": "bad", "offline": "bad", "parado": "bad", "indisponivel": "bad",
+        "expirado": "offline", "offline": "bad", "parado": "bad", "indisponivel": "bad",
         "sobrecarregado": "warn",
     }.get(s, "neutral")
     return f'<span class="badge {cor}">{status}</span>'
@@ -135,11 +146,18 @@ background:var(--blue2);color:#fff;font-weight:600;text-decoration:none;cursor:p
 .btn:hover{background:var(--blue)}
 .btn.ghost{background:transparent;color:var(--blue);border-color:var(--line)}
 .btn.danger{background:transparent;border-color:#5a2330;color:var(--bad)}
+.btn-sso{display:inline-block;padding:9px 14px;border-radius:8px;border:1px solid #3b82f6;
+background:linear-gradient(90deg,#1e3a8a,#2563eb);color:#fff;font-weight:600;text-decoration:none;
+cursor:pointer;font-size:13px;width:100%;text-align:center}
+.btn-sso:hover{background:linear-gradient(90deg,#2563eb,#3b82f6)}
 input,select,textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line);
 background:#0e1726;color:var(--txt);font-size:13px;margin-top:4px}
 label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:700px){.form-row{grid-template-columns:1fr}}
+.chk-group{display:flex;flex-direction:column;gap:6px;margin:4px 0 6px}
+.chk{display:flex;align-items:baseline;gap:8px;font-size:14px}
+.chk input{margin-top:4px}
 .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-weight:600}
 .flash.ok{background:rgba(34,197,94,.12);color:var(--ok)}
 .flash.warn{background:rgba(245,158,11,.12);color:var(--warn)}
@@ -151,3 +169,37 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#22d3ee)}
 .health-card .value{font-size:30px}
 """
+
+
+def form_sso_config(cfg: dict) -> str:
+    """Formulario de configuracao do provedor SSO (OIDC)."""
+    cfg = cfg or {}
+    ativo = "checked" if cfg.get("ativo") else ""
+    dev = "checked" if cfg.get("dev_mode") else ""
+    auto = "checked" if cfg.get("auto_criar") else ""
+    return f"""
+    <div class="card" style="max-width:620px">
+      <h3 style="margin-top:0">Provedor de Identidade (OIDC)</h3>
+      <p class="muted">Configure o login federado. Em <b>modo dev</b> usamos um
+      IdP mock interno para testar o fluxo sem um provedor real. O <b>login local
+      continua ativo</b> normalmente.</p>
+      <form method="post">
+        <label class="chk"><input type="checkbox" name="ativo" {ativo}> SSO ativo</label>
+        <label class="chk"><input type="checkbox" name="dev_mode" {dev}> Modo dev (IdP mock interno - para teste)</label>
+        <label class="chk"><input type="checkbox" name="auto_criar" {auto}> Criar usuario automaticamente se nao cadastrado</label>
+        <label>Issuer (URL base do IdP)</label>
+        <input name="issuer" placeholder="https://login.microsoftonline.com/.../v2.0" value="{cfg.get('issuer','')}">
+        <label>Client ID</label>
+        <input name="client_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{cfg.get('client_id','')}">
+        <label>Client Secret</label>
+        <input name="client_secret" type="password" placeholder="••••••" value="{cfg.get('client_secret','')}">
+        <label>Redirect URI (deve apontar para /portal/sso/callback)</label>
+        <input name="redirect_uri" placeholder="http://host:8080/portal/sso/callback" value="{cfg.get('redirect_uri','')}">
+        <label>Domínio de admin (emails com este dominio viram admin)</label>
+        <input name="dominio_admin" placeholder="@suaempresa.com.br" value="{cfg.get('dominio_admin','')}">
+        <div style="margin-top:18px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/sso/login">Testar login SSO</a>
+        </div>
+      </form>
+    </div>"""

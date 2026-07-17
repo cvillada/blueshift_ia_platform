@@ -22,7 +22,7 @@ MÁQUINA DE DEV
 
 GITHUB
 ├── seu-fork/hermes              → espelho v0.18.2 (base, não editar)
-└── blueshift-ia-platform        → SEU repo (a camada)
+└── blueshift-ia-Platform        → SEU repo (a camada)
 ```
 
 **Regra de ouro:** o Hermes já está instalado na máquina e serve de motor. Você NÃO copia os fontes do Hermes para dentro do projeto BlueShift — o Hermes é dependência/referência. O desenvolvimento e o Git novo são da camada, numa pasta à parte. O próprio Hermes (rodando aí) escreve os arquivos do BlueShift à medida que você pede.

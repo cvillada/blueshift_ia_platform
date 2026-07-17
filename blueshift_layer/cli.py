@@ -18,9 +18,11 @@ def main():
     sub.add_parser("update", help="Checa atualizacoes aprovadas")
 
     portal_p = sub.add_parser("portal", help="Sobe o Portal do Cliente (Camada 4)")
-    portal_p.add_argument("--host", default="127.0.0.1")
-    portal_p.add_argument("--port", type=int, default=5000)
+    portal_p.add_argument("--host", default="0.0.0.0")
+    portal_p.add_argument("--port", type=int, default=8080)
     portal_p.add_argument("--debug", action="store_true")
+
+    sub.add_parser("mcp", help="Sobe o servidor MCP stdio (conectores CRM/RH/ERP)")
 
     args = p.parse_args()
     if args.cmd == "init":
@@ -38,6 +40,10 @@ def main():
         app = create_app()
         print(f"[portal] BlueShift Client Portal em http://{args.host}:{args.port}/portal")
         app.run(host=args.host, port=args.port, debug=args.debug)
+    elif args.cmd == "mcp":
+        from blueshift_layer.connector_pack.mcp_server import run as run_mcp
+
+        run_mcp()
     else:
         p.print_help()
 

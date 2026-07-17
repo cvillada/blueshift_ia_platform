@@ -1,0 +1,9 @@
+# Nao copiar o venv do host nem dados locais para a imagem
+bp-venv/
+__pycache__/
+*.pyc
+data/
+.git/
+.gitignore
+*.db
+.DS_Store

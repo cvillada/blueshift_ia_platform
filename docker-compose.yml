@@ -1,0 +1,45 @@
+# BlueShift IA Platform — Installer de cliente (on-premise)
+#
+# Sobe a plataforma completa em um unico container:
+#   - License Server (mock, porta 9000)
+#   - Update Channel (mock, porta 9001)
+#   - Portal do Cliente (Camada 4, porta definida em PORTAL_PORT)
+#
+# IMPORTANTE (modelos de IA): a plataforma NAO embute nenhum modelo.
+# O cliente cadastra os proprios na tela "Modelos IA" do Portal:
+#   - Local/servidor interno: vLLM, LM Studio, Ollama (base_url interna, sem api_key)
+#   - Externo: DeepSeek, OpenRouter, OpenAI, Claude (base_url + api_key)
+# Cada AGENTE define qual modelo usa.
+#
+# Uso:
+#   cp .env.example .env   # edite BLUESHIFT_LICENSE e as portas
+#   ./install.sh           # ou: docker compose up -d --build
+
+services:
+  blueshift:
+    image: blueshift/platform:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: blueshift-platform
+    restart: unless-stopped
+    ports:
+      - "${PORTAL_PORT:-8080}:8080"
+    environment:
+      BLUESHIFT_LICENSE: "${BLUESHIFT_LICENSE:-BS-DEV-CHANGE-ME}"
+      BLUESHIFT_LICENSE_URL: "http://localhost:9000/v1/validate"
+      BLUESHIFT_LICENSE_PORT: "9000"
+      BLUESHIFT_UPDATE_URL: "${BLUESHIFT_UPDATE_URL:-http://localhost:9001/v1/channel}"
+      BLUESHIFT_UPDATE_PORT: "9001"
+      BLUESHIFT_DEV: "${BLUESHIFT_DEV:-1}"
+    # Sobrescreve o CMD default (blueshift status) para subir o Portal do Cliente
+    command: ["blueshift", "portal"]
+    volumes:
+      # SQLite do portal + memoria/conhecimento do cliente (persiste entre reinicios)
+      - blueshift-data:/opt/blueshift/data
+      # Modelos fine-tuned / locais do cliente (se usar vLLM interno montado)
+      - blueshift-models:/opt/blueshift/models
+
+volumes:
+  blueshift-data:
+  blueshift-models:

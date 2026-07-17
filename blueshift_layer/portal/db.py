@@ -76,7 +76,8 @@ def init_db() -> None:
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
                 nome        TEXT NOT NULL,
                 area        TEXT,
-                modelo      TEXT NOT NULL DEFAULT 'finetuned-v1',
+                modelo      TEXT NOT NULL DEFAULT 'finetuned-v1',  -- nome legado (string)
+                modelo_id   INTEGER,                              -- FK opcional -> modelos(id)
                 skills      TEXT,                              -- CSV de skills
                 conectores  TEXT,                              -- CSV de conectores MCP
                 status      TEXT NOT NULL DEFAULT 'ativo',    -- ativo|pausado
@@ -102,6 +103,108 @@ def init_db() -> None:
                 erros_24h   INTEGER NOT NULL DEFAULT 0,
                 atualizado_em TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS faturas (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                tipo        TEXT NOT NULL DEFAULT 'licenca_anual',  -- licenca_anual|implantacao|finetuning_custom
+                descricao   TEXT NOT NULL,
+                valor       REAL NOT NULL DEFAULT 0,
+                moeda       TEXT NOT NULL DEFAULT 'BRL',
+                vencimento  TEXT,                           -- YYYY-MM-DD
+                status      TEXT NOT NULL DEFAULT 'pendente',  -- pendente|paga|atrasada|cancelada
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chamados (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                titulo      TEXT NOT NULL,
+                descricao   TEXT,
+                categoria   TEXT NOT NULL DEFAULT 'suporte',  -- suporte|bug|melhoria|treinamento
+                prioridade  TEXT NOT NULL DEFAULT 'media',    -- baixa|media|alta|critica
+                status      TEXT NOT NULL DEFAULT 'aberto',   -- aberto|em_andamento|resolvido|fechado
+                aberto_por  TEXT,                             -- login de quem abriu
+                criado_em   TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS auditoria (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario     TEXT NOT NULL,                     -- login
+                papel       TEXT,                              -- admin|gestor|usuario|sistema
+                acao        TEXT NOT NULL,                     -- ex: criar_cliente, login, marcar_paga
+                alvo        TEXT,                              -- id/descricao do objeto afetado
+                cliente_id  INTEGER,                           -- contexto de cliente (se houver)
+                ip          TEXT,
+                detalhe     TEXT,
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS memories (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                usuario     TEXT NOT NULL,                     -- login do dono da memoria
+                tipo        TEXT NOT NULL DEFAULT 'conversa',  -- conversa|preferencia|contexto
+                conteudo    TEXT NOT NULL,
+                vetor       TEXT,                              -- JSON do embedding (TF-IDF local)
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                titulo      TEXT NOT NULL,
+                categoria   TEXT NOT NULL DEFAULT 'manual',    -- manual|politica|base_conhecimento|contrato
+                conteudo    TEXT NOT NULL,
+                vetor       TEXT,                              -- JSON do embedding (TF-IDF local)
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS modelos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                nome        TEXT NOT NULL,                     -- ex: bonsai-4b
+                base_url    TEXT NOT NULL,                     -- ex: http://127.0.0.1:1234
+                modelo      TEXT NOT NULL,                     -- ex: bonsai-4b
+                tipo        TEXT NOT NULL DEFAULT 'local',     -- local (LM Studio) | hibrido
+                api_key     TEXT,                              -- opcional
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                chave       TEXT NOT NULL UNIQUE,              -- ex: bs_live_xxxx
+                descricao   TEXT,
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                criado_em   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS canais (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                nome        TEXT NOT NULL,                     -- ex: Webhook Vendas
+                tipo        TEXT NOT NULL DEFAULT 'api',       -- api | webhook
+                agente_id   INTEGER,                           -- FK agentes(id); canal aponta p/ 1 agente
+                token       TEXT NOT NULL UNIQUE,              -- bs_chan_xxxx (auth do canal)
+                webhook_url TEXT,                              -- URL de saida (POST da resposta)
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                criado_em   TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sso_config (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ativo       INTEGER NOT NULL DEFAULT 0,
+                dev_mode    INTEGER NOT NULL DEFAULT 0,
+                issuer      TEXT,
+                client_id   TEXT,
+                client_secret TEXT,
+                redirect_uri TEXT,
+                dominio_admin TEXT,
+                auto_criar  INTEGER NOT NULL DEFAULT 0,
+                atualizado_em TEXT NOT NULL
+            );
             """
         )
 
@@ -117,6 +220,10 @@ def _row(conn, sql, params=()):
 
 def _rows(conn, sql, params=()):
     return conn.execute(sql, params).fetchall()
+
+
+def _one(conn, sql, params=()):
+    return conn.execute(sql, params).fetchone()
 
 
 # --- Clientes ---------------------------------------------------------------
@@ -207,12 +314,19 @@ def listar_agentes(cliente_id: int | None = None) -> list[dict]:
         return [dict(r) for r in _rows(conn, "SELECT * FROM agentes ORDER BY id")]
 
 
-def criar_agente(cliente_id, nome, area="", modelo="finetuned-v1", skills="", conectores="") -> int:
+def buscar_agente(aid: int) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM agentes WHERE id=?", (aid,))
+        return dict(row) if row else None
+
+
+def criar_agente(cliente_id, nome, area="", modelo="finetuned-v1", skills="", conectores="",
+                 modelo_id=None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO agentes (cliente_id, nome, area, modelo, skills, conectores, status, criado_em)
-               VALUES (?,?,?,?,?,?, 'ativo', ?)""",
-            (cliente_id, nome, area, modelo, skills, conectores, now_iso()),
+            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, skills, conectores, status, criado_em)
+               VALUES (?,?,?,?,?,?,?, 'ativo', ?)""",
+            (cliente_id, nome, area, modelo, modelo_id, skills, conectores, now_iso()),
         )
         return cur.lastrowid
 
@@ -247,6 +361,225 @@ def atualizar_health(cliente_id, **campos) -> None:
                          [cliente_id] + list(campos.values()))
 
 
+# --- Billing (faturas) ------------------------------------------------------
+
+def listar_faturas(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM faturas WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM faturas ORDER BY id DESC")]
+
+
+def criar_fatura(cliente_id, tipo, descricao, valor, moeda="BRL", vencimento="", status="pendente") -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO faturas (cliente_id, tipo, descricao, valor, moeda, vencimento, status, criado_em)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (cliente_id, tipo, descricao, valor, moeda, vencimento, status, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def atualizar_fatura(fatura_id, **campos) -> None:
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE faturas SET {cols} WHERE id=?", list(campos.values()) + [fatura_id])
+
+
+# --- Suporte (chamados) -----------------------------------------------------
+
+def listar_chamados(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM chamados WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM chamados ORDER BY id DESC")]
+
+
+def criar_chamado(cliente_id, titulo, descricao="", categoria="suporte", prioridade="media",
+                  aberto_por="") -> int:
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO chamados (cliente_id, titulo, descricao, categoria, prioridade, status, aberto_por, criado_em, atualizado_em)
+               VALUES (?,?,?,?,?, 'aberto', ?, ?, ?)""",
+            (cliente_id, titulo, descricao, categoria, prioridade, aberto_por, ts, ts),
+        )
+        return cur.lastrowid
+
+
+def atualizar_chamado(chamado_id, **campos) -> None:
+    campos["atualizado_em"] = now_iso()
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE chamados SET {cols} WHERE id=?", list(campos.values()) + [chamado_id])
+
+
+# --- Memoria por usuario + RAG (banco vetorial local) ----------------------
+
+def criar_memoria(cliente_id, usuario, conteudo, tipo="conversa") -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO memories (cliente_id, usuario, tipo, conteudo, vetor, criado_em)
+               VALUES (?,?,?,?, '[]', ?)""",
+            (cliente_id, usuario, tipo, conteudo, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def listar_memorias(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM memories WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM memories ORDER BY id DESC")]
+
+
+def criar_documento(cliente_id, titulo, categoria, conteudo) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO knowledge (cliente_id, titulo, categoria, conteudo, vetor, criado_em)
+               VALUES (?,?,?,?, '[]', ?)""",
+            (cliente_id, titulo, categoria, conteudo, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def listar_documentos(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM knowledge WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM knowledge ORDER BY id DESC")]
+
+
+# --- Modelos de IA (cadastro de LLMs por cliente) --------------------------
+
+def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, ativo, criado_em)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (cliente_id, nome, base_url, modelo, tipo, api_key, ativo, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def listar_modelos(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM modelos WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM modelos ORDER BY id DESC")]
+
+
+def buscar_modelo(mid: int) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM modelos WHERE id=?", (mid,))
+        return dict(row) if row else None
+
+
+# --- API Keys (canal de integracao / sistema) -----------------------------
+
+def criar_api_key(cliente_id, chave, descricao="") -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO api_keys (cliente_id, chave, descricao, ativo, criado_em) VALUES (?,?,?,1,?)",
+            (cliente_id, chave, descricao, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def buscar_api_key(chave: str) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM api_keys WHERE chave=? AND ativo=1", (chave,))
+        return dict(row) if row else None
+
+
+def listar_api_keys(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM api_keys WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM api_keys ORDER BY id DESC")]
+
+
+# --- Canais (API/webhook que expoe um agente p/ integracao real) -----------
+
+import secrets
+
+def gerar_token(prefix: str = "bs_chan") -> str:
+    return f"{prefix}_{secrets.token_urlsafe(24)}"
+
+
+def criar_canal(cliente_id, nome, agente_id, tipo="api", token=None, webhook_url=None) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO canais (cliente_id, nome, tipo, agente_id, token, webhook_url, ativo, criado_em)
+               VALUES (?,?,?,?,?,?,1,?)""",
+            (cliente_id, nome, tipo, agente_id, token or gerar_token(), webhook_url, now_iso()),
+        )
+        return cur.lastrowid
+
+
+def buscar_canal_por_token(token: str) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM canais WHERE token=? AND ativo=1", (token,))
+        return dict(row) if row else None
+
+
+def listar_canais(cliente_id: int | None = None) -> list[dict]:
+    with get_conn() as conn:
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM canais WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM canais ORDER BY id DESC")]
+
+
+# --- Auditoria (rastreabilidade / LGPD) ------------------------------------
+
+def registrar_auditoria(usuario, papel, acao, alvo="", cliente_id=None, ip="", detalhe="") -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO auditoria (usuario, papel, acao, alvo, cliente_id, ip, detalhe, criado_em)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (usuario, papel, acao, alvo, cliente_id, ip, detalhe, now_iso()),
+        )
+
+
+def listar_auditoria(limite: int = 100) -> list[dict]:
+    with get_conn() as conn:
+        return [dict(r) for r in _rows(
+            conn, "SELECT * FROM auditoria ORDER BY id DESC LIMIT ?", (limite,))]
+
+def buscar_sso_config() -> dict | None:
+    """Retorna a configuracao de SSO (unica linha). None se nao houver."""
+    with get_conn() as conn:
+        r = _one(conn, "SELECT * FROM sso_config ORDER BY id DESC LIMIT 1")
+        return dict(r) if r else None
+
+
+def sso_ativo() -> bool:
+    cfg = buscar_sso_config()
+    return bool(cfg and cfg.get("ativo"))
+
+
+def salvar_sso_config(ativo=0, dev_mode=0, issuer="", client_id="", client_secret="",
+                      redirect_uri="", dominio_admin="", auto_criar=0) -> None:
+    """Insere ou atualiza a unica linha de config de SSO."""
+    ts = now_iso()
+    with get_conn() as conn:
+        if buscar_sso_config():
+            conn.execute(
+                "UPDATE sso_config SET ativo=?, dev_mode=?, issuer=?, client_id=?, client_secret=?, redirect_uri=?, dominio_admin=?, auto_criar=?, atualizado_em=?",
+                (ativo, dev_mode, issuer, client_id, client_secret, redirect_uri, dominio_admin, auto_criar, ts))
+        else:
+            conn.execute(
+                "INSERT INTO sso_config (ativo, dev_mode, issuer, client_id, client_secret, redirect_uri, dominio_admin, auto_criar, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?)",
+                (ativo, dev_mode, issuer, client_id, client_secret, redirect_uri, dominio_admin, auto_criar, ts))
+
+
 # --- Seed demo --------------------------------------------------------------
 
 def seed_demo() -> None:
@@ -258,6 +591,35 @@ def seed_demo() -> None:
     cid = criar_cliente("porto", "Porto Seguros (Piloto)", "Porto Seguro S/A", "ti@porto.com.br")
     criar_usuario(cid, "Administrador BlueShift", "admin", "admin123", "admin", "operacoes")
     criar_usuario(cid, "Gestor Vendas", "gestor", "gestor123", "gestor", "vendas")
-    criar_agente(cid, "Agente Vendas", "vendas", "finetuned-v1", "vendas,suporte", "erp,crm")
-    criar_agente(cid, "Agente Suporte", "suporte", "finetuned-v1", "suporte", "crm")
+    criar_usuario(cid, "Ana Suporte", "ana", "ana123", "usuario", "suporte")
+    criar_usuario(cid, "Carlos Financeiro", "carlos", "carlos123", "usuario", "financeiro")
+    criar_usuario(cid, "Beatriz RH", "bia", "bia123", "usuario", "rh")
+    # modelo de IA demo (LM Studio local do cliente) — criado ANTES dos agentes
+    mid = criar_modelo(cid, "bonsai-4b", "http://127.0.0.1:1234", "bonsai-4b", tipo="local")
+    aid_vendas = criar_agente(cid, "Agente Vendas", "vendas", "finetuned-v1", "vendas,suporte", "erp,crm", modelo_id=mid)
+    criar_agente(cid, "Agente Suporte", "suporte", "finetuned-v1", "suporte", "crm", modelo_id=mid)
+    criar_agente(cid, "Agente Financeiro", "financeiro", "finetuned-v1", "financeiro", "erp", modelo_id=mid)
+    criar_agente(cid, "Agente RH", "rh", "finetuned-v1", "rh", "", modelo_id=mid)
+    criar_agente(cid, "Agente Operações", "operacoes", "finetuned-v1", "operacoes", "erp", modelo_id=mid)
+    # canal de integracao real (API) apontando para o Agente Vendas
+    criar_canal(cid, "API Vendas (Webhook)", aid_vendas,
+                tipo="api", token="bs_chan_demo_vendas_123")
     atualizar_health(cid, container="saudavel", modelo_local="ok", latencia_ms=42, tokens_hoje=18320, erros_24h=0)
+    # billing demo (licenca anual por empresa)
+    criar_fatura(cid, "implantacao", "Taxa de implantação + setup inicial", 35000.00, vencimento="2026-08-01", status="paga")
+    criar_fatura(cid, "licenca_anual", "Licença anual BlueShift (Piloto)", 120000.00, vencimento="2026-07-31", status="pendente")
+    criar_fatura(cid, "finetuning_custom", "Fine-tuning custom setorial (opcional)", 45000.00, vencimento="2026-09-15", status="pendente")
+    # suporte demo
+    criar_chamado(cid, "Dúvida sobre isolamento de memória por usuário", "Cliente quer confirmar que a memória não se mistura entre áreas.", categoria="treinamento", prioridade="baixa", aberto_por="gestor")
+    criar_chamado(cid, "Conector CRM retornando vazio", "Histórico de contato não retorna dados no ambiente de demo.", categoria="bug", prioridade="alta", aberto_por="admin")
+    # base de conhecimento (RAG) demo
+    criar_documento(cid, "Política de Privacidade LGPD", "politica",
+                    "A BlueShift mantém todos os dados do cliente dentro do ambiente dele. "
+                    "A memória de cada usuário é isolada por ID e nunca é compartilhada entre usuários. "
+                    "Dados sensíveis não saem do servidor do cliente.")
+    criar_documento(cid, "Manual do Agente de Vendas", "manual",
+                    "O agente de vendas qualifica leads, faz follow-up e estima receita. "
+                    "Ele acessa apenas dados da área de vendas via conector ERP e CRM.")
+    criar_documento(cid, "Base de Conhecimento de Suporte", "base_conhecimento",
+                    "Para abrir um chamado, use o Portal em Suporte. Bugs de conector são prioridade alta. "
+                    "O conector CRM em ambiente de demonstração pode retornar lista vazia.")
