@@ -160,7 +160,7 @@ def sso_config():
         return redirect(url_for("portal.sso_config"))
     cfg = db.buscar_sso_config() or {}
     content = templates.form_sso_config(cfg)
-    return templates.page("Configurar SSO", content, active="sso")
+    return templates.page("Configurar SSO", content, active="sso", user=_user())
 
 
 # ---------------------------------------------------------------------------
