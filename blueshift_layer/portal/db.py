@@ -549,6 +549,19 @@ def buscar_modelo(mid: int) -> dict | None:
         return dict(row) if row else None
 
 
+def atualizar_modelo(mid: int, **campos) -> None:
+    """Atualiza campos do modelo (nome, base_url, modelo, tipo, api_key, max_tokens, ativo)."""
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE modelos SET {cols} WHERE id=?", list(campos.values()) + [mid])
+
+
+def deletar_modelo(mid: int) -> None:
+    """Remove um modelo pelo ID."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM modelos WHERE id=?", (mid,))
+
+
 # --- API Keys (canal de integracao / sistema) -----------------------------
 
 def criar_api_key(cliente_id, chave, descricao="") -> int:

@@ -1161,8 +1161,12 @@ def modelos():
           <td class="muted">{m['base_url']}</td>
           <td class="muted">{m['modelo']}</td>
           <td>{badge}</td>
+          <td class="row-actions">
+            <a href="/portal/modelos/{m['id']}/editar">editar</a>
+            <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {m['nome']}?')" style="color:var(--bad)">excluir</a>
+          </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Status</th></tr></thead>
+    tabela = f"""<table><thead><tr><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Status</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=5 class="empty">Nenhum modelo cadastrado.</td></tr>'}</tbody></table>"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
@@ -1188,6 +1192,63 @@ def modelos():
     </div>
     {tabela}"""
     return templates.page("Modelos de IA", content, active="modelos", user=_user())
+
+
+@bp.route("/modelos/<int:mid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def modelo_editar(mid: int):
+    m = db.buscar_modelo(mid)
+    if not m:
+        flash("Modelo não encontrado.", "warn")
+        return redirect(url_for("portal.modelos"))
+    if request.method == "POST":
+        campos = {}
+        for field in ("nome", "base_url", "modelo", "tipo"):
+            v = request.form.get(field, "").strip()
+            if v:
+                campos[field] = v
+        api_key = request.form.get("api_key") or None
+        if api_key is not None:
+            campos["api_key"] = api_key
+        max_tok = request.form.get("max_tokens") or None
+        if max_tok is not None:
+            campos["max_tokens"] = int(max_tok)
+        db.atualizar_modelo(mid, **campos)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_modelo", alvo=request.form.get("nome", m["nome"]),
+                               cliente_id=m["cliente_id"], ip=request.remote_addr)
+        flash("Modelo atualizado.", "ok")
+        return redirect(url_for("portal.modelos"))
+    content = f"""
+    <div class="card" style="max-width:680px">
+      <h3 style="margin-top:0">Editar modelo #{mid}: {m['nome']}</h3>
+      <form method="post">
+        <label>Nome</label><input name="nome" value="{m['nome']}">
+        <label>Endpoint (base_url)</label><input name="base_url" value="{m['base_url']}">
+        <label>Modelo</label><input name="modelo" value="{m['modelo']}">
+        <label>Tipo</label>
+          <select name="tipo"><option value="local" {"selected" if m['tipo']=='local' else ""}>Local</option><option value="hibrido" {"selected" if m['tipo']=='hibrido' else ""}>Híbrido</option></select>
+        <label>API Key</label><input name="api_key" value="{m.get('api_key') or ''}">
+        <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking (8192, 16384). Timeout: 180s.</div>
+        <div style="margin-top:12px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/modelos">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page(f"Editar {m['nome']}", content, active="modelos", user=_user())
+
+
+@bp.route("/modelos/<int:mid>/excluir")
+@auth.admin_required
+def modelo_excluir(mid: int):
+    m = db.buscar_modelo(mid)
+    if m:
+        db.deletar_modelo(mid)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_modelo", alvo=m["nome"],
+                               cliente_id=m["cliente_id"], ip=request.remote_addr)
+        flash(f"Modelo '{m['nome']}' excluído.", "ok")
+    return redirect(url_for("portal.modelos"))
 
 
 @bp.route("/chat", methods=["GET", "POST"])
