@@ -26,7 +26,7 @@ Telas:
 - **Workspace** — painel por departamento (PRD §8-D): admin ve todas as areas; gestor/usuario ve so a sua area (vendas/suporte/financeiro/rh/operacoes). Mostra agentes, usuarios e base de conhecimento da area (login)
 - **Clientes** — gerenciar + cadastrar (admin)
 - **Usuários** — gerenciar + cadastrar, papeis: admin / gestor / usuario / sistema; cada usuario pode ser vinculado a uma AREA (admin)
-- **Agentes** — Agent Factory: monta agentes reais a partir de Modelo de IA + Skills do catálogo + Conectores MCP; cada agente tem tela de teste (RAG + LLM real) (admin)
+- **Agentes** — Agent Factory: monta agentes reais a partir de Modelo de IA (principal + **fallback** automático) + Skills do catálogo + Conectores MCP; cada agente tem tela de teste (RAG + LLM real) (admin)
 - **Memória** — memória persistente por usuário (banco vetorial local, isolada por login)
 - **Conhecimento** — base de conhecimento do cliente / RAG (manual, política, base, contrato)
 - **Modelos IA** — cadastro de LLMs por cliente (OpenAI-compatible: LM Studio, vLLM, Ollama), com status online/offline (admin)
@@ -46,8 +46,7 @@ curl -X POST http://localhost:8080/portal/api/v1/agente \
 ```
 
 Modelo híbrido (PRD §7): o cadastro de Modelos IA aceita qualquer endpoint OpenAI-compatible — local (LM Studio/vLLM) ou externo (OpenAI/Claude/Gemini) via `api_key` opcional. O `llm_client.py` envia o Bearer token quando presente.
-- **Billing** — faturas / licenca anual por empresa (admin)
-- **Suporte** — chamados tecnicos (qualquer usuario pode abrir)
+- **Uso de Tokens** — análise de consumo de tokens por chamada ao LLM (cliente, modelo, origem, prompt/completion). Cobrança é contrato anual externo (info estática exibida na tela) (admin)
 - **Auditoria** — rastreabilidade LGPD: todo login e acao sensivel e registrado (admin)
 - **SSO (OIDC)** — login federado opcional (admin configura o provedor; mantem o login local). Modo dev com IdP mock interno para teste.
 

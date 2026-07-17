@@ -174,8 +174,16 @@ def monitorar():
     clientes = db.listar_clientes()
     total_clientes = len(clientes)
     total_usuarios = len(db.listar_usuarios())
-    total_agentes = len(db.listar_agentes())
+    agentes = db.listar_agentes()
+    total_agentes = len(agentes)
     total_conectores = len(db.listar_conectores())
+    total_modelos = len(db.listar_modelos())
+    total_canais = len(db.listar_canais())
+    total_docs = len(db.listar_documentos())
+    total_memorias = len(db.listar_memorias())
+    uso = db.agregar_uso_por_cliente()
+    total_tokens = sum(r["total_tokens"] for r in uso) if uso else 0
+    total_chamadas_llm = sum(r["chamadas"] for r in uso) if uso else 0
 
     # cards de saude por cliente
     cards = ""
@@ -184,18 +192,23 @@ def monitorar():
         conns = db.listar_conectores(c["id"])
         online = sum(1 for k in conns if k["status"] == "online")
         off = len(conns) - online
+        n_ag = sum(1 for a in agentes if a["cliente_id"] == c["id"])
+        # tokens reais do cliente (uso_tokens)
+        uso_c = db.agregar_uso_por_cliente(c["id"])
+        tokens_reais = sum(r["total_tokens"] for r in uso_c) if uso_c else 0
+        chamadas_reais = sum(r["chamadas"] for r in uso_c) if uso_c else 0
         cards += f"""
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <strong>{c['nome']}</strong>
             {templates.badge(c['status'])}
           </div>
-          <div class="muted" style="font-size:12px;margin:4px 0 12px">código: {c['codigo']}</div>
+          <div class="muted" style="font-size:12px;margin:4px 0 10px">código: {c['codigo']} · {n_ag} agente(s) · {chamadas_reais} chamada(s) LLM</div>
           <div class="grid grid-2" style="gap:10px">
             <div><div class="muted" style="font-size:11px">Container</div>{templates.badge(h.get('container','-'))}</div>
             <div><div class="muted" style="font-size:11px">Modelo local</div>{templates.badge(h.get('modelo_local','-'))}</div>
             <div><div class="muted" style="font-size:11px">Latência</div><b>{h.get('latencia_ms',0)} ms</b></div>
-            <div><div class="muted" style="font-size:11px">Tokens/24h</div><b>{h.get('tokens_hoje',0):,}</b></div>
+            <div><div class="muted" style="font-size:11px">Tokens</div><b>{tokens_reais:,}</b></div>
           </div>
           <div style="margin-top:10px;font-size:12px" class="muted">
             Conectores: {online} online / {off} offline ·
@@ -204,14 +217,18 @@ def monitorar():
         </div>"""
 
     kpis = f"""
-    <div class="grid grid-4">
-      <div class="kpi"><div class="label">Clientes</div><div class="value">{total_clientes}</div><div class="sub">ativos na plataforma</div></div>
-      <div class="kpi"><div class="label">Usuários</div><div class="value">{total_usuarios}</div><div class="sub">logins cadastrados</div></div>
-      <div class="kpi"><div class="label">Agentes</div><div class="value">{total_agentes}</div><div class="sub">instâncias operando</div></div>
+    <div class="grid grid-4" style="margin-bottom:18px">
+      <div class="kpi"><div class="label">Clientes</div><div class="value">{total_clientes}</div><div class="sub">na plataforma</div></div>
+      <div class="kpi"><div class="label">Usuários</div><div class="value">{total_usuarios}</div><div class="sub">cadastrados</div></div>
+      <div class="kpi"><div class="label">Agentes</div><div class="value">{total_agentes}</div><div class="sub">operando</div></div>
+      <div class="kpi"><div class="label">Modelos IA</div><div class="value">{total_modelos}</div><div class="sub">cadastrados</div></div>
       <div class="kpi"><div class="label">Conectores</div><div class="value">{total_conectores}</div><div class="sub">MCP expostos</div></div>
+      <div class="kpi"><div class="label">Canais</div><div class="value">{total_canais}</div><div class="sub">API/webhook</div></div>
+      <div class="kpi"><div class="label">Tokens</div><div class="value">{total_tokens:,}</div><div class="sub">processados</div></div>
+      <div class="kpi"><div class="label">Documentos</div><div class="value">{total_docs + total_memorias}</div><div class="sub">RAG + memórias</div></div>
     </div>"""
 
-    content = kpis + '<div class="grid grid-2" style="margin-top:16px">' + cards + "</div>"
+    content = kpis + '<div class="grid grid-2" style="margin-top:6px">' + cards + "</div>"
     if not clientes:
         content += '<div class="empty">Nenhum cliente cadastrado ainda. <a class="btn" href="/portal/clientes">Cadastrar cliente</a></div>'
     return templates.page("Monitorar", content, active="monitorar", user=_user())
@@ -353,11 +370,6 @@ def cliente_novo():
           <div><label>Empresa</label><input name="empresa"></div>
           <div><label>Email de contato</label><input name="email" type="email"></div>
         </div>
-        <label>Modelo de licença</label>
-        <select name="licenca">
-          <option value="anual_por_empresa">Anual por empresa</option>
-          <option value="anual_por_empresa_plus">Anual + modelo externo</option>
-        </select>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar cliente</button>
           <a class="btn ghost" href="/portal/clientes">Cancelar</a>
@@ -526,16 +538,23 @@ def agentes():
     rows = db.listar_agentes()
     body = ""
     for a in rows:
+        sec = a.get("modelo_secundario_id")
+        modelo_sec_txt = ""
+        if sec:
+            m2 = db.buscar_modelo(sec)
+            modelo_sec_txt = f" → fallback: {m2['nome']}" if m2 else ""
         body += f"""<tr>
           <td><b>{a['nome']}</b></td>
           <td>{a['area'] or '-'}</td>
-          <td>{a['modelo']}</td>
+          <td>{a['modelo']}{modelo_sec_txt}</td>
           <td>{a['skills'] or '-'}</td>
           <td>{a['conectores'] or '-'}</td>
           <td>{templates.badge(a['status'])}</td>
           <td>{clientes.get(a['cliente_id'], '?')}</td>
           <td class="row-actions">
             <a href="/portal/agentes/{a['id']}/testar">testar</a>
+            <a href="/portal/agentes/{a['id']}/editar">editar</a>
+            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {a['nome']}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
@@ -561,17 +580,19 @@ def agente_testar(aid: int):
     contexto = []
     ferramentas = []
     erro = None
+    fallback_usado = False
     if request.method == "POST":
         pergunta = request.form.get("pergunta", "").strip()
         if pergunta:
             out = agente_mod.responder(a, pergunta, u["login"], id_cliente="C001")
+            fallback_usado = out.get("model_fallback", False)
             if out["ok"]:
                 resposta = out["content"]
                 contexto = out["contexto"]
                 ferramentas = out.get("ferramentas", [])
                 db.registrar_auditoria(u["login"], u["papel"], "testar_agente", alvo=a["nome"],
                                        cliente_id=a["cliente_id"], ip=request.remote_addr,
-                                       detalhe=pergunta[:80])
+                                       detalhe=pergunta[:80] + (" [fallback]" if fallback_usado else ""))
             else:
                 erro = out["error"]
     ctx_html = ""
@@ -591,6 +612,7 @@ def agente_testar(aid: int):
             "".join(itens) + "</ul></div>"
     skills_txt = a["skills"] or "-"
     conn_txt = a["conectores"] or "-"
+    badge_fallback = ' <span class="badge warn">⚡ fallback de modelo</span>' if fallback_usado else ""
     content = f"""
     <div class="muted" style="margin-bottom:10px">
       Teste do agente <b>{a['nome']}</b> (área {a['area'] or 'geral'}) — modelo <b>{a['modelo']}</b>,
@@ -604,7 +626,7 @@ def agente_testar(aid: int):
       </form>
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}</div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>"""
@@ -633,8 +655,15 @@ def agente_novo():
             if modelo_id:
                 m = db.buscar_modelo(modelo_id)
                 modelo_nome = m["nome"] if m else ""
+            modelo_sec_id = request.form.get("modelo_secundario_id") or None
+            if modelo_sec_id:
+                modelo_sec_id = int(modelo_sec_id)
+            # se secundario igual ao principal, ignora (nao faz sentido)
+            if modelo_sec_id == modelo_id:
+                modelo_sec_id = None
             db.criar_agente(cid, nome, request.form.get("area", ""), modelo_nome,
-                            skills, conectores, modelo_id=modelo_id)
+                            skills, conectores, modelo_id=modelo_id,
+                            modelo_secundario_id=modelo_sec_id)
             u = _user()
             db.registrar_auditoria(u["login"], u["papel"], "criar_agente", alvo=nome,
                                    cliente_id=cid, ip=request.remote_addr)
@@ -644,12 +673,19 @@ def agente_novo():
     mopts = "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
     skopts = "".join(
-        f'<label class="chk"><input type="checkbox" name="skills" value="{s["name"]}"> {s["name"]} '
-        f'<span class="muted">— {s.get("description","")}</span></label>'
+        f'<tr><td style="white-space:nowrap;padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
+        f'<input type="checkbox" name="skills" value="{s["name"]}" style="width:auto;margin:0;vertical-align:middle"> '
+        f'<b>{s["name"]}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{s.get("description","")}</span>'
+        f'</label></td></tr>'
         for s in skills_disp
-    ) or '<span class="muted">nenhuma skill no catálogo</span>'
+    ) or '<tr><td class="muted">nenhuma skill no catálogo</td></tr>'
     copts = "".join(
-        f'<label class="chk"><input type="checkbox" name="conectores" value="{c}"> {c}</label>'
+        f'<tr><td style="white-space:nowrap;padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
+        f'<input type="checkbox" name="conectores" value="{c}" style="width:auto;margin:0;vertical-align:middle"> '
+        f'<b>{c.upper()}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{"ERP (postgres)" if c=="erp" else "CRM (dados locais)" if c=="crm" else "RH (dados locais)"}</span>'
+        f'</label></td></tr>'
         for c in ["erp", "crm", "rh"]
     )
     content = f"""
@@ -663,12 +699,14 @@ def agente_novo():
         <div class="form-row">
           <div><label>Área</label>
             <select name="area"><option value="">--</option><option>vendas</option><option>suporte</option><option>financeiro</option><option>rh</option><option>operacoes</option></select></div>
-          <div><label>Modelo de IA</label><select name="modelo_id">{mopts}</select></div>
+          <div><label>Modelo de IA (principal)</label><select name="modelo_id">{mopts}</select></div>
         </div>
+        <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum (sem failover) --</option>{mopts}</select>
+          <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar (endpoint indisponível). Garante resposta mesmo em falha.</span></div>
         <label>Skills do catálogo</label>
-        <div class="chk-group">{skopts}</div>
+        <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
         <label>Conectores MCP</label>
-        <div class="chk-group">{copts}</div>
+        <table style="width:100%;border:none;background:transparent"><tbody>{copts}</tbody></table>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Montar agente</button>
           <a class="btn ghost" href="/portal/agentes">Cancelar</a>
@@ -676,6 +714,212 @@ def agente_novo():
       </form>
     </div>"""
     return templates.page("Cadastrar agente", content, active="agentes", user=_user())
+
+
+@bp.route("/agentes/<int:aid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def agente_editar(aid: int):
+    a = db.buscar_agente(aid)
+    if not a:
+        flash("Agente não encontrado.", "warn")
+        return redirect(url_for("portal.agentes"))
+    modelos = db.listar_modelos()
+    skills_disp = agente_mod.listar_skills()
+    skills_sel = (a["skills"] or "").split(",")
+    conectores_sel = (a["conectores"] or "").split(",")
+    if request.method == "POST":
+        campos = {}
+        if request.form.get("nome", "").strip():
+            campos["nome"] = request.form["nome"].strip()
+        if request.form.get("area", ""):
+            campos["area"] = request.form["area"]
+        mid = request.form.get("modelo_id") or None
+        if mid:
+            campos["modelo_id"] = int(mid)
+            # atualiza tambem o texto legado 'modelo' com o nome do modelo
+            m = db.buscar_modelo(int(mid))
+            if m:
+                campos["modelo"] = m["nome"]
+        mid2 = request.form.get("modelo_secundario_id") or None
+        if mid2:
+            mid2 = int(mid2)
+        if mid2 == campos.get("modelo_id"):
+            mid2 = None
+        campos["modelo_secundario_id"] = mid2
+        campos["skills"] = ",".join(request.form.getlist("skills"))
+        campos["conectores"] = ",".join(request.form.getlist("conectores"))
+        db.atualizar_agente(aid, **campos)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_agente", alvo=request.form.get("nome", a["nome"]),
+                               cliente_id=a["cliente_id"], ip=request.remote_addr)
+        flash("Agente atualizado.", "ok")
+        return redirect(url_for("portal.agentes"))
+    mopts = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_id") else ""}>{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
+    mopts2 = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_secundario_id") else ""}>{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
+    skopts = "".join(
+        f'<tr><td style="padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
+        f'<input type="checkbox" name="skills" value="{s["name"]}" style="width:auto;margin:0;vertical-align:middle" {"checked" if s["name"] in skills_sel else ""}> '
+        f'<b>{s["name"]}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{s.get("description","")}</span>'
+        f'</label></td></tr>'
+        for s in skills_disp
+    )
+    copts = "".join(
+        f'<tr><td style="padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
+        f'<input type="checkbox" name="conectores" value="{c}" style="width:auto;margin:0;vertical-align:middle" {"checked" if c in conectores_sel else ""}> '
+        f'<b>{c.upper()}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{"ERP (postgres)" if c=="erp" else "CRM (dados locais)" if c=="crm" else "RH (dados locais)"}</span>'
+        f'</label></td></tr>'
+        for c in ["erp", "crm", "rh"]
+    )
+    areas_opts = "".join(f'<option value="{ar}" {"selected" if ar==a.get("area") else ""}>{ar}</option>' for ar in ["vendas","suporte","financeiro","rh","operacoes"])
+    content = f"""
+    <div class="card" style="max-width:700px">
+      <h3 style="margin-top:0">Editar agente #{aid}: {a['nome']}</h3>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Nome do agente</label><input name="nome" value="{a['nome']}"></div>
+          <div><label>Área</label><select name="area"><option value="">--</option>{areas_opts}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Modelo de IA (principal)</label><select name="modelo_id"><option value="">--</option>{mopts}</select></div>
+          <div><label>Status</label><select name="status"><option value="ativo" {"selected" if a.get("status")=="ativo" else ""}>Ativo</option><option value="pausado" {"selected" if a.get("status")=="pausado" else ""}>Pausado</option></select></div>
+        </div>
+        <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum --</option>{mopts2}</select>
+          <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar.</span></div></div>
+        <label>Skills do catálogo</label>
+        <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
+        <label>Conectores MCP</label>
+        <table style="width:100%;border:none;background:transparent"><tbody>{copts}</tbody></table>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/agentes">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page(f"Editar {a['nome']}", content, active="agentes", user=_user())
+
+
+@bp.route("/agentes/<int:aid>/excluir")
+@auth.admin_required
+def agente_excluir(aid: int):
+    a = db.buscar_agente(aid)
+    if a:
+        db.deletar_agente(aid)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_agente", alvo=a["nome"],
+                               cliente_id=a["cliente_id"], ip=request.remote_addr)
+        flash(f"Agente '{a['nome']}' excluído.", "ok")
+    return redirect(url_for("portal.agentes"))
+
+
+# ---------------------------------------------------------------------------
+# SKILLS (Catalogo de skills — SKILL.md em template_skills/)
+# ---------------------------------------------------------------------------
+
+@bp.route("/skills")
+@auth.login_required
+def skills():
+    from . import agente as agente_mod
+    cat = agente_mod.listar_skills()
+    body = ""
+    for s in cat:
+        body += f"""<tr>
+          <td><b>{s['name']}</b></td>
+          <td>{s.get('description','')}</td>
+          <td><code>v{s.get('version','1.0.0')}</code></td>
+          <td class="row-actions">
+            <a href="/portal/skills/{s['name']}/editar">editar</a>
+            <a href="/portal/skills/{s['name']}/excluir" onclick="return confirm('Excluir skill {s['name']}?')" style="color:var(--bad)">excluir</a>
+          </td>
+        </tr>"""
+    tabela = f"""<table><thead><tr><th>Nome</th><th>Descrição</th><th>Versão</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=4 class="empty">Nenhuma skill no catálogo.</td></tr>'}</tbody></table>"""
+    content = f"""
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="muted">Skills disponíveis no catálogo (template_skills/). Cada skill é um SKILL.md com frontmatter + instruções.</div>
+      <a class="btn" href="/portal/skills/novo">+ Nova skill</a>
+    </div>{tabela}"""
+    return templates.page("Skills", content, active="skills", user=_user())
+
+
+@bp.route("/skills/novo", methods=["GET", "POST"])
+@auth.admin_required
+def skill_novo():
+    from . import agente as agente_mod
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip().lower().replace(" ", "_")
+        desc = request.form.get("descricao", "").strip()
+        body = request.form.get("body", "").strip()
+        if not nome or not desc:
+            flash("Nome e descrição são obrigatórios.", "warn")
+        else:
+            agente_mod.salvar_skill(nome, desc, body, request.form.get("version", "1.0.0"))
+            db.registrar_auditoria(_user()["login"], "admin", "criar_skill", alvo=nome)
+            flash(f"Skill '{nome}' criada.", "ok")
+            return redirect(url_for("portal.skills"))
+    content = """
+    <div class="card" style="max-width:700px">
+      <h3 style="margin-top:0">Nova skill</h3>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Nome (identificador)</label><input name="nome" placeholder="ex: vendas"></div>
+          <div><label>Versão</label><input name="version" value="1.0.0"></div>
+        </div>
+        <label>Descrição</label><input name="descricao" placeholder="Agente de vendas - consulta ERP, propoe produtos">
+        <label>Conteúdo (SKILL.md body — instruções do agente)</label>
+        <textarea name="body" rows="10" placeholder="# Comportamento&#10;1. Ao perguntarem status, consulte o ERP&#10;2. Nunca invente dados"></textarea>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Criar skill</button>
+          <a class="btn ghost" href="/portal/skills">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page("Nova skill", content, active="skills", user=_user())
+
+
+@bp.route("/skills/<nome>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def skill_editar(nome: str):
+    from . import agente as agente_mod
+    skill = agente_mod.ler_skill(nome)
+    if not skill:
+        flash("Skill não encontrada.", "warn")
+        return redirect(url_for("portal.skills"))
+    if request.method == "POST":
+        desc = request.form.get("descricao", "").strip()
+        body = request.form.get("body", "").strip()
+        if desc:
+            agente_mod.salvar_skill(nome, desc, body, request.form.get("version", skill.get("version", "1.0.0")))
+            db.registrar_auditoria(_user()["login"], "admin", "editar_skill", alvo=nome)
+            flash(f"Skill '{nome}' atualizada.", "ok")
+            return redirect(url_for("portal.skills"))
+    content = f"""
+    <div class="card" style="max-width:700px">
+      <h3 style="margin-top:0">Editar skill: {skill['name']}</h3>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Nome</label><input name="nome" value="{skill['name']}" readonly style="color:var(--muted)"></div>
+          <div><label>Versão</label><input name="version" value="{skill.get('version','1.0.0')}"></div>
+        </div>
+        <label>Descrição</label><input name="descricao" value="{skill.get('description','')}">
+        <label>Conteúdo (SKILL.md body)</label>
+        <textarea name="body" rows="10">{skill.get('body','')}</textarea>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/skills">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page(f"Editar {skill['name']}", content, active="skills", user=_user())
+
+
+@bp.route("/skills/<nome>/excluir")
+@auth.admin_required
+def skill_excluir(nome: str):
+    from . import agente as agente_mod
+    if agente_mod.deletar_skill(nome):
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_skill", alvo=nome)
+        flash(f"Skill '{nome}' excluída.", "ok")
+    return redirect(url_for("portal.skills"))
 
 
 # ---------------------------------------------------------------------------
@@ -705,201 +949,48 @@ def conectores():
 
 
 # ---------------------------------------------------------------------------
-# BILLING (faturas / licenca anual por empresa)
+# USO DE TOKENS (analise de consumo, nao pagamento — cobranca e contrato anual externo)
 # ---------------------------------------------------------------------------
 
-@bp.route("/billing")
+@bp.route("/uso-tokens")
 @auth.login_required
-def billing():
+def uso_tokens():
+    u = _user()
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    rows = db.listar_faturas()
-    # KPIs financeiros
-    total_pendente = sum(r["valor"] for r in rows if r["status"] == "pendente")
-    total_pago = sum(r["valor"] for r in rows if r["status"] == "paga")
-    total_geral = sum(r["valor"] for r in rows)
+    # agregacao por cliente
+    agregado = db.agregar_uso_por_cliente()
+    total_geral = sum(r["total_tokens"] for r in agregado)
+    total_chamadas = sum(r["chamadas"] for r in agregado)
     body = ""
-    for f in rows:
+    for r in agregado:
         body += f"""<tr>
-          <td><b>{f['descricao']}</b><div class="muted" style="font-size:12px">{f['tipo']}</div></td>
-          <td>R$ {f['valor']:,.2f}</td>
-          <td>{f['vencimento'] or '-'}</td>
-          <td>{templates.badge(f['status'])}</td>
-          <td>{clientes.get(f['cliente_id'], '?')}</td>
-          <td class="row-actions">
-            <a href="{url_for('portal.fatura_status', fid=f['id'], acao='paga' if f['status']!='paga' else 'pendente')}">
-              {'marcar paga' if f['status']!='paga' else 'reabrir'}</a>
-          </td></tr>"""
-    tabela = f"""<table><thead><tr><th>Item</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhuma fatura.</td></tr>'}</tbody></table>"""
-    kpis = f"""
+          <td>{clientes.get(r['cliente_id'], '?')}</td>
+          <td><code>{r['modelo']}</code></td>
+          <td>{templates.badge(r['origem'])}</td>
+          <td style="text-align:right">{r['total_tokens']}</td>
+          <td style="text-align:right">{r['total_prompt']}</td>
+          <td style="text-align:right">{r['total_completion']}</td>
+          <td style="text-align:right">{r['chamadas']}</td>
+        </tr>"""
+    clientes_opts = "".join(
+        f'<option value="{c["id"]}">{c["nome"]}</option>' for c in db.listar_clientes())
+    tabela = f"""<table><thead><tr><th>Cliente</th><th>Modelo</th><th>Origem</th><th>Total tokens</th><th>Prompt</th><th>Completion</th><th>Chamadas</th></tr></thead>
+      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum consumo registrado ainda.</td></tr>'}</tbody></table>"""
+    content = f"""
+    <div class="muted" style="margin-bottom:14px">
+      Consumo de tokens por chamada ao LLM (modelo cadastrado). Cobrança via contrato anual externo.
+    </div>
     <div class="grid grid-3" style="margin-bottom:16px">
-      <div class="kpi"><div class="label">Total faturado</div><div class="value">R$ {total_geral:,.0f}</div><div class="sub">todas as faturas</div></div>
-      <div class="kpi"><div class="label">Pendente</div><div class="value">R$ {total_pendente:,.0f}</div><div class="sub">a receber</div></div>
-      <div class="kpi"><div class="label">Recebido</div><div class="value">R$ {total_pago:,.0f}</div><div class="sub">já pago</div></div>
-    </div>"""
-    content = f"""
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="muted">Modelo de cobrança: licença anual por empresa (não por token).</div>
-      <a class="btn" href="/portal/billing/novo">+ Nova fatura</a>
-    </div>{kpis}{tabela}"""
-    return templates.page("Billing", content, active="billing", user=_user())
+      <div class="kpi"><div class="label">Total tokens</div><div class="value">{total_geral:,}</div><div class="sub">processados</div></div>
+      <div class="kpi"><div class="label">Chamadas</div><div class="value">{total_chamadas:,}</div><div class="sub">ao LLM</div></div>
+    </div>
+    {tabela}"""
+    return templates.page("Uso de Tokens", content, active="uso_tokens", user=u)
 
-
-@bp.route("/billing/novo", methods=["GET", "POST"])
-@auth.admin_required
-def billing_novo():
-    clientes = db.listar_clientes()
-    if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0))
-        descricao = request.form.get("descricao", "").strip()
-        try:
-            valor = float(request.form.get("valor", 0) or 0)
-        except ValueError:
-            valor = 0.0
-        if not (cid and descricao):
-            flash("Cliente e descrição são obrigatórios.", "warn")
-        else:
-            db.criar_fatura(
-                cid, request.form.get("tipo", "licenca_anual"), descricao, valor,
-                request.form.get("moeda", "BRL"), request.form.get("vencimento", ""),
-                request.form.get("status", "pendente"),
-            )
-            u = _user()
-            db.registrar_auditoria(u["login"], u["papel"], "criar_fatura", alvo=descricao,
-                                   cliente_id=cid, ip=request.remote_addr, detalhe=f"R$ {valor:,.2f}")
-            flash("Fatura criada.", "ok")
-            return redirect(url_for("portal.billing"))
-    opts = "".join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in clientes)
-    content = f"""
-    <div class="card" style="max-width:640px">
-      <h3 style="margin-top:0">Nova fatura</h3>
-      <form method="post">
-        <label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select>
-        <label>Tipo</label>
-          <select name="tipo"><option value="licenca_anual">Licença anual</option><option value="implantacao">Taxa de implantação</option><option value="finetuning_custom">Fine-tuning custom</option></select>
-        <label>Descrição</label><input name="descricao" placeholder="ex: Licença anual BlueShift 2026">
-        <div class="form-row">
-          <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" placeholder="120000.00"></div>
-          <div><label>Vencimento</label><input name="vencimento" type="date"></div>
-        </div>
-        <label>Status</label>
-          <select name="status"><option value="pendente">Pendente</option><option value="paga">Paga</option><option value="atrasada">Atrasada</option></select>
-        <div style="margin-top:16px;display:flex;gap:10px">
-          <button class="btn" type="submit">Salvar fatura</button>
-          <a class="btn ghost" href="/portal/billing">Cancelar</a>
-        </div>
-      </form>
-    </div>"""
-    return templates.page("Nova fatura", content, active="billing", user=_user())
-
-
-@bp.route("/billing/<int:fid>/<acao>")
-@auth.admin_required
-def fatura_status(fid: int, acao: str):
-    if acao in ("paga", "pendente", "atrasada", "cancelada"):
-        db.atualizar_fatura(fid, status=acao)
-        u = _user()
-        db.registrar_auditoria(u["login"], u["papel"], "alterar_fatura", alvo=acao,
-                               cliente_id=None, ip=request.remote_addr, detalhe=f"fatura #{fid}")
-        flash(f"Fatura {acao}.", "ok")
-    return redirect(url_for("portal.billing"))
 
 
 # ---------------------------------------------------------------------------
-# SUPORTE (chamados)
-# ---------------------------------------------------------------------------
-
-@bp.route("/suporte")
-@auth.login_required
-def suporte():
-    clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    rows = db.listar_chamados()
-    abertos = sum(1 for r in rows if r["status"] in ("aberto", "em_andamento"))
-    resolvidos = sum(1 for r in rows if r["status"] in ("resolvido", "fechado"))
-    body = ""
-    for c in rows:
-        body += f"""<tr>
-          <td><b>{c['titulo']}</b><div class="muted" style="font-size:12px">{c['descricao'] or ''}</div></td>
-          <td>{templates.badge(c['categoria'])}</td>
-          <td>{templates.badge(c['prioridade'])}</td>
-          <td>{templates.badge(c['status'])}</td>
-          <td>{c['aberto_por'] or '-'}</td>
-          <td>{clientes.get(c['cliente_id'], '?')}</td>
-          <td class="row-actions">
-            <a href="{url_for('portal.chamado_status', cid=c['id'], acao='resolvido' if c['status']!='resolvido' else 'aberto')}">
-              {'resolver' if c['status']!='resolvido' else 'reabrir'}</a>
-          </td></tr>"""
-    tabela = f"""<table><thead><tr><th>Chamado</th><th>Categoria</th><th>Prioridade</th><th>Status</th><th>Aberto por</th><th>Cliente</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum chamado.</td></tr>'}</tbody></table>"""
-    kpis = f"""
-    <div class="grid grid-3" style="margin-bottom:16px">
-      <div class="kpi"><div class="label">Chamados abertos</div><div class="value">{abertos}</div><div class="sub">em andamento</div></div>
-      <div class="kpi"><div class="label">Resolvidos</div><div class="value">{resolvidos}</div><div class="sub">fechados</div></div>
-      <div class="kpi"><div class="label">Total</div><div class="value">{len(rows)}</div><div class="sub">acumulado</div></div>
-    </div>"""
-    content = f"""
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="muted">Suporte técnico, treinamento e acompanhamento de incidentes.</div>
-      <a class="btn" href="/portal/suporte/novo">+ Abrir chamado</a>
-    </div>{kpis}{tabela}"""
-    return templates.page("Suporte", content, active="suporte", user=_user())
-
-
-@bp.route("/suporte/novo", methods=["GET", "POST"])
-@auth.login_required
-def suporte_novo():
-    clientes = db.listar_clientes()
-    user = _user()
-    if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0))
-        titulo = request.form.get("titulo", "").strip()
-        if not (cid and titulo):
-            flash("Cliente e título são obrigatórios.", "warn")
-        else:
-            db.criar_chamado(
-                cid, titulo, request.form.get("descricao", ""),
-                request.form.get("categoria", "suporte"),
-                request.form.get("prioridade", "media"),
-                user.get("login", "") if user else "",
-            )
-            if user:
-                db.registrar_auditoria(user["login"], user["papel"], "abrir_chamado",
-                                       alvo=titulo, cliente_id=cid, ip=request.remote_addr)
-            flash("Chamado aberto.", "ok")
-            return redirect(url_for("portal.suporte"))
-    opts = "".join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in clientes)
-    content = f"""
-    <div class="card" style="max-width:680px">
-      <h3 style="margin-top:0">Abrir chamado</h3>
-      <form method="post">
-        <label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select>
-        <label>Título</label><input name="titulo" placeholder="ex: Conector CRM retornando vazio">
-        <label>Descrição</label><textarea name="descricao" rows="4" placeholder="Detalhe o problema ou pedido"></textarea>
-        <div class="form-row">
-          <div><label>Categoria</label>
-            <select name="categoria"><option value="suporte">Suporte</option><option value="bug">Bug</option><option value="melhoria">Melhoria</option><option value="treinamento">Treinamento</option></select></div>
-          <div><label>Prioridade</label>
-            <select name="prioridade"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></div>
-        </div>
-        <div style="margin-top:16px;display:flex;gap:10px">
-          <button class="btn" type="submit">Abrir chamado</button>
-          <a class="btn ghost" href="/portal/suporte">Cancelar</a>
-        </div>
-      </form>
-    </div>"""
-    return templates.page("Abrir chamado", content, active="suporte", user=_user())
-
-
-@bp.route("/suporte/<int:cid>/<acao>")
-@auth.admin_required
-def chamado_status(cid: int, acao: str):
-    if acao in ("aberto", "em_andamento", "resolvido", "fechado"):
-        db.atualizar_chamado(cid, status=acao)
-        u = _user()
-        db.registrar_auditoria(u["login"], u["papel"], "alterar_chamado", alvo=acao,
-                               cliente_id=None, ip=request.remote_addr, detalhe=f"chamado #{cid}")
-        flash(f"Chamado {acao}.", "ok")
-    return redirect(url_for("portal.suporte"))
+# AUDITORIA (rastreabilidade / LGPD)
 
 
 # ---------------------------------------------------------------------------
@@ -1136,6 +1227,15 @@ def chat():
                 db.registrar_auditoria(u["login"], u["papel"], "chat", alvo=modelo["nome"],
                                        cliente_id=cliente_id, ip=request.remote_addr,
                                        detalhe=pergunta[:80])
+                # registra tokens consumidos
+                tok = out.get("tokens") or {}
+                db.registrar_uso_token(
+                    cliente_id=cliente_id, modelo=modelo_usado,
+                    total_tokens=tok.get("total_tokens", 0),
+                    prompt_tokens=tok.get("prompt_tokens", 0),
+                    completion_tokens=tok.get("completion_tokens", 0),
+                    modelo_fallback=0, quem=u["login"], origem="chat",
+                )
             else:
                 erro = out["error"]
     modelos = db.listar_modelos()
@@ -1279,7 +1379,7 @@ def canais():
     </div>
     <div class="card muted" style="font-size:13px">
       <b>Como usar (canal real):</b><br>
-      <code>POST /portal/api/v1/agente</code> com header <code>Authorization: Bearer &lt;TOKEN&gt;</code>
+      <code>POST /portal/api/v1/agente</code> com header <code>Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;</code>
       e body JSON <code>{{"pergunta": "..."}}</code>. O agente do canal responde via LLM + RAG + conectores.
       Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada nessa URL.
     </div>

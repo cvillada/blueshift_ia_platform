@@ -49,16 +49,34 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int = 512,
         with urllib.request.urlopen(req, timeout=60) as resp:
             out = json.loads(resp.read().decode("utf-8"))
         content = out["choices"][0]["message"]["content"]
-        return {"ok": True, "content": content, "model": modelo["modelo"], "error": None}
+        # Captura métricas de uso (OpenAI-compatible) quando o endpoint as retorna.
+        # `usage` pode vir ausente em alguns servidores locais — tratamos como 0.
+        usage = out.get("usage") or {}
+        tokens = {
+            "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+            "total_tokens": int(usage.get("total_tokens", 0) or 0),
+        }
+        if not tokens["total_tokens"]:
+            # alguns servidores so retornam parcial; recompor se possivel
+            tokens["total_tokens"] = tokens["prompt_tokens"] + tokens["completion_tokens"]
+        return {"ok": True, "content": content, "model": modelo["modelo"],
+                "error": None, "tokens": tokens}
     except urllib.error.HTTPError as e:
         return {"ok": False, "content": "", "model": modelo["modelo"],
-                "error": f"HTTP {e.code}: {e.reason}"}
+                "error": f"HTTP {e.code}: {e.reason}", "tokens": _ZERO_TOKENS()}
     except urllib.error.URLError as e:
         return {"ok": False, "content": "", "model": modelo["modelo"],
                 "error": f"nao foi possivel conectar ao endpoint ({e.reason}). "
-                         f"Confirme que o LM Studio / vLLM esta rodando em {base}."}
+                         f"Confirme que o LM Studio / vLLM esta rodando em {base}.",
+                "tokens": _ZERO_TOKENS()}
     except Exception as e:  # noqa: BLE001 - relatar erro ao usuario
-        return {"ok": False, "content": "", "model": modelo["modelo"], "error": str(e)}
+        return {"ok": False, "content": "", "model": modelo["modelo"], "error": str(e),
+                "tokens": _ZERO_TOKENS()}
+
+
+def _ZERO_TOKENS() -> dict:
+    return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
 def health(modelo: dict) -> bool:

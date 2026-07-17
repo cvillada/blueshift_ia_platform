@@ -39,6 +39,55 @@ def listar_skills() -> list[dict]:
     return skills
 
 
+def _skill_path(nome: str) -> str:
+    """Caminho absoluto para o SKILL.md de uma skill."""
+    return os.path.join(_SKILLS_DIR, nome, "SKILL.md")
+
+
+def ler_skill(nome: str) -> dict | None:
+    """Retorna {name, description, version, body} de uma skill, ou None se nao existir."""
+    path = _skill_path(nome)
+    if not os.path.isfile(path):
+        return None
+    try:
+        texto = open(path, encoding="utf-8").read()
+    except OSError:
+        return None
+    fm = re.search(r"^---\s*\n(.*?)\n---", texto, re.DOTALL)
+    meta = {"name": nome, "description": nome, "version": "1.0.0", "body": ""}
+    if fm:
+        for line in fm.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip()] = v.strip().strip('"')
+        meta["body"] = texto[fm.end():].strip()
+    else:
+        meta["body"] = texto.strip()
+    return meta
+
+
+def salvar_skill(nome: str, descricao: str, body: str, version: str = "1.0.0") -> None:
+    """Cria ou atualiza um arquivo SKILL.md."""
+    dest = os.path.join(_SKILLS_DIR, nome)
+    os.makedirs(dest, exist_ok=True)
+    conteudo = (
+        f"---\nname: {nome}\ndescription: \"{descricao}\"\nversion: {version}\n---\n\n"
+        f"{body.strip()}\n"
+    )
+    with open(os.path.join(dest, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(conteudo)
+
+
+def deletar_skill(nome: str) -> bool:
+    """Remove a pasta da skill. Retorna True se removeu."""
+    import shutil
+    path = os.path.join(_SKILLS_DIR, nome)
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+        return True
+    return False
+
+
 def _skills_text(skills_csv: str) -> str:
     """Monta bloco de instrução das skills a partir da lista 'vendas,suporte'."""
     nomes = [s.strip().lower() for s in (skills_csv or "").split(",") if s.strip()]
@@ -54,12 +103,18 @@ def _skills_text(skills_csv: str) -> str:
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001") -> dict:
     """Executa o agente: RAG (memória + conhecimento) + conectores MCP reais + modelo + skills.
 
-    Retorna dict {ok, content, model, error, contexto, ferramentas}.
+    Fallback de modelo: tenta o `modelo_id` do agente; se o endpoint falhar
+    (indisponível/erro de conexão), tenta `modelo_secundario_id` antes de
+    desistir. O modelo efetivamente usado é registrado em `modelo_usado` e na
+    auditoria, para o fluxo de ponta a ponta (API -> Agente -> resposta) entregar
+    uma resposta mesmo quando um endpoint cai.
+
+    Retorna dict {ok, content, model, model_fallback, error, contexto, ferramentas}.
     """
     cliente_id = agente["cliente_id"]
     modelo = db.buscar_modelo(agente["modelo_id"]) if agente.get("modelo_id") else None
     if not modelo:
-        return {"ok": False, "content": "", "model": None,
+        return {"ok": False, "content": "", "model": None, "model_fallback": False,
                 "error": "Agente não tem um Modelo de IA válido cadastrado.", "contexto": [],
                 "ferramentas": []}
 
@@ -105,13 +160,43 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         {"role": "system", "content": system},
         {"role": "user", "content": pergunta},
     ]
+
+    # --- tentativa principal ---
     out = llm_client.chat(modelo, mensagens)
+    modelo_usado = modelo["modelo"]
+    usou_fallback = False
+
+    # --- fallback: modelo secundário se o principal falhou ---
+    if not out["ok"] and agente.get("modelo_secundario_id") and agente["modelo_secundario_id"] != agente["modelo_id"]:
+        modelo2 = db.buscar_modelo(agente["modelo_secundario_id"])
+        if modelo2:
+            out2 = llm_client.chat(modelo2, mensagens)
+            if out2["ok"]:
+                out = out2
+                modelo_usado = modelo2["modelo"]
+                usou_fallback = True
+
     if out["ok"]:
         # grava na memoria do usuario (isolada)
         db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {out['content']}",
                          tipo="conversa")
+        detalhe = pergunta[:80] + (f" [fallback->{modelo_usado}]" if usou_fallback else "")
+        # registra tokens consumidos (analise de uso)
+        tok = out.get("tokens") or {}
+        db.registrar_uso_token(
+            cliente_id=cliente_id, modelo=modelo_usado,
+            total_tokens=tok.get("total_tokens", 0),
+            prompt_tokens=tok.get("prompt_tokens", 0),
+            completion_tokens=tok.get("completion_tokens", 0),
+            agente_id=agente.get("id"),
+            modelo_fallback=1 if usou_fallback else 0,
+            quem=usuario, origem="chat",
+        )
+        db.registrar_auditoria(usuario, "sistema", "agente_responder", alvo=agente["nome"],
+                               cliente_id=cliente_id, detalhe=detalhe)
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
-            "error": out["error"], "contexto": contexto, "ferramentas": ferramentas}
+            "model_fallback": usou_fallback, "error": out["error"],
+            "contexto": contexto, "ferramentas": ferramentas}
 
 
 def enviar_webhook(webhook_url: str, payload: dict) -> dict:

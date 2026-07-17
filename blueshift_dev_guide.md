@@ -66,13 +66,13 @@ source bp-venv/bin/activate
 # 4. Atualizar pip
 pip install --upgrade pip
 
-# 5. Rodar o bootstrap (monta TODA a estrutura abaixo)
-python bootstrap.py
+# 5. Instalar a camada BlueShift (registra o entry point 'blueshift')
+pip install -e .
 ```
 
-> **Importante:** o `bootstrap.py` (Seção 3) é o "documento que roda dentro do venv". Ele cria pastas, escreve arquivos e deixa o projeto pronto para `pip install -e .`.
+> **⚠️ NÃO rode `python bootstrap.py` neste repositório.** O `bootstrap.py` (Seção 3) é um scaffold inicial que gera STUBs vazios e, se rodado aqui, **sobrescreve** `pyproject.toml`, `cli.py`, conectores e o Portal já construídos por arquivos vazios — apagando a plataforma. Ele serve apenas para criar um projeto do zero em OUTRA pasta. O projeto já está construído: basta `pip install -e .`.
 
-> **Sobre o Hermes já instalado:** não reinstale. O Hermes da máquina é o motor. O bootstrap cria a *camada* BlueShift; o `Dockerfile` (Seção 3) é quem instala o `hermes-agent==0.18.2` como dependência na imagem final.
+> **Sobre o Hermes já instalado:** não reinstale. O Hermes da máquina é o motor. O `Dockerfile` (Seção 3) é quem instala o `hermes-agent==0.18.2` como dependência na imagem final.
 
 ---
 
@@ -114,9 +114,9 @@ python bootstrap.py
 
 ---
 
-## 3. `bootstrap.py` (COLE ESTE ARQUIVO NA RAIZ DO PROJETO)
+## 3. `bootstrap.py` (scaffold de referência — NÃO usar neste repositório)
 
-Este script cria toda a árvore acima. Salve como `~/bp-proj/bootstrap.py` e rode `python bootstrap.py`.
+Este script (scaffold inicial) cria a árvore acima em uma pasta NOVA. **NÃO o rode dentro deste repositório** — ele sobrescreve a plataforma já construída por stubs vazios.
 
 ```python
 #!/usr/bin/env python3
@@ -663,4 +663,4 @@ if __name__ == "__main__":
     main()
 ```
 
-> **Observação:** o conteúdo acima também é o `bootstrap.py` em si. Para gerar o arquivo `bootstrap.py` standalone, copie o bloco de código acima para um arquivo `bootstrap.py` na raiz do projeto e rode `python bootstrap.py`.
+> **⚠️ Atenção:** o conteúdo acima é o scaffold inicial (`bootstrap.py`). Ele gera STUBs vazios e **não deve** ser executado dentro deste repositório (apaga a plataforma construída). Mantido aqui só como referência de como a estrutura foi concebida do zero.

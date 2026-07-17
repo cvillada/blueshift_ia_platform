@@ -52,14 +52,14 @@ def _nav(active: str, user: dict | None) -> str:
         ("clientes", "Clientes", "/portal/clientes"),
         ("usuarios", "Usuários", "/portal/usuarios"),
         ("agentes", "Agentes", "/portal/agentes"),
+        ("skills", "Skills", "/portal/skills"),
         ("memoria", "Memória", "/portal/memoria"),
         ("conhecimento", "Conhecimento", "/portal/conhecimento"),
         ("modelos", "Modelos IA", "/portal/modelos"),
         ("chat", "Chat", "/portal/chat"),
         ("conectores", "Conectores", "/portal/conectores"),
         ("canais", "Canais", "/portal/canais"),
-        ("billing", "Billing", "/portal/billing"),
-        ("suporte", "Suporte", "/portal/suporte"),
+        ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
         ("auditoria", "Auditoria", "/portal/auditoria"),
         ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
         ("sso", "SSO (OIDC)", "/portal/sso/config"),
@@ -155,9 +155,10 @@ background:#0e1726;color:var(--txt);font-size:13px;margin-top:4px}
 label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:700px){.form-row{grid-template-columns:1fr}}
-.chk-group{display:flex;flex-direction:column;gap:6px;margin:4px 0 6px}
-.chk{display:flex;align-items:baseline;gap:8px;font-size:14px}
-.chk input{margin-top:4px}
+.chk-group{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0 6px}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.chk input{flex-shrink:0;margin:0}
+.chk .muted{white-space:normal}
 .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-weight:600}
 .flash.ok{background:rgba(34,197,94,.12);color:var(--ok)}
 .flash.warn{background:rgba(245,158,11,.12);color:var(--warn)}
@@ -184,9 +185,9 @@ def form_sso_config(cfg: dict) -> str:
       IdP mock interno para testar o fluxo sem um provedor real. O <b>login local
       continua ativo</b> normalmente.</p>
       <form method="post">
-        <label class="chk"><input type="checkbox" name="ativo" {ativo}> SSO ativo</label>
-        <label class="chk"><input type="checkbox" name="dev_mode" {dev}> Modo dev (IdP mock interno - para teste)</label>
-        <label class="chk"><input type="checkbox" name="auto_criar" {auto}> Criar usuario automaticamente se nao cadastrado</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {ativo} style="width:auto;margin:0;vertical-align:middle"> SSO ativo</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="dev_mode" {dev} style="width:auto;margin:0;vertical-align:middle"> Modo dev (IdP mock interno - para teste)</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="auto_criar" {auto} style="width:auto;margin:0;vertical-align:middle"> Criar usuario automaticamente se nao cadastrado</label>
         <label>Issuer (URL base do IdP)</label>
         <input name="issuer" placeholder="https://login.microsoftonline.com/.../v2.0" value="{cfg.get('issuer','')}">
         <label>Client ID</label>

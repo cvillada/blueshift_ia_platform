@@ -134,14 +134,13 @@ svg{width:100%;min-width:1050px;display:block}
     </ul>
   </div>
   <div class="card">
-    <div class="card-header"><div class="card-dot emerald"></div><h3>2. Modelos Ajustados Embutidos</h3></div>
+    <div class="card-header"><div class="card-dot emerald"></div><h3>2. Modelos de IA Híbridos (cadastrados pelo cliente)</h3></div>
     <ul>
-      <li>Pré-instalamos modelos fine-tuned com os dados do cliente</li>
-      <li>Modelos rodam localmente (sem API externa)</li>
-      <li>Suporte a Llama, Qwen, DeepSeek, Mistral (7B-70B)</li>
-      <li>Quantizados (4-bit) pra rodar em GPUs acessíveis</li>
-      <li>Suporte a <b>modelos externos</b> (OpenAI, Claude, Gemini) por demanda</li>
-      <li><b>Opção:</b> fine-tuning adicional com dados do cliente</li>
+      <li><b>Não embutidos:</b> o cliente cadastra seus próprios endpoints OpenAI-compatible no Portal (tela Modelos IA)</li>
+      <li><b>Local:</b> vLLM / LM Studio / Ollama na infra do cliente — dados não saem</li>
+      <li><b>Externo opcional:</b> OpenAI / Claude / DeepSeek / Gemini via <code>api_key</code>, sob controle do cliente</li>
+      <li>Suporte a Llama, Qwen, DeepSeek, Mistral (7B-70B), quantizados (4-bit) se a GPU exigir</li>
+      <li><b>Fine-tuning:</b> serviço opcional contratado — treinamos com os dados do cliente e entregamos o modelo para rodar local</li>
     </ul>
   </div>
   <div class="card">
@@ -184,6 +183,22 @@ svg{width:100%;min-width:1050px;display:block}
       <li>Cada permissão define: <b>o que vê</b> (dados), <b>o que faz</b> (agentes), <b>o que configura</b> (admin)</li>
       <li>Sistemas internos (ERP, CRM) acessam a IA via API com rate limit e escopo próprio</li>
       <li><b>Hierarquia:</b> Admin > Gestor > Usuário > Sistema (MCP/API)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- FLUXO PONTA A PONTA -->
+<div class="section-title">🔗 Fluxo de Ponta a Ponta (API → Agente → Resposta)</div>
+<div class="cards">
+  <div class="card" style="grid-column:1/-1">
+    <div class="card-header"><div class="card-dot sky"></div><h3>Tudo interligado e operacional — 100% on-premise</h3></div>
+    <ul>
+      <li><b>1. Requisição:</b> sistema externo (site, CRM, Zapier) ou usuário chama <code>POST /api/v1/agente</code> com o token do canal (Bearer) + <code>{pergunta}</code>. Autenticação via API key do canal.</li>
+      <li><b>2. Orquestrador (Agent Factory):</b> o agente monta o <b>contexto dinâmico</b> = Memória do usuário (RAG, banco vetorial local TF-IDF) + Base de Conhecimento do cliente + dados de conectores MCP reais (ERP/CRM/RH) + Skills da área.</li>
+      <li><b>3. Modelo de IA:</b> envia ao endpoint OpenAI-compatible <b>cadastrado pelo cliente</b> — local (vLLM / LM Studio / Ollama) ou externo (OpenAI / Claude / DeepSeek / Gemini) via <code>api_key</code> opcional.</li>
+      <li><b>4. Tratamento de falha / Fallback:</b> se o modelo principal não responde, o agente troca automaticamente para o <b>modelo de fallback</b> cadastrado e entrega a resposta; toda tentativa é registrada na Auditoria (LGPD).</li>
+      <li><b>5. Log:</b> toda chamada é auditada — quem perguntou, qual agente, qual ferramenta MCP, IP e resultado.</li>
+      <li><b>6. Retorno:</b> JSON com <code>{ok, resposta, agente, modelo, contexto, ferramentas, erro}</code>; se o canal tiver webhook de saída, a resposta também é POSTada nessa URL.</li>
     </ul>
   </div>
 </div>
@@ -386,12 +401,12 @@ svg{width:100%;min-width:1050px;display:block}
     </ul>
   </div>
   <div class="card">
-    <div class="card-header"><div class="card-dot emerald"></div><h3>🎯 Modelos Fine-Tuned</h3></div>
+    <div class="card-header"><div class="card-dot emerald"></div><h3>🎯 Modelos de IA (local + externo)</h3></div>
     <ul>
-      <li>Modelo base ajustado com os dados do cliente</li>
-      <li>Opção de treinar com dados reais deles</li>
-      <li>Atualizações periódicas de modelo</li>
-      <li>Suporte a 7B, 14B, 70B (depende da GPU)</li>
+      <li>Cliente cadastra seus próprios endpoints (vLLM / LM Studio / Ollama / OpenAI / Claude / DeepSeek)</li>
+      <li><b>Fine-tuning:</b> serviço opcional — entregamos o modelo ajustado para rodar local</li>
+      <li>Atualizações periódicas de modelo via Update Channel</li>
+      <li>Suporte a 7B, 14B, 70B (depende da GPU do cliente)</li>
     </ul>
   </div>
   <div class="card">

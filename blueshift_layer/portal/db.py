@@ -78,6 +78,7 @@ def init_db() -> None:
                 area        TEXT,
                 modelo      TEXT NOT NULL DEFAULT 'finetuned-v1',  -- nome legado (string)
                 modelo_id   INTEGER,                              -- FK opcional -> modelos(id)
+                modelo_secundario_id INTEGER,                    -- FK opcional -> modelos(id) usado em fallback
                 skills      TEXT,                              -- CSV de skills
                 conectores  TEXT,                              -- CSV de conectores MCP
                 status      TEXT NOT NULL DEFAULT 'ativo',    -- ativo|pausado
@@ -104,29 +105,29 @@ def init_db() -> None:
                 atualizado_em TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS faturas (
+            CREATE TABLE IF NOT EXISTS uso_tokens (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-                tipo        TEXT NOT NULL DEFAULT 'licenca_anual',  -- licenca_anual|implantacao|finetuning_custom
-                descricao   TEXT NOT NULL,
-                valor       REAL NOT NULL DEFAULT 0,
-                moeda       TEXT NOT NULL DEFAULT 'BRL',
-                vencimento  TEXT,                           -- YYYY-MM-DD
-                status      TEXT NOT NULL DEFAULT 'pendente',  -- pendente|paga|atrasada|cancelada
+                agente_id   INTEGER,                          -- agente usado (se houver)
+                modelo      TEXT NOT NULL,                    -- nome do modelo efetivamente usado
+                modelo_fallback INTEGER NOT NULL DEFAULT 0,   -- 1 se usou modelo secundario
+                quem        TEXT NOT NULL DEFAULT 'usuario',  -- login OU 'sistema:<canal>' (API/canal)
+                origem      TEXT NOT NULL DEFAULT 'chat',     -- chat | api | teste
+                prompt_tokens   INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens     INTEGER NOT NULL DEFAULT 0,
                 criado_em   TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS chamados (
+            CREATE TABLE IF NOT EXISTS contratos (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-                titulo      TEXT NOT NULL,
-                descricao   TEXT,
-                categoria   TEXT NOT NULL DEFAULT 'suporte',  -- suporte|bug|melhoria|treinamento
-                prioridade  TEXT NOT NULL DEFAULT 'media',    -- baixa|media|alta|critica
-                status      TEXT NOT NULL DEFAULT 'aberto',   -- aberto|em_andamento|resolvido|fechado
-                aberto_por  TEXT,                             -- login de quem abriu
-                criado_em   TEXT NOT NULL,
-                atualizado_em TEXT NOT NULL
+                valor_anual REAL NOT NULL DEFAULT 0,           -- valor do contrato anual (info, fora da plataforma)
+                moeda       TEXT NOT NULL DEFAULT 'BRL',
+                inicio      TEXT,                              -- YYYY-MM-DD
+                fim         TEXT,                              -- YYYY-MM-DD
+                status      TEXT NOT NULL DEFAULT 'ativo',    -- ativo|suspenso|expirado (do contrato, nao pagamento)
+                criado_em   TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS auditoria (
@@ -207,11 +208,43 @@ def init_db() -> None:
             );
             """
         )
+    # Migração idempotente: garante colunas novas em DBs já existentes
+    # (CREATE TABLE IF NOT EXISTS não altera tabelas já criadas).
+    _migrar_colunas()
+
+
+def _migrar_colunas() -> None:
+    """Adiciona colunas novas a tabelas existentes sem destruir dados.
+
+    Idempotente: checa PRAGMA table_info antes de cada ALTER TABLE. Cobre
+    tanto a coluna recém-adicionada (modelo_secundario_id) quanto colunas
+    que o schema do código já declara há tempo mas que podem faltar em DBs
+    seedados por versões anteriores (ex.: modelo_id).
+
+    Também limpa tabelas obsoletas (faturas foi substituída por uso_tokens
+    + contratos, que são criadas via CREATE TABLE IF NOT EXISTS).
+    """
+    # Limpeza de tabelas obsoletas
+    with get_conn() as conn:
+        conn.execute("DROP TABLE IF EXISTS faturas")
+        conn.execute("DROP TABLE IF EXISTS chamados")
+    # Migração de colunas
+    _ESPERADO = {
+        "agentes": [
+            ("modelo_id", "INTEGER"),
+            ("modelo_secundario_id", "INTEGER"),
+        ],
+    }
+    with get_conn() as conn:
+        for tabela, cols in _ESPERADO.items():
+            existentes = {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})").fetchall()}
+            for coluna, tipo in cols:
+                if coluna not in existentes:
+                    conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
 
 
 # ---------------------------------------------------------------------------
 # Helpers de leitura/escrita (pontos unicos de controle)
-# ---------------------------------------------------------------------------
 
 def _row(conn, sql, params=()):
     cur = conn.execute(sql, params)
@@ -321,14 +354,27 @@ def buscar_agente(aid: int) -> dict | None:
 
 
 def criar_agente(cliente_id, nome, area="", modelo="finetuned-v1", skills="", conectores="",
-                 modelo_id=None) -> int:
+                 modelo_id=None, modelo_secundario_id=None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, skills, conectores, status, criado_em)
-               VALUES (?,?,?,?,?,?,?, 'ativo', ?)""",
-            (cliente_id, nome, area, modelo, modelo_id, skills, conectores, now_iso()),
+            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, status, criado_em)
+               VALUES (?,?,?,?,?,?,?,?, 'ativo', ?)""",
+            (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, now_iso()),
         )
         return cur.lastrowid
+
+
+def atualizar_agente(aid: int, **campos) -> None:
+    """Atualiza campos do agente (nome, area, modelo_id, modelo_secundario_id, skills, conectores, status)."""
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE agentes SET {cols} WHERE id=?", list(campos.values()) + [aid])
+
+
+def deletar_agente(aid: int) -> None:
+    """Remove um agente pelo ID."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM agentes WHERE id=?", (aid,))
 
 
 # --- Conectores / Health ----------------------------------------------------
@@ -363,57 +409,77 @@ def atualizar_health(cliente_id, **campos) -> None:
 
 # --- Billing (faturas) ------------------------------------------------------
 
-def listar_faturas(cliente_id: int | None = None) -> list[dict]:
-    with get_conn() as conn:
-        if cliente_id:
-            return [dict(r) for r in _rows(
-                conn, "SELECT * FROM faturas WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
-        return [dict(r) for r in _rows(conn, "SELECT * FROM faturas ORDER BY id DESC")]
+# --- Uso de Tokens (analise de consumo, nao pagamento) ----------------------
 
-
-def criar_fatura(cliente_id, tipo, descricao, valor, moeda="BRL", vencimento="", status="pendente") -> int:
+def registrar_uso_token(cliente_id, modelo, total_tokens, prompt_tokens=0, completion_tokens=0,
+                        agente_id=None, modelo_fallback=0, quem="usuario", origem="chat") -> int:
+    """Registra consumo de tokens de uma chamada ao LLM."""
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO faturas (cliente_id, tipo, descricao, valor, moeda, vencimento, status, criado_em)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (cliente_id, tipo, descricao, valor, moeda, vencimento, status, now_iso()),
+            """INSERT INTO uso_tokens (cliente_id, agente_id, modelo, modelo_fallback,
+               quem, origem, prompt_tokens, completion_tokens, total_tokens, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (cliente_id, agente_id, modelo, modelo_fallback, quem, origem,
+             prompt_tokens, completion_tokens, total_tokens, now_iso()),
         )
         return cur.lastrowid
 
 
-def atualizar_fatura(fatura_id, **campos) -> None:
-    cols = ", ".join(f"{k}=?" for k in campos)
-    with get_conn() as conn:
-        conn.execute(f"UPDATE faturas SET {cols} WHERE id=?", list(campos.values()) + [fatura_id])
-
-
-# --- Suporte (chamados) -----------------------------------------------------
-
-def listar_chamados(cliente_id: int | None = None) -> list[dict]:
+def listar_uso_tokens(cliente_id: int | None = None, limite: int = 200) -> list[dict]:
+    """Lista registros de uso de tokens, do mais recente primeiro."""
     with get_conn() as conn:
         if cliente_id:
             return [dict(r) for r in _rows(
-                conn, "SELECT * FROM chamados WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
-        return [dict(r) for r in _rows(conn, "SELECT * FROM chamados ORDER BY id DESC")]
+                conn, "SELECT * FROM uso_tokens WHERE cliente_id=? ORDER BY id DESC LIMIT ?",
+                (cliente_id, limite))]
+        return [dict(r) for r in _rows(
+            conn, "SELECT * FROM uso_tokens ORDER BY id DESC LIMIT ?", (limite,))]
 
 
-def criar_chamado(cliente_id, titulo, descricao="", categoria="suporte", prioridade="media",
-                  aberto_por="") -> int:
-    ts = now_iso()
+def agregar_uso_por_cliente(cliente_id: int | None = None) -> list[dict]:
+    """Agrega tokens totais por cliente + modelo + origem."""
+    sql = """SELECT cliente_id, modelo, origem,
+                    SUM(prompt_tokens) AS total_prompt,
+                    SUM(completion_tokens) AS total_completion,
+                    SUM(total_tokens) AS total_tokens,
+                    COUNT(*) AS chamadas
+             FROM uso_tokens
+             """ + ("WHERE cliente_id=? " if cliente_id else "") + """
+             GROUP BY cliente_id, modelo, origem
+             ORDER BY total_tokens DESC"""
+    params = (cliente_id,) if cliente_id else ()
+    with get_conn() as conn:
+        return [dict(r) for r in _rows(conn, sql, params)]
+
+
+# --- Contratos (info estatica de contrato anual, fora da plataforma) --------
+
+def criar_contrato(cliente_id, valor_anual: float = 0.0, moeda="BRL", inicio="", fim="",
+                   status="ativo") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO chamados (cliente_id, titulo, descricao, categoria, prioridade, status, aberto_por, criado_em, atualizado_em)
-               VALUES (?,?,?,?,?, 'aberto', ?, ?, ?)""",
-            (cliente_id, titulo, descricao, categoria, prioridade, aberto_por, ts, ts),
+            """INSERT INTO contratos (cliente_id, valor_anual, moeda, inicio, fim, status, criado_em)
+               VALUES (?,?,?,?,?,?,?)""",
+            (cliente_id, valor_anual, moeda, inicio, fim, status, now_iso()),
         )
         return cur.lastrowid
 
 
-def atualizar_chamado(chamado_id, **campos) -> None:
-    campos["atualizado_em"] = now_iso()
-    cols = ", ".join(f"{k}=?" for k in campos)
+def listar_contratos(cliente_id: int | None = None) -> list[dict]:
     with get_conn() as conn:
-        conn.execute(f"UPDATE chamados SET {cols} WHERE id=?", list(campos.values()) + [chamado_id])
+        if cliente_id:
+            return [dict(r) for r in _rows(
+                conn, "SELECT * FROM contratos WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
+        return [dict(r) for r in _rows(conn, "SELECT * FROM contratos ORDER BY id DESC")]
+
+
+def buscar_contrato(cliente_id: int) -> dict | None:
+    """Retorna o contrato ativo mais recente do cliente."""
+    with get_conn() as conn:
+        r = _row(conn, "SELECT * FROM contratos WHERE cliente_id=? AND status='ativo' ORDER BY id DESC LIMIT 1",
+                 (cliente_id,))
+        return dict(r) if r else None
+
 
 
 # --- Memoria por usuario + RAG (banco vetorial local) ----------------------
@@ -587,6 +653,14 @@ def seed_demo() -> None:
     with get_conn() as conn:
         ja_tem = _row(conn, "SELECT COUNT(*) AS n FROM clientes")
         if ja_tem["n"] > 0:
+            # DB existente: garante contrato demo se nao tiver (migracao conceitual)
+            primeiro = _row(conn, "SELECT id FROM clientes ORDER BY id LIMIT 1")
+            if primeiro:
+                cid = primeiro["id"]
+                ct = _row(conn, "SELECT id FROM contratos WHERE cliente_id=? LIMIT 1", (cid,))
+                if not ct:
+                    criar_contrato(cid, valor_anual=120000.00, moeda="BRL",
+                                   inicio="2026-07-01", fim="2027-06-30", status="ativo")
             return
     cid = criar_cliente("porto", "Porto Seguros (Piloto)", "Porto Seguro S/A", "ti@porto.com.br")
     criar_usuario(cid, "Administrador BlueShift", "admin", "admin123", "admin", "operacoes")
@@ -605,13 +679,9 @@ def seed_demo() -> None:
     criar_canal(cid, "API Vendas (Webhook)", aid_vendas,
                 tipo="api", token="bs_chan_demo_vendas_123")
     atualizar_health(cid, container="saudavel", modelo_local="ok", latencia_ms=42, tokens_hoje=18320, erros_24h=0)
-    # billing demo (licenca anual por empresa)
-    criar_fatura(cid, "implantacao", "Taxa de implantação + setup inicial", 35000.00, vencimento="2026-08-01", status="paga")
-    criar_fatura(cid, "licenca_anual", "Licença anual BlueShift (Piloto)", 120000.00, vencimento="2026-07-31", status="pendente")
-    criar_fatura(cid, "finetuning_custom", "Fine-tuning custom setorial (opcional)", 45000.00, vencimento="2026-09-15", status="pendente")
-    # suporte demo
-    criar_chamado(cid, "Dúvida sobre isolamento de memória por usuário", "Cliente quer confirmar que a memória não se mistura entre áreas.", categoria="treinamento", prioridade="baixa", aberto_por="gestor")
-    criar_chamado(cid, "Conector CRM retornando vazio", "Histórico de contato não retorna dados no ambiente de demo.", categoria="bug", prioridade="alta", aberto_por="admin")
+    # contrato anual (info estatica, cobranca e fora da plataforma)
+    criar_contrato(cid, valor_anual=120000.00, moeda="BRL", inicio="2026-07-01", fim="2027-06-30", status="ativo")
+
     # base de conhecimento (RAG) demo
     criar_documento(cid, "Política de Privacidade LGPD", "politica",
                     "A BlueShift mantém todos os dados do cliente dentro do ambiente dele. "
@@ -621,5 +691,5 @@ def seed_demo() -> None:
                     "O agente de vendas qualifica leads, faz follow-up e estima receita. "
                     "Ele acessa apenas dados da área de vendas via conector ERP e CRM.")
     criar_documento(cid, "Base de Conhecimento de Suporte", "base_conhecimento",
-                    "Para abrir um chamado, use o Portal em Suporte. Bugs de conector são prioridade alta. "
-                    "O conector CRM em ambiente de demonstração pode retornar lista vazia.")
+                    "O conector CRM em ambiente de demonstração pode retornar lista vazia. "
+                    "Verifique se o banco está populado com dados de exemplo.")
