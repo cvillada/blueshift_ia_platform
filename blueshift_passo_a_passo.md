@@ -55,25 +55,37 @@ pip install --upgrade pip
 
 ---
 
-## Passo 3 — Montar a estrutura (bootstrap)
+## Passo 3 — Montar o ambiente (venv + instalar a camada)
 
-Copie o arquivo `bootstrap.py` (fornecido junto com este guia, e também embutido no `blueshift_dev_guide.md` Seção 3) para a raiz do projeto e rode:
-
-```bash
-cp <origem>/bootstrap.py ./
-python bootstrap.py
-```
-
-Isso cria toda a árvore: `blueshift_layer/`, `connector_pack/`, `template_skills/`, `docker/`, `tests/`, `LICENSE`, `pyproject.toml`, etc.
-
-Depois:
+O projeto BlueShift **já está construído** (Portal do Cliente, Agent Factory, RAG,
+conectores, MCP, SSO, etc.). Você só precisa criar/reativar o venv e instalar a
+camada para ter o comando `blueshift` disponível.
 
 ```bash
-pip install -e .
-blueshift --help        # deve listar init / activate / status / update
+cd /Users/claudineivallada/Python/Blueshift_IA_Platform/bp-proj
+python3 -m venv bp-venv
+source bp-venv/bin/activate
+pip install --upgrade pip
+pip install -e .          # instala flask/mcp/psycopg + registra o entry point 'blueshift'
+blueshift --help          # deve listar init / activate / status / update / portal / mcp
 ```
 
-✅ Se aparecer o help, o scaffold está pronto.
+✅ Se aparecer o help com `portal` e `mcp`, o ambiente está pronto.
+
+⚠️ **NÃO rode `python bootstrap.py`** neste repositório. O `bootstrap.py` é o
+scaffold inicial (versões STUB vazias) e, se rodado, **sobrescreve** o
+`pyproject.toml`, `cli.py`, conectores, skills e Dockerfile reais por stubs vazios,
+apagando toda a plataforma já construída. Ele só serve para criar um projeto do zero
+em outra pasta — nunca dentro deste.
+
+Teste contínuo:
+```bash
+blueshift activate BS-DEV-teste123    # deve imprimir LICENSE OK
+blueshift portal                      # sobe o Portal do Cliente (http://localhost:8080/portal)
+python tests/test_smoke.py            # deve imprimir SMOKE TESTS PASSOU
+python tests/test_portal.py           # deve imprimir PORTAL SMOKE TESTS PASSOU
+python tests/test_mcp.py              # deve imprimir MCP TESTS PASSOU
+```
 
 ---
 
@@ -128,13 +140,14 @@ O `Dockerfile` (já gerado pelo bootstrap) instala o `hermes-agent==0.18.2` + su
 
 - [x] Fontes do Hermes numa pasta (`_ref`), BlueShift noutra (`blueshift-ia-platform`)
 - [x] Hermes já instalado = não reinstala; serve de motor
-- [x] Bootstrap monta a camada (venv + `blueshift_layer/`)
+- [x] Ambiente = venv + `pip install -e .` (sem bootstrap)
 - [x] Hermes escreve os arquivos do BlueShift a pedido do desenvolvedor
 - [x] Git novo é só da camada BlueShift
 - [x] Deploy = Docker com Hermes dentro como dependência
 
 ## O que NÃO fazer
 
+- ❌ **Não rodar `python bootstrap.py` dentro deste repo** (apaga a plataforma construída — sobrescreve por stubs vazios)
 - ❌ Não fazer `git clone` do Hermes **dentro** da pasta do BlueShift
 - ❌ Não editar `hermes_cli/` pensando "vou customizar o motor" (quem faz isso, vira fork e perde updates)
 - ❌ Não usar `pip install -e ../hermes-ref` (amarra seu BlueShift ao código editável do fork)
@@ -143,5 +156,5 @@ O `Dockerfile` (já gerado pelo bootstrap) instala o `hermes-agent==0.18.2` + su
 
 - `blueshift_prd.md` — PRD do produto (decisões, feature matrix)
 - `blueshift-ia-platform.html` — prospecto visual
-- `blueshift_dev_guide.md` — detalhe técnico da estrutura + bootstrap embutido
-- `bootstrap.py` — script que monta a estrutura (Passo 3)
+- `blueshift_dev_guide.md` — detalhe técnico da estrutura
+- `bootstrap.py` — ⚠️ SCAFFOLD INICIAL (STUBs vazios). **NÃO rode dentro deste repo.** Só serve para criar projeto do zero em outra pasta.
