@@ -829,9 +829,40 @@ def skills():
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="muted">Skills disponíveis no catálogo (template_skills/). Cada skill é um SKILL.md com frontmatter + instruções.</div>
-      <a class="btn" href="/portal/skills/novo">+ Nova skill</a>
+      <div style="display:flex;gap:8px">
+        <a class="btn ghost" href="/portal/skills/indexar-rag">\U0001f4e4 Indexar no RAG</a>
+        <a class="btn" href="/portal/skills/novo">+ Nova skill</a>
+      </div>
     </div>{tabela}"""
     return templates.page("Skills", content, active="skills", user=_user())
+
+
+@bp.route("/skills/indexar-rag")
+@auth.admin_required
+def skills_indexar_rag():
+    """Importa todas as skills do catalogo para a base de conhecimento (RAG)."""
+    from . import agente as agente_mod
+    clientes = db.listar_clientes()
+    if not clientes:
+        flash("Nenhum cliente cadastrado.", "warn")
+        return redirect(url_for("portal.skills"))
+    cid = clientes[0]["id"]
+    count = 0
+    skills = agente_mod.listar_skills_catalogo()
+    for nome, meta, body in skills:
+        desc = meta.get("description", nome)
+        texto = f"Skill: {nome}\nDescricao: {desc}\n\n{body}"
+        # Verifica se ja existe
+        docs = db.listar_documentos(cliente_id=cid)
+        if any(d["titulo"] == f"Skill: {nome}" for d in docs):
+            continue
+        db.criar_documento(cid, f"Skill: {nome}", "manual", texto,
+                           area=meta.get("category", ""), fonte="skill")
+        count += 1
+    db.registrar_auditoria(_user()["login"], "admin", "indexar_skills_rag",
+                           alvo=f"{count} skills importadas", cliente_id=cid, ip=request.remote_addr)
+    flash(f"{count} skill(s) importadas para o RAG (as ja existentes foram ignoradas).", "ok")
+    return redirect(url_for("portal.skills"))
 
 
 _MODAL_HTML = """

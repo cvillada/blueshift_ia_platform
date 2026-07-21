@@ -134,21 +134,23 @@ def construir_store(cliente_id: int | None = None) -> VectorStore:
 
 
 def buscar_contexto(query: str, cliente_id: int, usuario: str | None = None,
-                    top_k: int = 5) -> list[dict]:
+                    top_k: int = 5, registrar_acesso: bool = True) -> list[dict]:
     """Busca hibrida: memoria de longo prazo do usuario + base de conhecimento.
 
     Documentos (RAG) sempre entram (sao do cliente inteiro). Memorias sao
     filtradas por dono quando `usuario` e informado (isolamento por login).
 
-    Registra acesso aos documentos encontrados para estatisticas.
+    Args:
+        registrar_acesso: se True, incrementa contador de acesso nos documentos encontrados.
+                          Passar False quando a busca for para dedup interno (evita poluir metricas).
     """
     store = construir_store(cliente_id)
     resultados = store.search(query, dono=usuario, top_k=top_k)
-    # Registra acesso para estatisticas do RAG
-    for r in resultados:
-        if r.get("fonte") == "base_conhecimento" and r.get("id"):
-            try:
-                db.registrar_acesso_documento(r["id"])
-            except Exception:
-                pass
+    if registrar_acesso:
+        for r in resultados:
+            if r.get("fonte") == "base_conhecimento" and r.get("id"):
+                try:
+                    db.registrar_acesso_documento(r["id"])
+                except Exception:
+                    pass
     return resultados

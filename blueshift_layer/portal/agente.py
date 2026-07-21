@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 from . import db, memory, llm_client
 
@@ -25,7 +26,8 @@ def listar_skills() -> list[dict]:
         if not os.path.isfile(skill_md):
             continue
         try:
-            texto = open(skill_md, encoding="utf-8").read()
+            with open(skill_md, encoding="utf-8") as f:
+                texto = f.read()
         except OSError:
             continue
         fm = re.search(r"^---\s*\n(.*?)\n---", texto, re.DOTALL)
@@ -36,6 +38,21 @@ def listar_skills() -> list[dict]:
                     k, v = line.split(":", 1)
                     meta[k.strip()] = v.strip().strip('"')
         skills.append(meta)
+    return skills
+
+
+def listar_skills_catalogo() -> list[tuple[str, dict, str]]:
+    """Retorna lista de (nome, meta, body) de todas as skills do catálogo."""
+    skills: list[tuple[str, dict, str]] = []
+    if not os.path.isdir(_SKILLS_DIR):
+        return skills
+    for nome in sorted(os.listdir(_SKILLS_DIR)):
+        skill_md = os.path.join(_SKILLS_DIR, nome, "SKILL.md")
+        if not os.path.isfile(skill_md):
+            continue
+        s = ler_skill(nome)
+        if s:
+            skills.append((s["name"], s, s.get("body", "")))
     return skills
 
 
@@ -50,7 +67,8 @@ def ler_skill(nome: str) -> dict | None:
     if not os.path.isfile(path):
         return None
     try:
-        texto = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            texto = f.read()
     except OSError:
         return None
     fm = re.search(r"^---\s*\n(.*?)\n---", texto, re.DOTALL)
@@ -236,7 +254,7 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
 
     # Verifica se ja existe algo similar (evita duplicar a cada pergunta identica)
     from . import memory as memory_mod
-    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1)
+    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1, registrar_acesso=False)
     for e in existing:
         if e.get("score", 0) > 0.95 and pergunta[:50] in e.get("texto", ""):
             return  # ja tem no RAG, nao duplica
@@ -278,21 +296,30 @@ def enviar_webhook(webhook_url: str, payload: dict) -> dict:
 
     Usa urllib (sem libs externas). Falhas nao quebram a resposta da API —
     apenas sao reportadas em 'erro' para auditoria/debug.
+
+    Retry: ate 3 tentativas com backoff exponencial (2s, 4s).
     """
     import json
     import urllib.request
     import urllib.error
+    import time
 
     if not webhook_url:
         return {"enviado": False, "motivo": "sem_webhook"}
-    try:
-        req = urllib.request.Request(
-            webhook_url,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return {"enviado": True, "status": resp.status}
-    except Exception as e:  # noqa: BLE001 - webhook e best-effort
-        return {"enviado": False, "erro": str(e)}
+    body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    erros: list[str] = []
+    for tentativa in range(3):
+        try:
+            req = urllib.request.Request(
+                webhook_url,
+                data=body_bytes,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return {"enviado": True, "status": resp.status}
+        except Exception as e:  # noqa: BLE001 - webhook e best-effort
+            erros.append(str(e))
+            if tentativa < 2:
+                time.sleep(2 ** tentativa)  # 2s, 4s
+    return {"enviado": False, "erro": "; ".join(erros), "tentativas": len(erros)}
