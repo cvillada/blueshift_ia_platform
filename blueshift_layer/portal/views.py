@@ -1514,6 +1514,7 @@ def conhecimento_editar(did: int):
         return redirect(url_for("portal.conhecimento"))
     _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
     if request.method == "POST":
+        cid = int(request.form.get("cliente_id") or doc["cliente_id"])
         titulo = (request.form.get("titulo") or doc["titulo"]).strip()
         texto = (request.form.get("conteudo") or doc["conteudo"]).strip()
         area = request.form.get("area") or doc.get("area", "")
@@ -1521,27 +1522,31 @@ def conhecimento_editar(did: int):
         if not titulo:
             flash("Título é obrigatório.", "warn")
             return redirect(url_for("portal.conhecimento_editar", did=did))
-        db.atualizar_documento(did, titulo=titulo, conteudo=texto, area=area, categoria=categoria)
+        db.atualizar_documento(did, cliente_id=cid, titulo=titulo, conteudo=texto, area=area, categoria=categoria)
         db.registrar_auditoria(_user()["login"], "admin", "editar_documento", alvo=titulo,
                                cliente_id=doc["cliente_id"], ip=request.remote_addr)
         flash("Documento atualizado.", "ok")
         return redirect(url_for("portal.conhecimento"))
     opts_area = "".join(f'<option value="{a}" {"selected" if a==doc.get("area","") else ""}>{a}</option>' for a in _AREAS)
+    opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==doc["cliente_id"] else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
     content = f"""
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Editar documento #{did}</h3>
       <form method="post">
         <div class="form-row">
-          <div><label>Título</label><input name="titulo" value="{doc['titulo']}"></div>
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
         </div>
-        <label>Categoria</label>
-        <select name="categoria">
-          <option value="manual" {"selected" if doc['categoria']=='manual' else ''}>Manual</option>
-          <option value="politica" {"selected" if doc['categoria']=='politica' else ''}>Política</option>
-          <option value="base_conhecimento" {"selected" if doc['categoria']=='base_conhecimento' else ''}>Base de Conhecimento</option>
-          <option value="contrato" {"selected" if doc['categoria']=='contrato' else ''}>Contrato</option>
-        </select>
+        <div class="form-row">
+          <div><label>Título</label><input name="titulo" value="{doc['titulo']}"></div>
+          <div><label>Categoria</label>
+            <select name="categoria">
+              <option value="manual" {"selected" if doc['categoria']=='manual' else ''}>Manual</option>
+              <option value="politica" {"selected" if doc['categoria']=='politica' else ''}>Política</option>
+              <option value="base_conhecimento" {"selected" if doc['categoria']=='base_conhecimento' else ''}>Base de Conhecimento</option>
+              <option value="contrato" {"selected" if doc['categoria']=='contrato' else ''}>Contrato</option>
+            </select></div>
+        </div>
         <label>Conteúdo</label>
         <textarea name="conteudo" rows="10">{doc['conteudo']}</textarea>
         <div style="margin-top:16px;display:flex;gap:10px">
