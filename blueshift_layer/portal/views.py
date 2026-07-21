@@ -1390,9 +1390,11 @@ def conhecimento():
                 titulo = row.get("titulo", row.get("Titulo", "")).strip()
                 texto = row.get("conteudo", row.get("Conteudo", row.get("texto", ""))).strip()
                 fonte = row.get("fonte", row.get("Fonte", "csv")).strip()
+                # area da linha do CSV; se vazia, usa a do formulario
+                row_area = row.get("area", row.get("Area", "")).strip() or area
                 if titulo and texto:
                     db.criar_documento(cid, titulo, "base_conhecimento", texto,
-                                       area=area, fonte=fonte)
+                                       area=row_area, fonte=fonte)
                     count += 1
             db.registrar_auditoria(u["login"], u["papel"], "csv_import_conhecimento",
                                    alvo=f"{count} documentos", cliente_id=cid, ip=request.remote_addr)
