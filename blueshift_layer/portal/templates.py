@@ -37,6 +37,10 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
           <a class="logout" href="/portal/logout">Sair</a>
         </div>"""
     flashes = _flashes()
+    js = """<script>
+function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"\u25b8":"\u25be";el.classList.toggle("open")}
+function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed");var b=s.querySelector(".toggle-sidebar");b.textContent=s.classList.contains("collapsed")?"\u25b6":"\u25c0 Recolher"}
+</script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -44,6 +48,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} · BlueShift</title>
 <style>{CSS}</style>
+{js}
 </head>
 <body>
 <div class="topbar">
@@ -64,29 +69,70 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
 
 
 def _nav(active: str, user: dict | None) -> str:
+    # Itens do menu principal
     itens = [
         ("monitorar", "Monitorar", "/portal/monitorar"),
         ("workspace", "Workspace", "/portal/workspace"),
+    ]
+    # Submenu Cadastros
+    cadastro_itens = [
         ("clientes", "Clientes", "/portal/clientes"),
         ("usuarios", "Usuários", "/portal/usuarios"),
         ("agentes", "Agentes", "/portal/agentes"),
         ("skills", "Skills", "/portal/skills"),
-        ("memoria", "Memória", "/portal/memoria"),
-        ("conhecimento", "Conhecimento", "/portal/conhecimento"),
         ("modelos", "Modelos IA", "/portal/modelos"),
-        ("chat", "Chat", "/portal/chat"),
         ("conectores", "Conectores", "/portal/conectores"),
         ("canais", "Canais", "/portal/canais"),
+    ]
+    cadastro_keys = {k for k, _, _ in cadastro_itens}
+    cadastro_aberto = active in cadastro_keys
+
+    # Itens avulsos (fora de Cadastros)
+    outros = [
+        ("memoria", "Memória", "/portal/memoria"),
+        ("conhecimento", "Conhecimento", "/portal/conhecimento"),
+        ("chat", "Chat", "/portal/chat"),
         ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
         ("auditoria", "Auditoria", "/portal/auditoria"),
         ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
         ("sso", "SSO (OIDC)", "/portal/sso/config"),
     ]
+
+    seta_aberto = "\u25be"
+    seta_fechado = "\u25b8"
     links = ""
     for key, label, href in itens:
         cls = " active" if key == active else ""
         links += f'<a class="navlink{cls}" href="{href}">{label}</a>'
-    return f'<nav class="sidebar">{links}</nav>'
+
+    # Submenu Cadastros
+    cadastro_html = "".join(
+        f'<a class="navlink sub{" active" if k == active else ""}" href="{h}">{l}</a>'
+        for k, l, h in cadastro_itens
+    )
+    seta = seta_aberto if cadastro_aberto else seta_fechado
+    display = "block" if cadastro_aberto else "none"
+    links += f"""
+    <div class="submenu">
+      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)">
+        <span class="arrow">{seta}</span> Cadastros
+      </a>
+      <div class="sub-items" style="display:{display}">
+        {cadastro_html}
+      </div>
+    </div>"""
+
+    for key, label, href in outros:
+        cls = " active" if key == active else ""
+        links += f'<a class="navlink{cls}" href="{href}">{label}</a>'
+
+    # Botao recolher
+    links += """
+    <div class="sidebar-footer">
+      <a class="navlink toggle-sidebar" onclick="toggleSidebar()">\u25c0 Recolher</a>
+    </div>"""
+
+    return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
 
 def _papel_pt(p: str) -> str:
@@ -134,10 +180,21 @@ justify-content:center;font-weight:700;color:#fff}
 .logout{color:var(--muted);text-decoration:none;font-size:12px;margin-left:6px}
 .logout:hover{color:var(--txt)}
 .layout{display:flex;min-height:calc(100vh - 56px)}
-.sidebar{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:4px}
+.sidebar{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:4px;transition:width .2s}
+.sidebar.collapsed{width:48px;overflow:hidden}
+.sidebar.collapsed .navlink{font-size:0;padding:10px 0;text-align:center}
+.sidebar.collapsed .navlink::before{font-size:16px}
+.sidebar.collapsed .sub-items{display:none!important}
+.sidebar.collapsed .sidebar-footer .navlink{font-size:0}
+.sidebar.collapsed .sidebar-footer .navlink::before{content:"\u25b6";font-size:16px}
+.sidebar-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
 .navlink{display:block;padding:10px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:600}
 .navlink:hover{background:var(--panel2);color:var(--txt)}
 .navlink.active{background:var(--blue2);color:#fff}
+.navlink.sub{padding-left:28px;font-size:13px}
+.navlink.sub-toggle{cursor:pointer;user-select:none}
+.navlink.sub-toggle.open{color:var(--txt)}
+.navlink .arrow{display:inline-block;width:16px}
 .content{flex:1;padding:22px 26px}
 .page-title{margin:0 0 18px;font-size:22px;font-weight:700}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
