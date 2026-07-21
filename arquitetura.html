@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlueShift IA Platform — Mapa de Dependências</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#020617;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:2rem;line-height:1.6}
+.container{max-width:1100px;margin:0 auto}
+h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-gradient(135deg,#38bdf8,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.subtitle{color:#64748b;font-size:.875rem;margin-bottom:2rem}
+.section{margin-bottom:2.5rem}
+.section h2{font-size:1.125rem;font-weight:700;color:#f1f5f9;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:.5rem}
+.card{background:rgba(15,23,42,0.6);border:1px solid #1e293b;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.card h3{font-size:.9375rem;font-weight:700;color:#38bdf8;margin-bottom:.5rem}
+.card p,.card li{color:#94a3b8;font-size:.8125rem}
+.card ul{list-style:none;padding:0}
+.card li{padding:.3rem 0;padding-left:1rem;position:relative}
+.card li::before{content:"›";position:absolute;left:0;color:#38bdf8;font-weight:700}
+
+/* Grid de dependencias */
+.dep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin-bottom:2rem}
+.dep-card{background:rgba(15,23,42,0.6);border:1px solid #1e293b;border-radius:12px;padding:1.25rem;position:relative}
+.dep-card .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.6875rem;font-weight:700;margin-bottom:.5rem}
+.tag-core{background:rgba(56,189,248,.15);color:#38bdf8;border:1px solid rgba(56,189,248,.3)}
+.tag-portal{background:rgba(129,140,248,.15);color:#818cf8;border:1px solid rgba(129,140,248,.3)}
+.tag-connector{background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)}
+.tag-cli{background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.tag-infra{background:rgba(251,113,133,.15);color:#fb7185;border:1px solid rgba(251,113,133,.3)}
+
+.dep-card h3{font-size:.875rem;font-weight:700;color:#e2e8f0;margin-bottom:.25rem}
+.dep-card p{color:#64748b;font-size:.75rem;margin-bottom:.5rem}
+.dep-card .path{color:#64748b;font-size:.6875rem;font-family:monospace;margin-bottom:.5rem}
+.dep-card .deps{margin-top:.5rem;padding-top:.5rem;border-top:1px solid #1e293b}
+.dep-card .deps strong{color:#94a3b8;font-size:.6875rem;text-transform:uppercase;letter-spacing:.5px}
+.dep-card .deps span{display:inline-block;margin:.2rem;padding:2px 6px;border-radius:4px;font-size:.6875rem;background:rgba(56,189,248,.08);color:#38bdf8;border:1px solid rgba(56,189,248,.15)}
+
+/* Diagrama ASCII */
+.diagram{background:rgba(15,23,42,0.6);border:1px solid #1e293b;border-radius:12px;padding:1.5rem;margin-bottom:2rem;overflow:visible}
+.diagram pre{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.6875rem;line-height:1.5;color:#94a3b8;white-space:pre;overflow:visible}
+.diagram .hl{color:#38bdf8}
+.diagram .hl2{color:#818cf8}
+.diagram .hl3{color:#34d399}
+.diagram .hl4{color:#fbbf24}
+.diagram .hl5{color:#fb7185}
+
+/* Fluxo do agente */
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1rem 0}
+.flow-step{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:8px;padding:.5rem .75rem;font-size:.75rem;font-weight:600;color:#38bdf8;white-space:nowrap}
+.flow-arrow{color:#475569;font-size:1rem}
+.flow-step.db{background:rgba(129,140,248,.08);border-color:rgba(129,140,248,.2);color:#818cf8}
+.flow-step.conn{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:#34d399}
+.flow-step.llm{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.2);color:#fbbf24}
+.flow-step.out{background:rgba(251,113,133,.08);border-color:rgba(251,113,133,.2);color:#fb7185}
+
+.legend{display:flex;flex-wrap:wrap;gap:1rem;margin:1rem 0;font-size:.75rem}
+.legend-item{display:flex;align-items:center;gap:.4rem;color:#64748b}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+
+.linha{display:flex;align-items:flex-start;gap:1rem;margin-bottom:.75rem}
+.linha .mod{min-width:140px;font-weight:600;font-size:.8125rem}
+.linha .mod span{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.6875rem}
+.linha .seta{color:#475569;margin:0 .25rem}
+.linha .dests{display:flex;flex-wrap:wrap;gap:.35rem}
+.linha .dests a{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.6875rem;background:rgba(56,189,248,.08);color:#38bdf8;border:1px solid rgba(56,189,248,.15);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🔷 BlueShift IA Platform</h1>
+<p class="subtitle">Mapa de dependências entre componentes — quem liga em quem e qual o fluxo de execução</p>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>🏗️ Visão Geral da Arquitetura</h2>
+<div class="diagram">
+<pre>
+┌─────────────────────────────────────────────────────────────────────┐
+│                        🖥  BLUESHIFT CLI (cli.py)                    │
+│     blueshift init | activate | status | update | portal | mcp      │
+└──────┬──────────────────────┬──────────────────────┬────────────────┘
+       │                      │                      │
+       ▼                      ▼                      ▼
+┌──────────────┐    ┌──────────────────┐    ┌──────────────────────┐
+│  License      │    │  🌐 PORTAL       │    │  🔌 MCP SERVER      │
+│  Server mock  │    │  (Flask, :8080)  │    │  (stdio JSON-RPC)   │
+│  (:9000)      │    │  create_app()    │    │  mcp_server.py      │
+└──────────────┘    └────────┬─────────┘    └──────────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+       ┌──────────┐   ┌──────────┐   ┌──────────┐
+       │  AUTH    │   │  VIEWS   │   │   SSO    │
+       │  auth.py │   │ views.py │   │  sso.py  │
+       └────┬─────┘   └────┬─────┘   └────┬─────┘
+            │              │              │
+            └──────┬───────┴───────┬──────┘
+                   ▼               ▼
+            ┌──────────┐    ┌──────────┐
+            │  DB      │    │TEMPLATES │
+            │  db.py   │    │templates │
+            │ (SQLite) │    │   .py    │
+            └────┬─────┘    └──────────┘
+                 │
+       ┌─────────┼─────────┐
+       ▼         ▼         ▼
+┌──────────┐ ┌──────┐ ┌────────┐
+│  MEMORY  │ │LLM   │ │AGENTE  │
+│ memory.py│ │Client│ │agente  │
+│ (TF-IDF) │ │.py   │ │ .py    │
+└──────────┘ └──────┘ └───┬────┘
+                          │
+                          ▼
+                 ┌────────────────┐
+                 │  CONNECTOR     │
+                 │  PACK          │
+                 │  registry.py   │
+                 └───┬────┬────┬──┘
+                     │    │    │
+              ┌──────┘    │    └──────┐
+              ▼           ▼           ▼
+        ┌─────────┐ ┌────────┐ ┌────────┐
+        │ 🌐 API  │ │ 🔌 MCP │ │ 🗄️ SQL │
+        │ urllib  │ │ stdio  │ │psycopg │
+        └─────────┘ └────────┘ └────────┘
+</pre>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>📦 Componentes e Dependências</h2>
+
+<div class="dep-grid">
+
+<div class="dep-card">
+<span class="tag tag-portal">PORTAL</span>
+<h3>views.py</h3>
+<p>Rotas e telas do Portal (Flask Blueprint)</p>
+<div class="path">blueshift_layer/portal/views.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db</span><span>auth</span><span>templates</span><span>memory</span><span>agente</span><span>sso</span><span>json</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>db.py</h3>
+<p>Camada única de acesso ao SQLite (todas as tabelas)</p>
+<div class="path">blueshift_layer/portal/db.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>sqlite3</span><span>json</span><span>secrets</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>auth.py</h3>
+<p>Autenticação e RBAC (login_required / admin_required)</p>
+<div class="path">blueshift_layer/portal/auth.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>templates.py</h3>
+<p>Layout HTML/CSS/JS do Portal (sidebar, header, flash)</p>
+<div class="path">blueshift_layer/portal/templates.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>flask (get_flashed_messages)</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>memory.py</h3>
+<p>Banco vetorial TF-IDF + cosseno (RAG + Memória por usuário)</p>
+<div class="path">blueshift_layer/portal/memory.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>llm_client.py</h3>
+<p>Client OpenAI-compatible via urllib (chama LLM local/externo)</p>
+<div class="path">blueshift_layer/portal/llm_client.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>urllib</span><span>json</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>agente.py</h3>
+<p>Orquestrador do agente: RAG → Conectores → LLM → Resposta</p>
+<div class="path">blueshift_layer/portal/agente.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db</span><span>memory</span><span>llm_client</span><span>connector_pack.registry</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-core">CORE</span>
+<h3>sso.py</h3>
+<p>Login federado OIDC (Python puro, JWT HMAC)</p>
+<div class="path">blueshift_layer/portal/sso.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db</span><span>urllib</span><span>hashlib</span><span>json</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-connector">CONNECTOR</span>
+<h3>registry.py</h3>
+<p>Engine de execução de conectores (API/MCP/SQL)</p>
+<div class="path">blueshift_layer/connector_pack/registry.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>db (portal)</span><span>urllib</span><span>subprocess</span><span>psycopg (opcional)</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-connector">CONNECTOR</span>
+<h3>mcp_server.py</h3>
+<p>Servidor MCP stdio (JSON-RPC 2.0 puro) para clientes externos</p>
+<div class="path">blueshift_layer/connector_pack/mcp_server.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>registry</span><span>mcp_erp</span><span>mcp_crm</span><span>mcp_rh</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-connector">CONNECTOR</span>
+<h3>mcp_erp.py</h3>
+<p>Conector ERP real (Postgres do cliente via ERP_DSN)</p>
+<div class="path">blueshift_layer/connector_pack/mcp_erp.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>psycopg</span><span>base.py</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-connector">CONNECTOR</span>
+<h3>mcp_crm.py / mcp_rh.py</h3>
+<p>Conectores CRM e RH (dados de exemplo locais)</p>
+<div class="path">blueshift_layer/connector_pack/</div>
+<div class="deps"><strong>Dependem de:</strong>
+<span>base.py</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-cli">CLI</span>
+<h3>cli.py</h3>
+<p>Entry point 'blueshift' — init/activate/status/update/portal/mcp</p>
+<div class="path">blueshift_layer/cli.py</div>
+<div class="deps"><strong>Depende de:</strong>
+<span>license_client</span><span>installer</span><span>update_client</span><span>portal</span><span>mcp_server</span>
+</div>
+</div>
+
+<div class="dep-card">
+<span class="tag tag-infra">INFRA</span>
+<h3>Dockerfile</h3>
+<p>Imagem do container (Python 3.11-slim + blueshift-layer)</p>
+<div class="path">docker/Dockerfile</div>
+<div class="deps"><strong>Contém:</strong>
+<span>blueshift-layer</span><span>entrypoint.sh</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>🔗 Fluxo do Agente (Ponta a Ponta)</h2>
+<div class="diagram">
+<pre>
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ USUÁRIO  │    │  RAG     │    │CONECTORES│    │   LLM    │    │ RESPOSTA │
+│ Pergunta │───▶│ Memória+ │───▶│  API/    │───▶│  Modelo  │───▶│  JSON    │
+│          │    │ Knowledge│    │ MCP/SQL  │    │  de IA   │    │          │
+│ "Status  │    │ (TF-IDF) │    │ c/ params│    │          │    │ "Cliente │
+│  C001?"  │    │          │    │ extraídos│    │          │    │  ativo"  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+      │              │               │               │
+      │         ┌────┴────┐          │               │
+      │         │ db.py   │          │               │
+      │         │memories │          │               │
+      │         │knowledge│          │               │
+      │         └─────────┘          │               │
+      │                        ┌─────┴─────┐        │
+      │                        │ registry  │        │
+      │                        │ .py       │        │
+      │                        │ executa   │        │
+      │                        │ conectores│        │
+      │                        │ da área   │        │
+      │                        └───────────┘        │
+      │                              │
+      │                    ┌─────────┼─────────┐
+      │                    ▼         ▼         ▼
+      │              ┌────────┐ ┌──────┐ ┌──────┐
+      │              │🌐 API  │ │🔌 MCP│ │🗄️ SQL│
+      │              │urllib  │ │stdio │ │psycop│
+      │              │GET/POST│ │JSON- │ │SELECT│
+      │              │        │ │RPC   │ │      │
+      │              └────────┘ └──────┘ └──────┘
+</pre>
+</div>
+
+<div class="flow">
+<span class="flow-step">1️⃣ Pergunta do usuário</span>
+<span class="flow-arrow">→</span>
+<span class="flow-step db">2️⃣ RAG (TF-IDF)</span>
+<span class="flow-arrow">→</span>
+<span class="flow-step conn">3️⃣ Conectores da área</span>
+<span class="flow-arrow">→</span>
+<span class="flow-step llm">4️⃣ LLM + contexto</span>
+<span class="flow-arrow">→</span>
+<span class="flow-step out">5️⃣ Resposta</span>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>📋 Dependências Detalhadas (Quem Chama Quem)</h2>
+
+<div class="card">
+<div class="linha">
+<div class="mod"><span class="tag tag-portal">views.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a><a>auth.py</a><a>templates.py</a><a>memory.py</a><a>agente.py</a><a>sso.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-core">agente.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a><a>memory.py</a><a>llm_client.py</a><a>connector_pack/registry.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-connector">registry.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a><a>urllib (API)</a><a>subprocess (MCP)</a><a>psycopg (SQL)</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-core">auth.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-core">memory.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-core">sso.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>db.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-cli">cli.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>license_client.py</a><a>installer.py</a><a>update_client.py</a><a>portal</a><a>mcp_server.py</a></div>
+</div>
+<div class="linha">
+<div class="mod"><span class="tag tag-connector">mcp_server.py</span></div>
+<div class="seta">→</div>
+<div class="dests"><a>registry.py</a><a>mcp_erp.py</a><a>mcp_crm.py</a><a>mcp_rh.py</a></div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>🗄️ Tabelas do Banco (SQLite)</h2>
+<div class="dep-grid">
+
+<div class="dep-card">
+<h3>clientes</h3>
+<div class="deps"><strong>Tabela raiz.</strong> <span>criar_cliente()</span> <span>seed</span> <span>tudo depende de cliente_id</span></div>
+</div>
+
+<div class="dep-card">
+<h3>usuarios</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Área:</strong> <span>vendas</span><span>suporte</span><span>financeiro</span><span>rh</span><span>operacoes</span></div>
+</div>
+
+<div class="dep-card">
+<h3>agentes</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <span>modelo_id</span> <span>modelo_secundario_id</span> <strong>Área:</strong> <span>herdada</span> <strong>Skills:</strong> <span>CSV</span></div>
+</div>
+
+<div class="dep-card">
+<h3>conectores</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Área:</strong> <span>dona dos dados</span> <strong>Tipo:</strong> <span>api</span><span>mcp</span><span>sql</span> <strong>Config:</strong> <span>JSON</span></div>
+</div>
+
+<div class="dep-card">
+<h3>modelos</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Endpoint:</strong> <span>base_url + modelo</span> <strong>max_tokens</strong></div>
+</div>
+
+<div class="dep-card">
+<h3>canais</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <span>agente_id</span> <strong>Token:</strong> <span>Bearer auth</span></div>
+</div>
+
+<div class="dep-card">
+<h3>memories</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Isolamento:</strong> <span>por usuario (login)</span></div>
+</div>
+
+<div class="dep-card">
+<h3>knowledge</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>RAG:</strong> <span>base de conhecimento do cliente</span></div>
+</div>
+
+<div class="dep-card">
+<h3>uso_tokens</h3>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <span>agente_id</span> <strong>Analytics:</strong> <span>tokens por chamada</span></div>
+</div>
+
+<div class="dep-card">
+<h3>auditoria</h3>
+<div class="deps"><strong>LGPD:</strong> <span>rastreabilidade de acoes</span></div>
+</div>
+
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>📁 Estrutura de Pastas</h2>
+<div class="diagram">
+<pre>
+blueshift_layer/
+├── cli.py                  ← Entry point 'blueshift'
+├── license_client.py       ← Valida chave no License Server
+├── installer.py            ← Cria perfil do cliente
+├── update_client.py        ← Update Channel
+├── config/
+│   └── default_config.yaml
+├── portal/                 ← 🌐 Portal do Cliente (Flask)
+│   ├── __init__.py         ← create_app()
+│   ├── db.py               ← SQLite (tudo depende daqui)
+│   ├── views.py            ← Rotas e telas
+│   ├── auth.py             ← Login + RBAC
+│   ├── templates.py        ← Layout + CSS + JS
+│   ├── memory.py           ← RAG (TF-IDF + cosseno)
+│   ├── llm_client.py       ← LLM OpenAI-compatible
+│   ├── agente.py           ← Orquestrador de agentes
+│   └── sso.py              ← OIDC (login federado)
+├── connector_pack/         ← 🔌 Conectores externos
+│   ├── registry.py         ← Engine API/MCP/SQL
+│   ├── mcp_server.py       ← MCP stdio server
+│   ├── mcp_erp.py          ← ERP (Postgres)
+│   ├── mcp_crm.py          ← CRM (exemplo)
+│   └── mcp_rh.py           ← RH (exemplo)
+└── template_skills/        ← ⚙️ Skills por area
+    ├── vendas/SKILL.md
+    ├── suporte/SKILL.md
+    ├── financeiro/SKILL.md
+    ├── rh/SKILL.md
+    └── operacoes/SKILL.md
+docker/
+├── Dockerfile              ← Imagem do container
+└── entrypoint.sh           ← Sobe License + Update + Portal
+</pre>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+<h2>⚠️ Regras de Dependência (Importante)</h2>
+<div class="card">
+<ul>
+<li><b>db.py</b> é o ponto único de acesso a dados. Nenhum outro módulo abre SQLite direto.</li>
+<li><b>agente.py</b> é o orquestrador central: coordena RAG → conectores → LLM.</li>
+<li><b>registry.py</b> (conectores) depende de <b>db.py</b> para listar conectores da área — <span style="color:#fbbf24">cuidado com import circular</span>.</li>
+<li><b>llm_client.py</b> não depende de nada do projeto — pode ser usado standalone.</li>
+<li><b>mcp_erp.py</b> tem dependência opcional de <b>psycopg</b> (Postgres). Se não instalado, cai em fallback de dados de exemplo.</li>
+<li><b>templates.py</b> gera HTML inline (sem Jinja2). Todo o CSS/JS está embutido na função <code>page()</code>.</li>
+<li><b>Conectores por área</b>: agentes herdam os conectores configurados para a área na tela Conectores.</li>
+</ul>
+</div>
+</div>
+
+</div>
+</body>
+</html>
