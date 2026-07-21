@@ -857,7 +857,7 @@ def skills_indexar_rag():
         if any(d["titulo"] == f"Skill: {nome}" for d in docs):
             continue
         db.criar_documento(cid, f"Skill: {nome}", "manual", texto,
-                           area=meta.get("category", ""), fonte="skill")
+                           area=meta.get("category") or meta.get("name", ""), fonte="skill")
         count += 1
     db.registrar_auditoria(_user()["login"], "admin", "indexar_skills_rag",
                            alvo=f"{count} skills importadas", cliente_id=cid, ip=request.remote_addr)
