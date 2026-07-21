@@ -139,6 +139,16 @@ def buscar_contexto(query: str, cliente_id: int, usuario: str | None = None,
 
     Documentos (RAG) sempre entram (sao do cliente inteiro). Memorias sao
     filtradas por dono quando `usuario` e informado (isolamento por login).
+
+    Registra acesso aos documentos encontrados para estatisticas.
     """
     store = construir_store(cliente_id)
-    return store.search(query, dono=usuario, top_k=top_k)
+    resultados = store.search(query, dono=usuario, top_k=top_k)
+    # Registra acesso para estatisticas do RAG
+    for r in resultados:
+        if r.get("fonte") == "base_conhecimento" and r.get("id"):
+            try:
+                db.registrar_acesso_documento(r["id"])
+            except Exception:
+                pass
+    return resultados

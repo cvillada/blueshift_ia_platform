@@ -160,10 +160,14 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS knowledge (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                area        TEXT NOT NULL DEFAULT '',              -- vendas|suporte|financeiro|rh|operacoes
                 titulo      TEXT NOT NULL,
                 categoria   TEXT NOT NULL DEFAULT 'manual',    -- manual|politica|base_conhecimento|contrato
+                fonte       TEXT NOT NULL DEFAULT 'manual',    -- manual|csv|push|conector:<nome>
                 conteudo    TEXT NOT NULL,
                 vetor       TEXT,                              -- JSON do embedding (TF-IDF local)
+                acessos     INTEGER NOT NULL DEFAULT 0,
+                ultimo_acesso TEXT,
                 criado_em   TEXT NOT NULL
             );
 
@@ -247,6 +251,12 @@ def _migrar_colunas() -> None:
             ("config", "TEXT DEFAULT '{}'"),
             ("ativo", "INTEGER DEFAULT 1"),
             ("criado_em", "TEXT"),
+        ],
+        "knowledge": [
+            ("area", "TEXT DEFAULT ''"),
+            ("fonte", "TEXT DEFAULT 'manual'"),
+            ("acessos", "INTEGER DEFAULT 0"),
+            ("ultimo_acesso", "TEXT"),
         ],
     }
     with get_conn() as conn:
@@ -586,22 +596,90 @@ def listar_memorias(cliente_id: int | None = None) -> list[dict]:
         return [dict(r) for r in _rows(conn, "SELECT * FROM memories ORDER BY id DESC")]
 
 
-def criar_documento(cliente_id, titulo, categoria, conteudo) -> int:
+def criar_documento(cliente_id, titulo, categoria, conteudo, area="", fonte="manual") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO knowledge (cliente_id, titulo, categoria, conteudo, vetor, criado_em)
-               VALUES (?,?,?,?, '[]', ?)""",
-            (cliente_id, titulo, categoria, conteudo, now_iso()),
+            """INSERT INTO knowledge (cliente_id, area, titulo, categoria, fonte, conteudo, vetor, acessos, criado_em)
+               VALUES (?,?,?,?,?,?, '[]', 0, ?)""",
+            (cliente_id, area, titulo, categoria, fonte, conteudo, now_iso()),
         )
         return cur.lastrowid
 
 
-def listar_documentos(cliente_id: int | None = None) -> list[dict]:
+def listar_documentos(cliente_id: int | None = None, area: str | None = None) -> list[dict]:
+    sql = "SELECT * FROM knowledge WHERE 1=1"
+    params = []
+    if cliente_id is not None:
+        sql += " AND cliente_id=?"
+        params.append(cliente_id)
+    if area:
+        sql += " AND area=?"
+        params.append(area)
+    sql += " ORDER BY id DESC"
     with get_conn() as conn:
-        if cliente_id:
-            return [dict(r) for r in _rows(
-                conn, "SELECT * FROM knowledge WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
-        return [dict(r) for r in _rows(conn, "SELECT * FROM knowledge ORDER BY id DESC")]
+        return [dict(r) for r in _rows(conn, sql, params)]
+
+
+def buscar_documento(did: int) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM knowledge WHERE id=?", (did,))
+        return dict(row) if row else None
+
+
+def atualizar_documento(did: int, **campos) -> None:
+    if "conteudo" in campos or "titulo" in campos:
+        campos["vetor"] = "[]"  # marca para re-embedding
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE knowledge SET {cols} WHERE id=?", list(campos.values()) + [did])
+
+
+def deletar_documento(did: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM knowledge WHERE id=?", (did,))
+
+
+def registrar_acesso_documento(did: int) -> None:
+    ts = now_iso()
+    with get_conn() as conn:
+        conn.execute("UPDATE knowledge SET acessos=acessos+1, ultimo_acesso=? WHERE id=?", (ts, did))
+
+
+def contar_documentos(cliente_id: int | None = None) -> list[dict]:
+    """Agrega estatisticas dos documentos: total, por area, por categoria, por fonte."""
+    sql = """SELECT
+               COUNT(*) AS total,
+               COUNT(DISTINCT area) AS areas,
+               SUM(acessos) AS total_acessos,
+               ROUND(AVG(LENGTH(conteudo))) AS tamanho_medio
+             FROM knowledge"""
+    params = []
+    if cliente_id is not None:
+        sql += " WHERE cliente_id=?"
+        params.append(cliente_id)
+    with get_conn() as conn:
+        stats = [dict(r) for r in _rows(conn, sql, params)]
+    # por area
+    sql_area = "SELECT area, COUNT(*) AS qtd, SUM(acessos) AS acessos FROM knowledge"
+    if cliente_id is not None:
+        sql_area += " WHERE cliente_id=?"
+    sql_area += " GROUP BY area ORDER BY qtd DESC"
+    with get_conn() as conn:
+        params_a = [cliente_id] if cliente_id is not None else []
+        por_area = [dict(r) for r in _rows(conn, sql_area, params_a)]
+    # por fonte
+    sql_fonte = "SELECT fonte, COUNT(*) AS qtd FROM knowledge"
+    if cliente_id is not None:
+        sql_fonte += " WHERE cliente_id=?"
+    sql_fonte += " GROUP BY fonte ORDER BY qtd DESC"
+    with get_conn() as conn:
+        params_f = [cliente_id] if cliente_id is not None else []
+        por_fonte = [dict(r) for r in _rows(conn, sql_fonte, params_f)]
+    return {
+        "geral": stats[0] if stats else {"total": 0, "areas": 0, "total_acessos": 0, "tamanho_medio": 0},
+        "por_area": por_area,
+        "por_fonte": por_fonte,
+    }
 
 
 # --- Modelos de IA (cadastro de LLMs por cliente) --------------------------
@@ -817,10 +895,13 @@ def seed_demo() -> None:
     criar_documento(cid, "Política de Privacidade LGPD", "politica",
                     "A BlueShift mantém todos os dados do cliente dentro do ambiente dele. "
                     "A memória de cada usuário é isolada por ID e nunca é compartilhada entre usuários. "
-                    "Dados sensíveis não saem do servidor do cliente.")
+                    "Dados sensíveis não saem do servidor do cliente.",
+                    area="operacoes")
     criar_documento(cid, "Manual do Agente de Vendas", "manual",
                     "O agente de vendas qualifica leads, faz follow-up e estima receita. "
-                    "Ele acessa apenas dados da área de vendas via conector ERP e CRM.")
+                    "Ele acessa apenas dados da área de vendas via conector ERP e CRM.",
+                    area="vendas")
     criar_documento(cid, "Base de Conhecimento de Suporte", "base_conhecimento",
                     "O conector CRM em ambiente de demonstração pode retornar lista vazia. "
-                    "Verifique se o banco está populado com dados de exemplo.")
+                    "Verifique se o banco está populado com dados de exemplo.",
+                    area="suporte")

@@ -199,9 +199,56 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         )
         db.registrar_auditoria(usuario, "sistema", "agente_responder", alvo=agente["nome"],
                                cliente_id=cliente_id, detalhe=detalhe)
+
+        # --- RAG automatico: salva resultado dos conectores no knowledge base ---
+        _salvar_no_knowledge(cliente_id, area, pergunta, out["content"], ferramentas)
+
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas}
+
+
+def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,
+                         ferramentas: list[dict]) -> None:
+    """Guarda o resultado dos conectores + resposta no RAG para consultas futuras.
+
+    Só salva se:
+    - Houver dados de conectores (ferramentas com resultado)
+    - Não existir chunk muito similar (evita duplicatas)
+    """
+    dados_conectores = [f for f in ferramentas if "resultado" in f and f.get("resultado")]
+    if not dados_conectores:
+        return
+
+    blocos = []
+    fontes = set()
+    for f in dados_conectores:
+        fonte = f.get("conector", "desconhecido")
+        fontes.add(fonte)
+        res = f.get("resultado", "")
+        # Limita a 300 chars por ferramenta pra nao explodir o RAG
+        res_str = str(res)[:300]
+        blocos.append(f"[{fonte}.{f.get('tool','?')}] {res_str}")
+
+    texto = f"Pergunta: {pergunta[:200]}\nResposta: {resposta[:500]}\nDados: {' | '.join(blocos)}"
+    if len(texto) < 30:
+        return
+
+    # Verifica se ja existe algo similar (evita duplicar a cada pergunta identica)
+    from . import memory as memory_mod
+    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1)
+    for e in existing:
+        if e.get("score", 0) > 0.95 and pergunta[:50] in e.get("texto", ""):
+            return  # ja tem no RAG, nao duplica
+
+    titulo = f"RAG auto: {area}/{pergunta[:60]}"
+    try:
+        db.criar_documento(
+            cliente_id=cliente_id, titulo=titulo, categoria="base_conhecimento",
+            conteudo=texto, area=area, fonte=f"conector:{','.join(sorted(fontes))}",
+        )
+    except Exception:
+        pass  # fallback silencioso — RAG e best-effort
 
 
 # Padrão para extrair parâmetros da pergunta do usuário

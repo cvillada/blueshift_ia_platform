@@ -1370,48 +1370,203 @@ def memoria():
 @auth.login_required
 def conhecimento():
     u = _user()
-    if request.method == "POST":
+    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+
+    # --- CSV Import ---
+    if request.method == "POST" and request.form.get("_action") == "csv_import":
+        cid = int(request.form.get("cliente_id", 0))
+        area = request.form.get("area", "").strip()
+        file = request.files.get("csv_file")
+        if not file or not cid:
+            flash("Selecione um cliente e um arquivo CSV.", "warn")
+            return redirect(url_for("portal.conhecimento"))
+        try:
+            import csv
+            import io
+            content = file.read().decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(content))
+            count = 0
+            for row in reader:
+                titulo = row.get("titulo", row.get("Titulo", "")).strip()
+                texto = row.get("conteudo", row.get("Conteudo", row.get("texto", ""))).strip()
+                fonte = row.get("fonte", row.get("Fonte", "csv")).strip()
+                if titulo and texto:
+                    db.criar_documento(cid, titulo, "base_conhecimento", texto,
+                                       area=area, fonte=fonte)
+                    count += 1
+            db.registrar_auditoria(u["login"], u["papel"], "csv_import_conhecimento",
+                                   alvo=f"{count} documentos", cliente_id=cid, ip=request.remote_addr)
+            flash(f"{count} documento(s) importados via CSV.", "ok")
+        except Exception as e:
+            flash(f"Erro ao importar CSV: {e}", "bad")
+        return redirect(url_for("portal.conhecimento"))
+
+    # --- Adicionar documento manual ---
+    if request.method == "POST" and request.form.get("_action") == "add":
         cid = int(request.form.get("cliente_id", 0))
         titulo = request.form.get("titulo", "").strip()
         texto = request.form.get("conteudo", "").strip()
+        area = request.form.get("area", "").strip()
         if cid and titulo and texto:
-            db.criar_documento(cid, titulo, request.form.get("categoria", "manual"), texto)
+            db.criar_documento(cid, titulo, request.form.get("categoria", "manual"), texto,
+                               area=area)
             db.registrar_auditoria(u["login"], u["papel"], "salvar_documento", alvo=titulo,
                                    cliente_id=cid, ip=request.remote_addr)
-            flash("Documento adicionado à base de conhecimento (RAG).", "ok")
+            flash("Documento adicionado à base de conhecimento.", "ok")
             return redirect(url_for("portal.conhecimento"))
-    docs = db.listar_documentos()
+
+    # --- Listar com filtro ---
+    cid_sel = request.args.get("cliente_id", type=int)
+    area_sel = request.args.get("area", "")
+    docs = db.listar_documentos(cliente_id=cid_sel, area=area_sel or None)
+
     body = ""
     for d in docs:
+        preview = d['conteudo'][:120] + ("…" if len(d['conteudo']) > 120 else "")
+        acessos_txt = f"{d.get('acessos',0)} acesso(s)" if d.get('acessos', 0) else "0 acesso"
+        ultimo = f" · último: {d.get('ultimo_acesso','-')[:10]}" if d.get('ultimo_acesso') else ""
         body += f"""<tr>
-          <td><b>{d['titulo']}</b></td>
+          <td><b>{d['titulo']}</b><br><span class="muted" style="font-size:11px">{d.get('area') or '-'} · {d.get('fonte','manual')}</span></td>
           <td>{templates.badge(d['categoria'])}</td>
-          <td>{d['conteudo'][:120]}{'…' if len(d['conteudo']) > 120 else ''}</td>
-          <td class="muted">{d['criado_em']}</td>
-        </tr>"""
-    tabela = f"""<table><thead><tr><th>Título</th><th>Categoria</th><th>Conteúdo</th><th>Quando</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=4 class="empty">Nenhum documento.</td></tr>'}</tbody></table>"""
+          <td class="muted">{preview}</td>
+          <td style="font-size:12px">{acessos_txt}{ultimo}</td>
+          <td class="muted">{d['criado_em'][:10]}</td>
+          <td class="row-actions">
+            <a href="{url_for('portal.conhecimento_editar', did=d['id'])}">editar</a>
+            <a href="{url_for('portal.conhecimento_excluir', did=d['id'])}" onclick="return confirm('Excluir documento?')" style="color:var(--bad)">excluir</a>
+          </td></tr>"""
+
+    # --- Estatisticas ---
+    stats = db.contar_documentos(cliente_id=cid_sel)
+
+    opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
+    opts_area = "".join(f'<option value="{a}" {"selected" if a==area_sel else ""}>{a}</option>' for a in _AREAS)
+
+    stats_html = f"""
+    <div class="grid grid-4" style="margin-bottom:14px">
+      <div class="kpi"><div class="label">Documentos</div><div class="value">{stats['geral']['total']}</div><div class="sub">no RAG</div></div>
+      <div class="kpi"><div class="label">Áreas</div><div class="value">{stats['geral']['areas']}</div><div class="sub">com documentos</div></div>
+      <div class="kpi"><div class="label">Acessos</div><div class="value">{stats['geral']['total_acessos']}</div><div class="sub">total no RAG</div></div>
+      <div class="kpi"><div class="label">Tam. médio</div><div class="value">{stats['geral']['tamanho_medio']}</div><div class="sub">caracteres</div></div>
+    </div>"""
+
+    details_html = ""
+    if stats["por_area"]:
+        details_html += "<div style='margin-bottom:8px'><span class='muted' style='font-size:12px'><b>Por área:</b> "
+        details_html += " · ".join(f"{a['area'] or 'sem área'}: {a['qtd']} docs ({a['acessos']} acessos)" for a in stats["por_area"])
+        details_html += "</span></div>"
+    if stats["por_fonte"]:
+        details_html += "<div style='margin-bottom:8px'><span class='muted' style='font-size:12px'><b>Por fonte:</b> "
+        details_html += " · ".join(f"{f['fonte']}: {f['qtd']}" for f in stats["por_fonte"])
+        details_html += "</span></div>"
+
     content = f"""
-    <div class="muted" style="margin-bottom:14px">
-      Base de conhecimento do cliente (RAG): manual, política, base de conhecimento, contrato.
-      Recuperada por similaridade no momento da inferência.
-    </div>
-    <div class="card" style="max-width:680px;margin-bottom:16px">
+    {stats_html}
+    {details_html}
+    <div class="card" style="max-width:720px;margin-bottom:16px">
       <h3 style="margin-top:0">Adicionar documento (RAG)</h3>
       <form method="post">
-        <label>Cliente</label>
-          <select name="cliente_id">
-            {''.join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in db.listar_clientes())}
-          </select>
-        <label>Título</label><input name="titulo" placeholder="Ex: Política de Privacidade">
-        <label>Categoria</label>
-          <select name="categoria"><option value="manual">Manual</option><option value="politica">Política</option><option value="base_conhecimento">Base de Conhecimento</option><option value="contrato">Contrato</option></select>
+        <input type="hidden" name="_action" value="add">
+        <div class="form-row">
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
+          <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Título</label><input name="titulo" placeholder="Ex: Política de Privacidade"></div>
+          <div><label>Categoria</label><select name="categoria"><option value="manual">Manual</option><option value="politica">Política</option><option value="base_conhecimento">Base de Conhecimento</option><option value="contrato">Contrato</option></select></div>
+        </div>
         <label>Conteúdo</label><textarea name="conteudo" rows="4" placeholder="Texto do documento"></textarea>
         <div style="margin-top:12px"><button class="btn" type="submit">Adicionar</button></div>
       </form>
     </div>
-    {tabela}"""
+    <div class="card" style="max-width:720px;margin-bottom:16px">
+      <h3 style="margin-top:0">Importar CSV</h3>
+      <p class="muted" style="font-size:13px">Formato: <code>titulo,conteudo,fonte</code> (opcional: <code>area</code>). Se area vazia, usa a selecionada abaixo.</p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_action" value="csv_import">
+        <div class="form-row">
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
+          <div><label>Área padrão</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
+        </div>
+        <label>Arquivo CSV</label>
+        <input type="file" name="csv_file" accept=".csv" style="padding:6px">
+        <div style="margin-top:12px"><button class="btn" type="submit">Importar CSV</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Documentos</h3>
+      <form method="get" style="margin-bottom:10px;display:flex;gap:8px;align-items:end">
+        <div><label>Cliente</label><select name="cliente_id" onchange="this.form.submit()"><option value="">todos</option>{''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}</select></div>
+        <div><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">todas</option>{opts_area}</select></div>
+      </form>
+      <table><thead><tr><th>Título</th><th>Categoria</th><th>Conteúdo</th><th>Acessos</th><th>Quando</th><th></th></tr></thead>
+        <tbody>{body or '<tr><td colspan="6" class="muted">Nenhum documento.</td></tr>'}</tbody></table>
+    </div>"""
     return templates.page("Base de Conhecimento", content, active="conhecimento", user=u)
+
+
+@bp.route("/conhecimento/<int:did>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def conhecimento_editar(did: int):
+    doc = db.buscar_documento(did)
+    if not doc:
+        flash("Documento não encontrado.", "bad")
+        return redirect(url_for("portal.conhecimento"))
+    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+    if request.method == "POST":
+        titulo = (request.form.get("titulo") or doc["titulo"]).strip()
+        texto = (request.form.get("conteudo") or doc["conteudo"]).strip()
+        area = request.form.get("area") or doc.get("area", "")
+        categoria = request.form.get("categoria") or doc["categoria"]
+        if not titulo:
+            flash("Título é obrigatório.", "warn")
+            return redirect(url_for("portal.conhecimento_editar", did=did))
+        db.atualizar_documento(did, titulo=titulo, conteudo=texto, area=area, categoria=categoria)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_documento", alvo=titulo,
+                               cliente_id=doc["cliente_id"], ip=request.remote_addr)
+        flash("Documento atualizado.", "ok")
+        return redirect(url_for("portal.conhecimento"))
+    opts_area = "".join(f'<option value="{a}" {"selected" if a==doc.get("area","") else ""}>{a}</option>' for a in _AREAS)
+    content = f"""
+    <div class="card" style="max-width:700px">
+      <h3 style="margin-top:0">Editar documento #{did}</h3>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Título</label><input name="titulo" value="{doc['titulo']}"></div>
+          <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
+        </div>
+        <label>Categoria</label>
+        <select name="categoria">
+          <option value="manual" {"selected" if doc['categoria']=='manual' else ''}>Manual</option>
+          <option value="politica" {"selected" if doc['categoria']=='politica' else ''}>Política</option>
+          <option value="base_conhecimento" {"selected" if doc['categoria']=='base_conhecimento' else ''}>Base de Conhecimento</option>
+          <option value="contrato" {"selected" if doc['categoria']=='contrato' else ''}>Contrato</option>
+        </select>
+        <label>Conteúdo</label>
+        <textarea name="conteudo" rows="10">{doc['conteudo']}</textarea>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/conhecimento">Cancelar</a>
+        </div>
+      </form>
+      <div class="muted" style="font-size:12px;margin-top:12px">
+        Fonte: {doc.get('fonte','manual')} · Acessos: {doc.get('acessos',0)} · Criado: {doc['criado_em']}
+        {(' · Ultimo acesso: ' + doc["ultimo_acesso"]) if doc.get("ultimo_acesso") else ''}
+      </div>
+    </div>"""
+    return templates.page("Editar documento", content, active="conhecimento", user=_user())
+
+
+@bp.route("/conhecimento/<int:did>/excluir")
+@auth.admin_required
+def conhecimento_excluir(did: int):
+    doc = db.buscar_documento(did)
+    if doc:
+        db.deletar_documento(did)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_documento", alvo=doc["titulo"],
+                               cliente_id=doc["cliente_id"], ip=request.remote_addr)
+        flash(f"Documento '{doc['titulo']}' excluído.", "ok")
+    return redirect(url_for("portal.conhecimento"))
 
 
 # ---------------------------------------------------------------------------
