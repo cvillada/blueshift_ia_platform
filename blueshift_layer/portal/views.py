@@ -834,6 +834,53 @@ def skills():
     return templates.page("Skills", content, active="skills", user=_user())
 
 
+_MODAL_HTML = """
+<div class="modal-overlay" id="modal-ia" onclick="if(event.target===this)fecharModalIA()">
+  <div class="modal-box">
+    <h3>✨ Gerar skill com IA</h3>
+    <p class="muted" style="font-size:13px">Descreva o que a skill deve fazer. A IA usara o primeiro modelo cadastrado em Modelos IA para gerar o conteudo.</p>
+    <textarea id="ia-prompt" rows="4" placeholder="Ex: Agente de suporte que consulta a base de conhecimento..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-spin" id="btn-gerar" onclick="gerarSkillIA()">\U0001f680 Gerar</button>
+      <button class="btn ghost" onclick="copiarSkillIA()" id="btn-copiar" style="display:none">\U0001f4cb Copiar para o campo</button>
+      <button class="btn ghost" onclick="fecharModalIA()">Fechar</button>
+    </div>
+    <div id="ia-resultado" style="display:none;margin-top:12px">
+      <label>Previa do conteudo gerado:</label>
+      <textarea id="ia-conteudo" rows="10" readonly></textarea>
+    </div>
+    <div id="ia-erro" class="badge bad" style="display:none;margin-top:8px"></div>
+  </div>
+</div>
+<script>
+function abrirModalIA(){document.getElementById("modal-ia").classList.add("show")}
+function fecharModalIA(){document.getElementById("modal-ia").classList.remove("show")}
+function gerarSkillIA(){
+  var p=document.getElementById("ia-prompt").value.trim();
+  if(!p){alert("Descreva a skill primeiro.");return}
+  var b=document.getElementById("btn-gerar");b.classList.add("loading");b.disabled=true;
+  document.getElementById("ia-erro").style.display="none";
+  fetch("/portal/skills/gerar-ia",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p})})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      b.classList.remove("loading");b.disabled=false;
+      if(d.ok){
+        document.getElementById("ia-resultado").style.display="block";
+        document.getElementById("ia-conteudo").value=d.conteudo;
+        document.getElementById("btn-copiar").style.display="inline-block"
+      }else{
+        var e=document.getElementById("ia-erro");e.textContent=d.erro;e.style.display="block"
+      }
+    })
+    .catch(function(e){b.classList.remove("loading");b.disabled=false;var er=document.getElementById("ia-erro");er.textContent="Erro: "+e.message;er.style.display="block"})
+}
+function copiarSkillIA(){
+  document.getElementById("skill-body").value=document.getElementById("ia-conteudo").value;
+  fecharModalIA()
+}
+</script>"""
+
+
 @bp.route("/skills/novo", methods=["GET", "POST"])
 @auth.admin_required
 def skill_novo():
@@ -857,15 +904,19 @@ def skill_novo():
           <div><label>Nome (identificador)</label><input name="nome" placeholder="ex: vendas"></div>
           <div><label>Versão</label><input name="version" value="1.0.0"></div>
         </div>
-        <label>Descrição</label><input name="descricao" placeholder="Agente de vendas - consulta ERP, propoe produtos">
-        <label>Conteúdo (SKILL.md body — instruções do agente)</label>
-        <textarea name="body" rows="10" placeholder="# Comportamento&#10;1. Ao perguntarem status, consulte o ERP&#10;2. Nunca invente dados"></textarea>
+        <label>Descrição</label><input name="descricao" id="skill-desc" placeholder="Agente de vendas - consulta ERP, propoe produtos">
+        <label>
+          Conteúdo (SKILL.md body — instruções do agente)
+          <button type="button" class="btn-ia" onclick="abrirModalIA()" style="margin-left:8px">✨ Gerar com IA</button>
+        </label>
+        <textarea name="body" id="skill-body" rows="10" placeholder="# Comportamento&#10;1. Ao perguntarem status, consulte o ERP&#10;2. Nunca invente dados"></textarea>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Criar skill</button>
           <a class="btn ghost" href="/portal/skills">Cancelar</a>
         </div>
       </form>
     </div>"""
+    content += _MODAL_HTML
     return templates.page("Nova skill", content, active="skills", user=_user())
 
 
@@ -893,15 +944,19 @@ def skill_editar(nome: str):
           <div><label>Nome</label><input name="nome" value="{skill['name']}" readonly style="color:var(--muted)"></div>
           <div><label>Versão</label><input name="version" value="{skill.get('version','1.0.0')}"></div>
         </div>
-        <label>Descrição</label><input name="descricao" value="{skill.get('description','')}">
-        <label>Conteúdo (SKILL.md body)</label>
-        <textarea name="body" rows="10">{skill.get('body','')}</textarea>
+        <label>Descrição</label><input name="descricao" id="skill-desc" value="{skill.get('description','')}">
+        <label>
+          Conteúdo (SKILL.md body)
+          <button type="button" class="btn-ia" onclick="abrirModalIA()" style="margin-left:8px">✨ Gerar com IA</button>
+        </label>
+        <textarea name="body" id="skill-body" rows="10">{skill.get('body','')}</textarea>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/skills">Cancelar</a>
         </div>
       </form>
     </div>"""
+    content += _MODAL_HTML
     return templates.page(f"Editar {skill['name']}", content, active="skills", user=_user())
 
 
@@ -913,6 +968,45 @@ def skill_excluir(nome: str):
         db.registrar_auditoria(_user()["login"], "admin", "excluir_skill", alvo=nome)
         flash(f"Skill '{nome}' excluída.", "ok")
     return redirect(url_for("portal.skills"))
+
+
+@bp.route("/skills/gerar-ia", methods=["POST"])
+@auth.admin_required
+def skill_gerar_ia():
+    """Usa o primeiro modelo de IA ativo para gerar conteúdo de skill."""
+    from . import llm_client
+    prompt = (request.form.get("prompt", "") or request.json.get("prompt", "") if request.is_json else "").strip()
+    if not prompt:
+        return jsonify({"ok": False, "erro": "Prompt obrigatório"}), 400
+
+    # Pega o primeiro modelo ativo do primeiro cliente
+    clientes = db.listar_clientes()
+    if not clientes:
+        return jsonify({"ok": False, "erro": "Nenhum cliente cadastrado"}), 400
+    modelos = db.listar_modelos(clientes[0]["id"])
+    if not modelos:
+        return jsonify({"ok": False, "erro": "Nenhum modelo de IA cadastrado. Cadastre um em Modelos IA primeiro."}), 400
+
+    modelo = modelos[0]
+    system = (
+        "Você é um especialista em criar skills para agentes de IA corporativos. "
+        "Gere o conteúdo de um arquivo SKILL.md baseado na descrição fornecida pelo usuário.\n\n"
+        "Formato esperado:\n"
+        "- Título da skill\n"
+        "- Objetivo: descrição do que o agente faz\n"
+        "- Comportamento: lista numerada de instruções\n"
+        "- Regras: restrições e boas práticas\n"
+        "- Exemplos: exemplos de perguntas e respostas esperadas\n\n"
+        "Seja objetivo e prático. Use português brasileiro."
+    )
+    mensagens = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Crie uma skill de IA para: {prompt}"},
+    ]
+    out = llm_client.chat(modelo, mensagens)
+    if out["ok"]:
+        return jsonify({"ok": True, "conteudo": out["content"]})
+    return jsonify({"ok": False, "erro": out.get("error", "Falha ao gerar skill")}), 500
 
 
 # ---------------------------------------------------------------------------
