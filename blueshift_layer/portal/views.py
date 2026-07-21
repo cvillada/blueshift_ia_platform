@@ -1472,7 +1472,8 @@ def conhecimento():
         acessos_txt = f"{d.get('acessos',0)} acesso(s)" if d.get('acessos', 0) else "0 acesso"
         ultimo = f" · último: {d.get('ultimo_acesso','-')[:10]}" if d.get('ultimo_acesso') else ""
         body += f"""<tr>
-          <td><b>{d['titulo']}</b><br><span class="muted" style="font-size:11px">{d.get('area') or '-'} · {d.get('fonte','manual')}</span></td>
+          <td><b>{d['titulo']}</b><br><span class="muted" style="font-size:11px">{d.get('fonte','manual')}</span></td>
+          <td>{templates.badge(d.get('area') or '-')}</td>
           <td>{templates.badge(d['categoria'])}</td>
           <td class="muted">{preview}</td>
           <td style="font-size:12px">{acessos_txt}{ultimo}</td>
@@ -1562,8 +1563,8 @@ def conhecimento():
         <div><label>Cliente</label><select name="cliente_id" onchange="this.form.submit()"><option value="">todos</option>{''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}</select></div>
         <div><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">todas</option>{opts_area}</select></div>
       </form>
-      <table><thead><tr><th>Título</th><th>Categoria</th><th>Conteúdo</th><th>Acessos</th><th>Quando</th><th></th></tr></thead>
-        <tbody>{body or '<tr><td colspan="6" class="muted">Nenhum documento.</td></tr>'}</tbody></table>
+      <table><thead><tr><th>Título</th><th>Área</th><th>Categoria</th><th>Conteúdo</th><th>Acessos</th><th>Quando</th><th></th></tr></thead>
+        <tbody>{body or '<tr><td colspan="7" class="muted">Nenhum documento.</td></tr>'}</tbody></table>
     </div>"""
     return templates.page("Base de Conhecimento", content, active="conhecimento", user=u)
 
