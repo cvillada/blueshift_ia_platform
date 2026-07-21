@@ -549,7 +549,7 @@ def agentes():
           <td>{a['area'] or '-'}</td>
           <td>{a['modelo']}{modelo_sec_txt}</td>
           <td>{a['skills'] or '-'}</td>
-          <td>{a['conectores'] or '-'}</td>
+          <td><a href="/portal/conectores?area={a['area'] or ''}" class="muted" style="font-size:12px;text-decoration:none">{a['area'] and '🔌 ver' or '-'}</a></td>
           <td>{templates.badge(a['status'])}</td>
           <td>{clientes.get(a['cliente_id'], '?')}</td>
           <td class="row-actions">
@@ -558,7 +558,7 @@ def agentes():
             <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {a['nome']}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
+    tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=8 class="empty">Nenhum agente.</td></tr>'}</tbody></table>"""
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -609,15 +609,16 @@ def agente_testar(aid: int):
             else:
                 itens.append(f"<li><b>{f.get('conector')}.{f.get('tool')}</b> {f.get('args')} → "
                              f"<code>{f.get('resultado')}</code></li>")
-        fer_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Dados de sistema (conectores MCP executados):</b><ul style=\"margin:6px 0 0 18px\">" + \
+        fer_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Dados de sistema (conectores externos executados):</b><ul style=\"margin:6px 0 0 18px\">" + \
             "".join(itens) + "</ul></div>"
-    skills_txt = a["skills"] or "-"
-    conn_txt = a["conectores"] or "-"
-    badge_fallback = ' <span class="badge warn">⚡ fallback de modelo</span>' if fallback_usado else ""
+    area = a["area"] or ""
+    conn_count = len(db.listar_conectores(cliente_id=a["cliente_id"], area=area)) if area else 0
+    conn_info = f"{conn_count} conector(es) da área" if conn_count else "sem conectores configurados para esta área"
+    badge_fallback = ' <span class=\"badge warn\">⚡ fallback de modelo</span>' if fallback_usado else ""
     content = f"""
     <div class="muted" style="margin-bottom:10px">
-      Teste do agente <b>{a['nome']}</b> (área {a['area'] or 'geral'}) — modelo <b>{a['modelo']}</b>,
-      skills [{skills_txt}], conectores [{conn_txt}]. O agente usa RAG (memória + base) + o modelo real.
+      Teste do agente <b>{a['nome']}</b> (área {area or 'geral'}) — modelo <b>{a['modelo']}</b>,
+      skills [{a['skills'] or '-'}], {conn_info}.
     </div>
     <div class="card" style="max-width:760px">
       <form method="post">
@@ -651,7 +652,6 @@ def agente_novo():
             flash("Cliente e nome são obrigatórios.", "warn")
         else:
             skills = ",".join(request.form.getlist("skills"))
-            conectores = ",".join(request.form.getlist("conectores"))
             modelo_nome = ""
             if modelo_id:
                 m = db.buscar_modelo(modelo_id)
@@ -663,7 +663,7 @@ def agente_novo():
             if modelo_sec_id == modelo_id:
                 modelo_sec_id = None
             db.criar_agente(cid, nome, request.form.get("area", ""), modelo_nome,
-                            skills, conectores, modelo_id=modelo_id,
+                            skills, modelo_id=modelo_id,
                             modelo_secundario_id=modelo_sec_id)
             u = _user()
             db.registrar_auditoria(u["login"], u["papel"], "criar_agente", alvo=nome,
@@ -681,14 +681,7 @@ def agente_novo():
         f'</label></td></tr>'
         for s in skills_disp
     ) or '<tr><td class="muted">nenhuma skill no catálogo</td></tr>'
-    copts = "".join(
-        f'<tr><td style="white-space:nowrap;padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="conectores" value="{c}" style="width:auto;margin:0;vertical-align:middle"> '
-        f'<b>{c.upper()}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{"ERP (postgres)" if c=="erp" else "CRM (dados locais)" if c=="crm" else "RH (dados locais)"}</span>'
-        f'</label></td></tr>'
-        for c in ["erp", "crm", "rh"]
-    )
+    copts = ""
     content = f"""
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Montar agente (Agent Factory)</h3>
@@ -706,8 +699,12 @@ def agente_novo():
           <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar (endpoint indisponível). Garante resposta mesmo em falha.</span></div>
         <label>Skills do catálogo</label>
         <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
-        <label>Conectores MCP</label>
-        <table style="width:100%;border:none;background:transparent"><tbody>{copts}</tbody></table>
+        <div class="card muted" style="font-size:13px;margin-top:12px;padding:12px">
+          <b>🔌 Conectores externos</b><br>
+          Este agente usará automaticamente os conectores configurados para a <b>área</b> selecionada.
+          Vá em <a href="/portal/conectores">Conectores</a> para cadastrar APIs, servidores MCP ou consultas SQL
+          como fonte de dados para os agentes da área.
+        </div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Montar agente</button>
           <a class="btn ghost" href="/portal/agentes">Cancelar</a>
@@ -727,7 +724,6 @@ def agente_editar(aid: int):
     modelos = db.listar_modelos()
     skills_disp = agente_mod.listar_skills()
     skills_sel = (a["skills"] or "").split(",")
-    conectores_sel = (a["conectores"] or "").split(",")
     if request.method == "POST":
         campos = {}
         if request.form.get("nome", "").strip():
@@ -748,7 +744,6 @@ def agente_editar(aid: int):
             mid2 = None
         campos["modelo_secundario_id"] = mid2
         campos["skills"] = ",".join(request.form.getlist("skills"))
-        campos["conectores"] = ",".join(request.form.getlist("conectores"))
         db.atualizar_agente(aid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_agente", alvo=request.form.get("nome", a["nome"]),
                                cliente_id=a["cliente_id"], ip=request.remote_addr)
@@ -764,14 +759,7 @@ def agente_editar(aid: int):
         f'</label></td></tr>'
         for s in skills_disp
     )
-    copts = "".join(
-        f'<tr><td style="padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="conectores" value="{c}" style="width:auto;margin:0;vertical-align:middle" {"checked" if c in conectores_sel else ""}> '
-        f'<b>{c.upper()}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{"ERP (postgres)" if c=="erp" else "CRM (dados locais)" if c=="crm" else "RH (dados locais)"}</span>'
-        f'</label></td></tr>'
-        for c in ["erp", "crm", "rh"]
-    )
+    copts = ""
     areas_opts = "".join(f'<option value="{ar}" {"selected" if ar==a.get("area") else ""}>{ar}</option>' for ar in ["vendas","suporte","financeiro","rh","operacoes"])
     content = f"""
     <div class="card" style="max-width:700px">
@@ -789,8 +777,12 @@ def agente_editar(aid: int):
           <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar.</span></div></div>
         <label>Skills do catálogo</label>
         <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
-        <label>Conectores MCP</label>
-        <table style="width:100%;border:none;background:transparent"><tbody>{copts}</tbody></table>
+        <div class="card muted" style="font-size:13px;margin-top:12px;padding:12px">
+          <b>🔌 Conectores externos</b><br>
+          Este agente usará automaticamente os conectores configurados para a <b>área</b> selecionada.
+          Vá em <a href="/portal/conectores">Conectores</a> para cadastrar APIs, servidores MCP ou consultas SQL
+          como fonte de dados para os agentes da área.
+        </div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/agentes">Cancelar</a>

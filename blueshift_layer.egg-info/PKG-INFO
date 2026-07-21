@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: blueshift-layer
 Version: 0.1.0
-Summary: BlueShift IA Platform — camada sobre Hermes-Agent (on-premise, Docker + license key)
+Summary: BlueShift IA Platform — Flask standalone, on-premise, Docker + license key
 Requires-Python: >=3.11
 License-File: LICENSE
 Requires-Dist: requests>=2.31
