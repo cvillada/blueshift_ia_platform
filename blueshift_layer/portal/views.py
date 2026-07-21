@@ -858,12 +858,12 @@ function fecharModalIA(){document.getElementById("modal-ia").classList.remove("s
 function gerarSkillIA(){
   var p=document.getElementById("ia-prompt").value.trim();
   if(!p){alert("Descreva a skill primeiro.");return}
-  var b=document.getElementById("btn-gerar");b.classList.add("loading");b.disabled=true;
+  var b=document.getElementById("btn-gerar");b.classList.add("loading");b.disabled=true;b.innerHTML="\u23f3 Gerando...";
   document.getElementById("ia-erro").style.display="none";
   fetch("/portal/skills/gerar-ia",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p})})
     .then(function(r){return r.json()})
     .then(function(d){
-      b.classList.remove("loading");b.disabled=false;
+      b.classList.remove("loading");b.disabled=false;b.innerHTML="\u2728 Gerar de novo";
       if(d.ok){
         document.getElementById("ia-resultado").style.display="block";
         document.getElementById("ia-conteudo").value=d.conteudo;
@@ -872,7 +872,7 @@ function gerarSkillIA(){
         var e=document.getElementById("ia-erro");e.textContent=d.erro;e.style.display="block"
       }
     })
-    .catch(function(e){b.classList.remove("loading");b.disabled=false;var er=document.getElementById("ia-erro");er.textContent="Erro: "+e.message;er.style.display="block"})
+    .catch(function(e){b.classList.remove("loading");b.disabled=false;b.innerHTML="\u2728 Gerar";var er=document.getElementById("ia-erro");er.textContent="Erro: "+e.message;er.style.display="block"})
 }
 function copiarSkillIA(){
   document.getElementById("skill-body").value=document.getElementById("ia-conteudo").value;
