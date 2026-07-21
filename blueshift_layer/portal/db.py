@@ -170,9 +170,9 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS modelos (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-                nome        TEXT NOT NULL,                     -- ex: bonsai-4b
+                nome        TEXT NOT NULL,                     -- ex: bonsai-8b
                 base_url    TEXT NOT NULL,                     -- ex: http://127.0.0.1:1234
-                modelo      TEXT NOT NULL,                     -- ex: bonsai-4b
+                modelo      TEXT NOT NULL,                     -- ex: bonsai-8b
                 tipo        TEXT NOT NULL DEFAULT 'local',     -- local (LM Studio) | hibrido
                 api_key     TEXT,                              -- opcional
                 ativo       INTEGER NOT NULL DEFAULT 1,
@@ -800,7 +800,7 @@ def seed_demo() -> None:
     criar_usuario(cid, "Carlos Financeiro", "carlos", "carlos123", "usuario", "financeiro")
     criar_usuario(cid, "Beatriz RH", "bia", "bia123", "usuario", "rh")
     # modelo de IA demo (LM Studio local do cliente) — criado ANTES dos agentes
-    mid = criar_modelo(cid, "bonsai-4b", "http://127.0.0.1:1234", "bonsai-4b", tipo="local")
+    mid = criar_modelo(cid, "bonsai-8b", "http://127.0.0.1:1234", "bonsai-8b", tipo="local")
     aid_vendas = criar_agente(cid, "Agente Vendas", "vendas", "finetuned-v1", "vendas,suporte", "erp,crm", modelo_id=mid)
     criar_agente(cid, "Agente Suporte", "suporte", "finetuned-v1", "suporte", "crm", modelo_id=mid)
     criar_agente(cid, "Agente Financeiro", "financeiro", "finetuned-v1", "financeiro", "erp", modelo_id=mid)

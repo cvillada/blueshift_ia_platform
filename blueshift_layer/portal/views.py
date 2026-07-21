@@ -1467,9 +1467,9 @@ def modelos():
           <select name="cliente_id">
             {''.join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in db.listar_clientes())}
           </select>
-        <label>Nome</label><input name="nome" placeholder="ex: bonsai-4b">
+        <label>Nome</label><input name="nome" placeholder="ex: bonsai-8b">
         <label>Endpoint (base_url)</label><input name="base_url" placeholder="http://127.0.0.1:1234">
-        <label>Modelo</label><input name="modelo" placeholder="ex: bonsai-4b">
+        <label>Modelo</label><input name="modelo" placeholder="ex: bonsai-8b">
         <label>Tipo</label>
           <select name="tipo"><option value="local">Local (LM Studio)</option><option value="hibrido">Híbrido externo</option></select>
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
@@ -1765,7 +1765,7 @@ def canais():
   "ok": true,
   "resposta": "...",
   "agente": "Agente Vendas",
-  "modelo": "bonsai-4b",
+  "modelo": "bonsai-8b",
   "contexto": [...],
   "ferramentas": [...],
   "webhook": {{"enviado": true, "status": 200}}

@@ -266,7 +266,7 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .modal-actions{display:flex;gap:8px;margin-top:12px}
 .modal-actions .btn-spin{position:relative;display:inline-flex;align-items:center;gap:6px}
 .modal-actions .btn-spin.loading{pointer-events:none}
-.modal-actions .btn-spin.loading::after{content:"";width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear;display:inline-block}
+.modal-actions .btn-spin.loading::after{content:"";width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 .btn-ia{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;cursor:pointer;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600}
 .btn-ia:hover{filter:brightness(1.2)}
