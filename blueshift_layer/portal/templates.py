@@ -141,7 +141,7 @@ def _nav(active: str, user: dict | None) -> str:
 
     links += """
     <div class="sidebar-footer">
-      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu">\u25c0 Recolher</a>
+      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu"><span class="nav-icon">\u25c0</span><span class="nav-label">Recolher</span></a>
     </div>"""
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
