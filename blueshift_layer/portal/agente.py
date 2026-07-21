@@ -101,13 +101,15 @@ def _skills_text(skills_csv: str) -> str:
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001") -> dict:
-    """Executa o agente: RAG (memória + conhecimento) + conectores MCP reais + modelo + skills.
+    """Executa o agente: RAG → conectores da área → modelo + skills.
+
+    Hierarquia de execução:
+      1. RAG (memória do usuário + base de conhecimento) — mais rápido
+      2. Conectores da área do agente (API/MCP/SQL) — só se precisar de dado externo
+      3. LLM com todo o contexto montado
 
     Fallback de modelo: tenta o `modelo_id` do agente; se o endpoint falhar
-    (indisponível/erro de conexão), tenta `modelo_secundario_id` antes de
-    desistir. O modelo efetivamente usado é registrado em `modelo_usado` e na
-    auditoria, para o fluxo de ponta a ponta (API -> Agente -> resposta) entregar
-    uma resposta mesmo quando um endpoint cai.
+    tenta `modelo_secundario_id` antes de desistir.
 
     Retorna dict {ok, content, model, model_fallback, error, contexto, ferramentas}.
     """
@@ -118,29 +120,34 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
                 "error": "Agente não tem um Modelo de IA válido cadastrado.", "contexto": [],
                 "ferramentas": []}
 
-    # contexto dinamico: memoria de longo prazo do usuario + base do cliente
+    # --- 1. RAG: contexto da base de conhecimento (mais rápido) ---
     contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=4)
 
-    # conectores MCP reais: executa as ferramentas e injeta os resultados
+    # --- 2. Conectores da área do agente (se houver) ---
     ferramentas = []
-    conectores = agente.get("conectores", "")
-    if conectores:
+    area = agente.get("area") or ""
+    if area:
         try:
             from ..connector_pack import registry
-            ferramentas = registry.executar_csv(conectores, id_cliente=id_cliente)
+            # Extrai parâmetros da pergunta (IDs, emails, códigos)
+            params = _extrair_parametros(pergunta)
+            params.setdefault("id_cliente", id_cliente)
+            ferramentas = registry.executar_conectores_area(
+                cliente_id, area, pergunta, parametros=params,
+            )
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
 
+    # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
 
     system = (
         f"Você é o agente corporativo '{agente['nome']}' da BlueShift "
-        f"(área: {agente.get('area') or 'geral'}).\n"
+        f"(área: {area or 'geral'}).\n"
     )
     if skills_txt:
         system += f"\nSKILLS DISPONÍVEIS (use conforme adequado):\n{skills_txt}\n"
-    if conectores:
-        system += f"\nCONECTORES MCP DISPONÍVEIS: {conectores}\n"
+
     system += (
         "\nUse o contexto e os DADOS DE SISTEMA abaixo para responder com precisão. "
         "Se não houver resposta, diga que não sabe.\n\n"
@@ -151,11 +158,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         blocos = []
         for f in ferramentas:
             if "erro" in f:
-                blocos.append(f"[{(f.get('conector') or '?')}] erro: {f['erro']}")
+                blocos.append(f"[{f.get('conector','?')}] erro: {f['erro']}")
             else:
-                blocos.append(f"[{(f.get('conector') or '?')}.{f.get('tool')}] "
+                blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
                               f"args={f.get('args')} -> {f.get('resultado')}")
-        system += "\n\nDADOS DE SISTEMA (conectores MCP executados):\n" + "\n".join(blocos)
+        system += "\n\nDADOS DE SISTEMA (conectores executados):\n" + "\n".join(blocos)
     mensagens = [
         {"role": "system", "content": system},
         {"role": "user", "content": pergunta},
@@ -177,11 +184,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
                 usou_fallback = True
 
     if out["ok"]:
-        # grava na memoria do usuario (isolada)
         db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {out['content']}",
                          tipo="conversa")
         detalhe = pergunta[:80] + (f" [fallback->{modelo_usado}]" if usou_fallback else "")
-        # registra tokens consumidos (analise de uso)
         tok = out.get("tokens") or {}
         db.registrar_uso_token(
             cliente_id=cliente_id, modelo=modelo_usado,
@@ -197,6 +202,28 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas}
+
+
+# Padrão para extrair parâmetros da pergunta do usuário
+_RE_PARAMS = re.compile(r"(C\d{3,}|E\d{3,}|OP-\d+|[\w.]+@[\w.]+|\d{4}-\d{2}(?:-\d{2})?)", re.IGNORECASE)
+
+
+def _extrair_parametros(pergunta: str) -> dict:
+    """Extrai IDs, emails e datas da pergunta para passar aos conectores."""
+    params: dict[str, str] = {}
+    for match in _RE_PARAMS.finditer(pergunta):
+        val = match.group(1)
+        if "@" in val and "email" not in params:
+            params["email"] = val
+        elif val.upper().startswith("C") and "id_cliente" not in params:
+            params["id_cliente"] = val.upper()
+        elif val.upper().startswith("E") and "id_colab" not in params:
+            params["id_colab"] = val.upper()
+        elif val.upper().startswith("OP-") and "id_oportunidade" not in params:
+            params["id_oportunidade"] = val.upper()
+        elif re.match(r"^\d{4}-\d{2}", val) and "data" not in params:
+            params["data"] = val
+    return params
 
 
 def enviar_webhook(webhook_url: str, payload: dict) -> dict:

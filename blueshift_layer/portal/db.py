@@ -6,6 +6,7 @@ SQLite — tudo passa por aqui.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -88,10 +89,14 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS conectores (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-                nome        TEXT NOT NULL,                     -- erp|crm|rh
-                tipo        TEXT NOT NULL,
-                status      TEXT NOT NULL DEFAULT 'online',   -- online|offline|degradado
-                ultimo_heartbeat TEXT
+                area        TEXT NOT NULL DEFAULT '',              -- vendas|suporte|financeiro|rh|operacoes
+                nome        TEXT NOT NULL,                         -- nome do conector
+                tipo        TEXT NOT NULL DEFAULT 'api',           -- api|mcp|sql
+                config      TEXT NOT NULL DEFAULT '{}',            -- JSON: url, headers, query, dsn, etc
+                status      TEXT NOT NULL DEFAULT 'online',       -- online|offline|degradado
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                ultimo_heartbeat TEXT,
+                criado_em   TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS health (
@@ -237,6 +242,12 @@ def _migrar_colunas() -> None:
         "modelos": [
             ("max_tokens", "INTEGER"),
         ],
+        "conectores": [
+            ("area", "TEXT DEFAULT ''"),
+            ("config", "TEXT DEFAULT '{}'"),
+            ("ativo", "INTEGER DEFAULT 1"),
+            ("criado_em", "TEXT"),
+        ],
     }
     with get_conn() as conn:
         for tabela, cols in _ESPERADO.items():
@@ -285,18 +296,7 @@ def criar_cliente(codigo, nome, empresa="", email="", licenca="anual_por_empresa
         )
         cid = cur.lastrowid
         # seed de registros filhos para o monitoramento funcionar de imediato
-        conn.execute(
-            "INSERT INTO conectores (cliente_id, nome, tipo, status, ultimo_heartbeat) VALUES (?, 'erp', 'mcp', 'online', ?)",
-            (cid, ts),
-        )
-        conn.execute(
-            "INSERT INTO conectores (cliente_id, nome, tipo, status, ultimo_heartbeat) VALUES (?, 'crm', 'mcp', 'online', ?)",
-            (cid, ts),
-        )
-        conn.execute(
-            "INSERT INTO conectores (cliente_id, nome, tipo, status, ultimo_heartbeat) VALUES (?, 'rh', 'mcp', 'online', ?)",
-            (cid, ts),
-        )
+        _seed_conectores_demo(conn, cid, ts)
         conn.execute(
             """INSERT INTO health (cliente_id, container, modelo_local, latencia_ms, tokens_hoje, erros_24h, atualizado_em)
                VALUES (?, 'saudavel', 'ok', 0, 0, 0, ?)""",
@@ -380,14 +380,95 @@ def deletar_agente(aid: int) -> None:
         conn.execute("DELETE FROM agentes WHERE id=?", (aid,))
 
 
-# --- Conectores / Health ----------------------------------------------------
+# --- Conectores (fontes externas configuráveis: API/MCP/SQL) ----------------
 
-def listar_conectores(cliente_id: int | None = None) -> list[dict]:
+_AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+
+
+def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online") -> int:
+    """Cadastra uma nova fonte externa de dados por cliente + área."""
+    ts = now_iso()
+    cfg_json = json.dumps(config or {})
     with get_conn() as conn:
-        if cliente_id:
-            return [dict(r) for r in _rows(
-                conn, "SELECT * FROM conectores WHERE cliente_id=? ORDER BY id", (cliente_id,))]
-        return [dict(r) for r in _rows(conn, "SELECT * FROM conectores ORDER BY id")]
+        cur = conn.execute(
+            """INSERT INTO conectores (cliente_id, area, nome, tipo, config, status, ativo, ultimo_heartbeat, criado_em)
+               VALUES (?,?,?,?,?,?,1,?,?)""",
+            (cliente_id, area, nome, tipo, cfg_json, status, ts, ts),
+        )
+        return cur.lastrowid
+
+
+def listar_conectores(cliente_id: int | None = None, area: str | None = None) -> list[dict]:
+    """Lista conectores, opcionalmente filtrados por cliente e/ou área."""
+    sql = "SELECT * FROM conectores WHERE 1=1"
+    params = []
+    if cliente_id is not None:
+        sql += " AND cliente_id=?"
+        params.append(cliente_id)
+    if area:
+        sql += " AND area=?"
+        params.append(area)
+    sql += " ORDER BY area, nome"
+    with get_conn() as conn:
+        return [dict(r) for r in _rows(conn, sql, params)]
+
+
+def buscar_conector(cid: int) -> dict | None:
+    """Retorna um conector pelo ID."""
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM conectores WHERE id=?", (cid,))
+        return dict(row) if row else None
+
+
+def atualizar_conector(cid: int, **campos) -> None:
+    """Atualiza campos do conector (nome, tipo, config, area, status, ativo)."""
+    if "config" in campos and isinstance(campos["config"], dict):
+        campos["config"] = json.dumps(campos["config"])
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE conectores SET {cols} WHERE id=?", list(campos.values()) + [cid])
+
+
+def deletar_conector(cid: int) -> None:
+    """Remove um conector pelo ID."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM conectores WHERE id=?", (cid,))
+
+
+def listar_areas_com_conectores(cliente_id: int) -> list[str]:
+    """Retorna as áreas que têm pelo menos um conector cadastrado."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT area FROM conectores WHERE cliente_id=? AND ativo=1 AND area!='' ORDER BY area",
+            (cliente_id,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+
+def _seed_conectores_demo(conn, cliente_id: int, ts: str) -> None:
+    """Cria conectores de demonstração para o cliente (ERP/CRM/RH) nas áreas relevantes."""
+    demo_conectores = [
+        ("vendas", "ERP", "mcp", '{"dsn_env": "ERP_DSN", "descricao": "Postgres real do cliente"}'),
+        ("vendas", "CRM", "mcp", '{"descricao": "Dados de exemplo CRM"}'),
+        ("suporte", "CRM", "mcp", '{"descricao": "Dados de exemplo CRM"}'),
+        ("financeiro", "ERP Financeiro", "mcp", '{"dsn_env": "ERP_DSN", "descricao": "Postgres real do cliente"}'),
+        ("rh", "RH", "mcp", '{"descricao": "Dados de exemplo RH"}'),
+        ("operacoes", "ERP Operações", "mcp", '{"dsn_env": "ERP_DSN", "descricao": "Postgres real do cliente"}'),
+    ]
+    for area, nome, tipo, config in demo_conectores:
+        conn.execute(
+            """INSERT INTO conectores (cliente_id, area, nome, tipo, config, status, ativo, ultimo_heartbeat, criado_em)
+               VALUES (?,?,?,?,?, 'online', 1, ?, ?)""",
+            (cliente_id, area, nome, tipo, config, ts, ts),
+        )
+
+
+def atualizar_heartbeat_conector(cid: int, status: str = "online") -> None:
+    """Atualiza heartbeat e status de um conector."""
+    ts = now_iso()
+    with get_conn() as conn:
+        conn.execute("UPDATE conectores SET status=?, ultimo_heartbeat=? WHERE id=?",
+                     (status, ts, cid))
 
 
 def buscar_health(cliente_id: int) -> dict | None:

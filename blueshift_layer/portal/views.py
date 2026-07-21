@@ -16,6 +16,7 @@ from __future__ import annotations
 from flask import (
     Blueprint, request, redirect, url_for, session, flash, current_app, jsonify,
 )
+import json
 import urllib.parse
 from . import db, auth, templates, sso
 from . import memory
@@ -926,26 +927,227 @@ def skill_excluir(nome: str):
 # CONECTORES (status)
 # ---------------------------------------------------------------------------
 
-@bp.route("/conectores")
-@auth.login_required
+@bp.route("/conectores", methods=["GET", "POST"])
+@auth.admin_required
 def conectores():
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    rows = db.listar_conectores()
+    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+
+    if request.method == "POST":
+        cid = int(request.form.get("cliente_id") or 1)
+        area = request.form.get("area", "").strip()
+        nome = request.form.get("nome", "").strip()
+        tipo = request.form.get("tipo", "api")
+        config = {}
+
+        if not nome:
+            flash("Nome do conector é obrigatório.", "warn")
+            return redirect(url_for("portal.conectores"))
+        if not area:
+            flash("Selecione uma área.", "warn")
+            return redirect(url_for("portal.conectores"))
+
+        if tipo == "api":
+            config["url"] = request.form.get("api_url", "").strip()
+            config["method"] = request.form.get("api_method", "GET")
+            config["headers"] = request.form.get("api_headers", "{}").strip()
+            config["body"] = request.form.get("api_body", "").strip()
+        elif tipo == "mcp":
+            config["command"] = request.form.get("mcp_command", "").strip()
+            config["tool"] = request.form.get("mcp_tool", "").strip()
+            args_raw = request.form.get("mcp_args", "{}").strip()
+            try:
+                config["args"] = json.loads(args_raw) if args_raw else {}
+            except json.JSONDecodeError:
+                config["args"] = {}
+        elif tipo == "sql":
+            config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
+            config["dsn"] = request.form.get("sql_dsn", "").strip()
+            config["query"] = request.form.get("sql_query", "").strip()
+
+        config["descricao"] = request.form.get("descricao", "").strip()
+
+        db.criar_conector(cid, nome, tipo=tipo, area=area, config=config)
+        db.registrar_auditoria(_user()["login"], "admin", "criar_conector",
+                               alvo=nome, cliente_id=cid, ip=request.remote_addr)
+        flash(f"Conector '{nome}' criado na área {area}.", "ok")
+        return redirect(url_for("portal.conectores"))
+
+    # GET: listar com filtro de área
+    area_sel = request.args.get("area", "")
+    cid_sel = request.args.get("cliente_id", type=int)
+    rows = db.listar_conectores(cliente_id=cid_sel, area=area_sel or None)
     body = ""
     for k in rows:
+        cfg = _parse_config(k.get("config", "{}"))
+        tipo_icon = {"api": "🌐", "mcp": "🔌", "sql": "🗄️"}.get(k["tipo"], "❓")
+        cfg_resumo = cfg.get("descricao") or cfg.get("url") or cfg.get("tool") or cfg.get("query", "")[:60]
         body += f"""<tr>
           <td><b>{k['nome']}</b></td>
-          <td>{k['tipo']}</td>
+          <td>{tipo_icon} {k['tipo']}</td>
+          <td>{k['area'] or '-'}</td>
+          <td class="muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{cfg_resumo}</td>
           <td>{templates.badge(k['status'])}</td>
           <td class="muted">{k['ultimo_heartbeat'] or '-'}</td>
-          <td>{clientes.get(k['cliente_id'], '?')}</td>
-        </tr>"""
-    tabela = f"""<table><thead><tr><th>Conector</th><th>Tipo</th><th>Status</th><th>Último heartbeat</th><th>Cliente</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=5 class="empty">Nenhum conector.</td></tr>'}</tbody></table>"""
+          <td class="row-actions">
+            <a href="{url_for('portal.conector_editar', cid=k['id'])}">editar</a>
+            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')">excluir</a>
+          </td></tr>"""
+
+    opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in _AREAS)
+    opts_cliente = "".join(f'<option value="{i}" {"selected" if i == cid_sel else ""}>{n}</option>' for i, n in clientes.items())
     content = f"""
-    <div class="muted" style="margin-bottom:14px">Connector Pack (MCP): ERP, CRM e RH expostos por cliente. Health em tempo real.</div>
-    {tabela}"""
+    <div class="card" style="max-width:720px">
+      <h3 style="margin-top:0">Cadastrar fonte externa</h3>
+      <p class="muted">Conecte APIs, servidores MCP ou consultas SQL como fonte de dados para os agentes da área.</p>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
+          <div><label>Área</label><select name="area"><option value="">selecione</option>{opts_area}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Nome</label><input name="nome" placeholder="Ex: API Câmbio"></div>
+          <div><label>Tipo</label>
+            <select name="tipo" id="conn-tipo" onchange="toggleConnFields()">
+              <option value="api">🌐 API REST</option>
+              <option value="mcp">🔌 MCP (stdio)</option>
+              <option value="sql">🗄️ SQL View</option>
+            </select></div>
+        </div>
+        <div id="conn-fields-api">
+          <label>URL</label><input name="api_url" placeholder="https://api.exemplo.com/v1/dados">
+          <div class="form-row">
+            <div><label>Método</label><select name="api_method"><option value="GET">GET</option><option value="POST">POST</option></select></div>
+            <div><label>Headers (JSON)</label><input name="api_headers" placeholder='{{"Authorization":"Bearer xxx"}}'></div>
+          </div>
+          <label>Body (JSON, só POST)</label><input name="api_body" placeholder='{{"id": "{{id_cliente}}"}}'>
+        </div>
+        <div id="conn-fields-mcp" style="display:none">
+          <label>Comando</label><input name="mcp_command" placeholder="python /opt/blueshift/mcp_server.py">
+          <label>Ferramenta (tool)</label><input name="mcp_tool" placeholder="erp_buscar_cliente">
+          <label>Argumentos (JSON)</label><input name="mcp_args" placeholder='{{"id_cliente": "{{id_cliente}}"}}'>
+        </div>
+        <div id="conn-fields-sql" style="display:none">
+          <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
+          <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
+          <label>Query SQL</label><textarea name="sql_query" rows="3" placeholder="SELECT * FROM vw_clientes WHERE id_cliente = '{{id_cliente}}'"></textarea>
+        </div>
+        <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
+        <div style="margin-top:14px"><button class="btn" type="submit">Cadastrar conector</button></div>
+      </form>
+    </div>
+    <script>
+    function toggleConnFields() {{
+      var t = document.getElementById('conn-tipo').value;
+      document.getElementById('conn-fields-api').style.display = t === 'api' ? '' : 'none';
+      document.getElementById('conn-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
+      document.getElementById('conn-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    </script>
+    <div class="card">
+      <h3 style="margin-top:0">Fontes externas cadastradas</h3>
+      <form method="get" style="margin-bottom:12px;display:flex;gap:8px;align-items:end">
+        <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
+        <div><label>Área</label><select name="area"><option value="">todas</option>{opts_area}</select></div>
+        <div><button class="btn ghost" type="submit">Filtrar</button></div>
+      </form>
+      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Área</th><th>Config</th><th>Status</th><th>Heartbeat</th><th></th></tr></thead>
+        <tbody>{body or '<tr><td colspan="7" class="muted">Nenhum conector cadastrado. Crie um acima.</td></tr>'}</tbody></table>
+    </div>"""
     return templates.page("Conectores", content, active="conectores", user=_user())
+
+
+@bp.route("/conectores/<int:cid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def conector_editar(cid: int):
+    con = db.buscar_conector(cid)
+    if not con:
+        flash("Conector não encontrado.", "bad")
+        return redirect(url_for("portal.conectores"))
+    cfg = _parse_config(con.get("config", "{}"))
+    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+
+    if request.method == "POST":
+        nome = (request.form.get("nome") or con["nome"]).strip()
+        area = request.form.get("area") or con["area"]
+        tipo = request.form.get("tipo") or con["tipo"]
+        config = {}
+
+        if tipo == "api":
+            config["url"] = request.form.get("api_url", "").strip()
+            config["method"] = request.form.get("api_method", "GET")
+            config["headers"] = request.form.get("api_headers", "{}").strip()
+            config["body"] = request.form.get("api_body", "").strip()
+        elif tipo == "mcp":
+            config["command"] = request.form.get("mcp_command", "").strip()
+            config["tool"] = request.form.get("mcp_tool", "").strip()
+            args_raw = request.form.get("mcp_args", "{}").strip()
+            try:
+                config["args"] = json.loads(args_raw) if args_raw else {}
+            except json.JSONDecodeError:
+                config["args"] = {}
+        elif tipo == "sql":
+            config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
+            config["dsn"] = request.form.get("sql_dsn", "").strip()
+            config["query"] = request.form.get("sql_query", "").strip()
+
+        config["descricao"] = request.form.get("descricao", "").strip()
+
+        if not nome:
+            flash("Nome é obrigatório.", "warn")
+            return redirect(url_for("portal.conector_editar", cid=cid))
+
+        db.atualizar_conector(cid, nome=nome, area=area, tipo=tipo, config=config)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_conector",
+                               alvo=nome, ip=request.remote_addr)
+        flash(f"Conector '{nome}' atualizado.", "ok")
+        return redirect(url_for("portal.conectores"))
+
+    opts_area = "".join(f'<option value="{a}" {"selected" if a == con["area"] else ""}>{a}</option>' for a in _AREAS)
+    content = f"""
+    <div class="card" style="max-width:720px">
+      <h3 style="margin-top:0">Editar conector #{cid}</h3>
+      <form method="post">
+        <div class="form-row">
+          <div><label>Nome</label><input name="nome" value="{con['nome']}"></div>
+          <div><label>Área</label><select name="area">{opts_area}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Tipo</label><select name="tipo"><option value="api" {"selected" if con['tipo']=='api' else ''}>API</option><option value="mcp" {"selected" if con['tipo']=='mcp' else ''}>MCP</option><option value="sql" {"selected" if con['tipo']=='sql' else ''}>SQL</option></select></div>
+        </div>
+        <label>Config (JSON)</label><textarea name="config_json" rows="6" style="font-family:monospace;font-size:12px">{json.dumps(cfg, indent=2, ensure_ascii=False)}</textarea>
+        <p class="muted" style="font-size:12px">Edite o JSON de configuração diretamente.</p>
+        <label>Descrição</label><input name="descricao" value="{cfg.get('descricao','')}">
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/conectores">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page("Editar conector", content, active="conectores", user=_user())
+
+
+@bp.route("/conectores/<int:cid>/excluir")
+@auth.admin_required
+def conector_excluir(cid: int):
+    con = db.buscar_conector(cid)
+    if not con:
+        flash("Conector não encontrado.", "bad")
+    else:
+        db.deletar_conector(cid)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_conector",
+                               alvo=con["nome"], ip=request.remote_addr)
+        flash(f"Conector '{con['nome']}' excluído.", "ok")
+    return redirect(url_for("portal.conectores"))
+
+
+def _parse_config(raw: str | dict) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw) if raw else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 
 # ---------------------------------------------------------------------------
