@@ -39,7 +39,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
     flashes = _flashes()
     js = """<script>
 function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"\u25b8":"\u25be";el.classList.toggle("open")}
-function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed");var b=s.querySelector(".toggle-sidebar span.nav-label");b.textContent=s.classList.contains("collapsed")?"":"\u25c0 Recolher"}
+function toggleSidebar(){var s=document.getElementById("sidebar"),c=s.classList.toggle("collapsed"),i=s.querySelector(".toggle-sidebar .nav-icon");i.textContent=c?"\u25b6":"\u25c0";var b=s.querySelector(".toggle-sidebar .nav-label");b.textContent=c?"":"Recolher"}
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
