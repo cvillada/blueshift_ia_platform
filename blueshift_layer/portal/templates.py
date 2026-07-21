@@ -39,7 +39,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
     flashes = _flashes()
     js = """<script>
 function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"\u25b8":"\u25be";el.classList.toggle("open")}
-function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed");var b=s.querySelector(".toggle-sidebar");b.textContent=s.classList.contains("collapsed")?"\u25b6":"\u25c0 Recolher"}
+function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed");var b=s.querySelector(".toggle-sidebar span.nav-label");b.textContent=s.classList.contains("collapsed")?"":"\u25c0 Recolher"}
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -69,12 +69,28 @@ function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.to
 
 
 def _nav(active: str, user: dict | None) -> str:
-    # Itens do menu principal
+    # Icones por pagina
+    ICONS = {
+        "monitorar": "\U0001f4ca", "workspace": "\U0001f3e2",
+        "clientes": "\U0001f465", "usuarios": "\U0001f464",
+        "agentes": "\U0001f916", "skills": "\u2699\ufe0f",
+        "modelos": "\U0001f9e0", "conectores": "\U0001f50c",
+        "canais": "\U0001f4e1", "memoria": "\U0001f4be",
+        "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
+        "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
+        "atualizacoes": "\U0001f504", "sso": "\U0001f511",
+    }
+    _nl = lambda key, label, href, cls_extra="": (
+        f'<a class="navlink{cls_extra}" href="{href}" title="{label}">'
+        f'<span class="nav-icon">{ICONS.get(key, chr(0x2753))}</span>'
+        f'<span class="nav-label">{label}</span></a>'
+    )
+
+    # Itens principais
     itens = [
         ("monitorar", "Monitorar", "/portal/monitorar"),
         ("workspace", "Workspace", "/portal/workspace"),
     ]
-    # Submenu Cadastros
     cadastro_itens = [
         ("clientes", "Clientes", "/portal/clientes"),
         ("usuarios", "Usuários", "/portal/usuarios"),
@@ -86,8 +102,6 @@ def _nav(active: str, user: dict | None) -> str:
     ]
     cadastro_keys = {k for k, _, _ in cadastro_itens}
     cadastro_aberto = active in cadastro_keys
-
-    # Itens avulsos (fora de Cadastros)
     outros = [
         ("memoria", "Memória", "/portal/memoria"),
         ("conhecimento", "Conhecimento", "/portal/conhecimento"),
@@ -102,20 +116,20 @@ def _nav(active: str, user: dict | None) -> str:
     seta_fechado = "\u25b8"
     links = ""
     for key, label, href in itens:
-        cls = " active" if key == active else ""
-        links += f'<a class="navlink{cls}" href="{href}">{label}</a>'
+        links += _nl(key, label, href, " active" if key == active else "")
 
     # Submenu Cadastros
-    cadastro_html = "".join(
-        f'<a class="navlink sub{" active" if k == active else ""}" href="{h}">{l}</a>'
-        for k, l, h in cadastro_itens
-    )
     seta = seta_aberto if cadastro_aberto else seta_fechado
     display = "block" if cadastro_aberto else "none"
+    cadastro_html = "".join(
+        _nl(k, l, h, " active" if k == active else "")
+        for k, l, h in cadastro_itens
+    )
     links += f"""
     <div class="submenu">
-      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)">
-        <span class="arrow">{seta}</span> Cadastros
+      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)" title="Cadastros">
+        <span class="nav-icon">{ICONS.get("clientes", "")}</span>
+        <span class="nav-label"><span class="arrow">{seta}</span> Cadastros</span>
       </a>
       <div class="sub-items" style="display:{display}">
         {cadastro_html}
@@ -123,13 +137,11 @@ def _nav(active: str, user: dict | None) -> str:
     </div>"""
 
     for key, label, href in outros:
-        cls = " active" if key == active else ""
-        links += f'<a class="navlink{cls}" href="{href}">{label}</a>'
+        links += _nl(key, label, href, " active" if key == active else "")
 
-    # Botao recolher
     links += """
     <div class="sidebar-footer">
-      <a class="navlink toggle-sidebar" onclick="toggleSidebar()">\u25c0 Recolher</a>
+      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu">\u25c0 Recolher</a>
     </div>"""
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
@@ -181,20 +193,20 @@ justify-content:center;font-weight:700;color:#fff}
 .logout:hover{color:var(--txt)}
 .layout{display:flex;min-height:calc(100vh - 56px)}
 .sidebar{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:4px;transition:width .2s}
-.sidebar.collapsed{width:48px;overflow:hidden}
-.sidebar.collapsed .navlink{font-size:0;padding:10px 0;text-align:center}
-.sidebar.collapsed .navlink::before{font-size:16px}
+.sidebar.collapsed{width:52px;overflow:hidden}
+.sidebar.collapsed .navlink{justify-content:center;padding:10px 0}
+.sidebar.collapsed .nav-label{display:none}
 .sidebar.collapsed .sub-items{display:none!important}
-.sidebar.collapsed .sidebar-footer .navlink{font-size:0}
-.sidebar.collapsed .sidebar-footer .navlink::before{content:"\u25b6";font-size:16px}
+.sidebar.collapsed .sidebar-footer .navlink{justify-content:center}
 .sidebar-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
-.navlink{display:block;padding:10px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:600}
+.navlink{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden}
 .navlink:hover{background:var(--panel2);color:var(--txt)}
 .navlink.active{background:var(--blue2);color:#fff}
-.navlink.sub{padding-left:28px;font-size:13px}
+.navlink .nav-icon{flex-shrink:0;width:22px;text-align:center;font-size:16px;line-height:1}
+.navlink .nav-label{overflow:hidden;text-overflow:ellipsis}
 .navlink.sub-toggle{cursor:pointer;user-select:none}
 .navlink.sub-toggle.open{color:var(--txt)}
-.navlink .arrow{display:inline-block;width:16px}
+.navlink .arrow{display:inline-block;width:14px}
 .content{flex:1;padding:22px 26px}
 .page-title{margin:0 0 18px;font-size:22px;font-weight:700}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
