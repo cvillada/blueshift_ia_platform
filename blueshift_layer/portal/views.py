@@ -1403,6 +1403,50 @@ def conhecimento():
             flash(f"Erro ao importar CSV: {e}", "bad")
         return redirect(url_for("portal.conhecimento"))
 
+    # --- PDF Import ---
+    if request.method == "POST" and request.form.get("_action") == "pdf_import":
+        cid = int(request.form.get("cliente_id", 0))
+        area = request.form.get("area", "").strip()
+        cat = request.form.get("categoria", "manual")
+        file = request.files.get("pdf_file")
+        if not file or not cid:
+            flash("Selecione um cliente e um arquivo PDF.", "warn")
+            return redirect(url_for("portal.conhecimento"))
+        try:
+            import fitz  # PyMuPDF
+            pdf = fitz.open(stream=file.read(), filetype="pdf")
+            texto = ""
+            for page in pdf:
+                texto += page.get_text()
+            pdf.close()
+            texto = texto.strip()
+            if not texto:
+                flash("Nenhum texto extraído do PDF. O arquivo pode ser só de imagens.", "warn")
+                return redirect(url_for("portal.conhecimento"))
+            nome = file.filename or "documento.pdf"
+            if nome.lower().endswith(".pdf"):
+                nome = nome[:-4]
+            # Chunking: se o texto for muito grande, quebra em partes
+            chunk_size = 2000
+            if len(texto) > chunk_size:
+                count = 0
+                for i in range(0, len(texto), chunk_size):
+                    chunk = texto[i:i + chunk_size]
+                    titulo = f"{nome} (parte {i//chunk_size + 1})" if i > 0 else nome
+                    db.criar_documento(cid, titulo, cat, chunk, area=area, fonte="pdf")
+                    count += 1
+                flash(f"PDF importado: {count} documento(s) criados.", "ok")
+            else:
+                db.criar_documento(cid, nome, cat, texto, area=area, fonte="pdf")
+                flash("PDF importado com sucesso.", "ok")
+            db.registrar_auditoria(u["login"], u["papel"], "pdf_import_conhecimento",
+                                   alvo=f"{nome}", cliente_id=cid, ip=request.remote_addr)
+        except ImportError:
+            flash("Para importar PDF, instale: pip install PyMuPDF", "bad")
+        except Exception as e:
+            flash(f"Erro ao importar PDF: {e}", "bad")
+        return redirect(url_for("portal.conhecimento"))
+
     # --- Adicionar documento manual ---
     if request.method == "POST" and request.form.get("_action") == "add":
         cid = int(request.form.get("cliente_id", 0))
@@ -1493,6 +1537,23 @@ def conhecimento():
         <label>Arquivo CSV</label>
         <input type="file" name="csv_file" accept=".csv" style="padding:6px">
         <div style="margin-top:12px"><button class="btn" type="submit">Importar CSV</button></div>
+      </form>
+    </div>
+    <div class="card" style="max-width:720px;margin-bottom:16px">
+      <h3 style="margin-top:0">Importar PDF</h3>
+      <p class="muted" style="font-size:13px">Envie um arquivo PDF. O texto sera extraido e dividido em partes (chunks) de ate 2000 caracteres.</p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_action" value="pdf_import">
+        <div class="form-row">
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
+          <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Categoria</label>
+            <select name="categoria"><option value="manual">Manual</option><option value="politica">Política</option><option value="base_conhecimento">Base de Conhecimento</option><option value="contrato">Contrato</option></select></div>
+          <div><label>Arquivo PDF</label><input type="file" name="pdf_file" accept=".pdf" style="padding:6px"></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn" type="submit">Importar PDF</button></div>
       </form>
     </div>
     <div class="card">
