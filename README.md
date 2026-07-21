@@ -44,7 +44,9 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Modelos** | Híbrido: local (vLLM/LM Studio/Ollama) ou externo (OpenAI/DeepSeek/Claude) |
 | **Agentes** | Por área da empresa (vendas, suporte, financeiro, RH, operações) |
 | **Memória** | Persistente por usuário — banco vetorial local (TF-IDF + cosseno) |
+| **RAG** | Auto-alimentado por consultas reais + import CSV/PDF |
 | **Conectores** | Configuráveis: API REST, servidores MCP ou consultas SQL |
+| **Skills IA** | Geração de skills com o próprio modelo cadastrado |
 | **Licenciamento** | Anual por empresa (não por token) |
 | **Stack** | Python puro, Flask, SQLite — sem dependências pesadas |
 
@@ -107,10 +109,27 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 ### Fluxo de Execução do Agente
 
 ```
-1️⃣ Usuário pergunta  →  2️⃣ RAG (TF-IDF)  →  3️⃣ Conectores da área  →  4️⃣ LLM + contexto  →  5️⃣ Resposta
-                           (memória +          (API/MCP/SQL com         (modelo de IA          (JSON)
-                            knowledge)           params extraídos        configurado)
-                                                 da pergunta)
+1   Usuário pergunta
+    │
+2   ▼
+    RAG (TF-IDF)  ← busca na base de conhecimento + memórias
+    │                * Se achar resposta com score alto, usa direto
+    │                * Skills indexadas também são encontráveis aqui
+    │
+    ▼ (se precisar de dado externo)
+3   Conectores da área  →  API REST / MCP stdio / SQL
+    │   Parâmetros (C001, email, datas) extraídos da pergunta
+    │
+    ▼
+4   LLM + contexto  →  Resposta (JSON)
+    │   Modelo principal + fallback automático
+    │
+    ▼ (pós-resposta)
+5   RAG auto-save  →  Guarda resultado dos conectores no knowledge
+    │   Próxima pergunta similar: etapa 2 responde direto, sem conector
+    │
+    ▼
+6   Webhook (opcional)  →  POST resposta para URL externa (com retry 3x)
 ```
 
 ---
@@ -128,7 +147,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Agentes** | Agent Factory: montar agente com modelo + skills + conectores | Admin |
 | **Skills** | Catálogo de skills por área (SKILL.md) | Login |
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
-| **Conhecimento** | Base de conhecimento RAG (manual, política, contratos) | Login |
+| **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
 | **Modelos IA** | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
 | **Chat** | Teste do agente com RAG + LLM real | Login |
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) por área | Admin |
@@ -157,6 +176,23 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 | 🗄️ **SQL** | Consulta SQL via `psycopg` | `SELECT * FROM vw_clientes WHERE id = %s` |
 
 Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticamente da pergunta do usuário.
+
+### 🧠 Base de Conhecimento (RAG)
+
+| Mecanismo | Descrição |
+|:----------|:----------|
+| **Manual** | Adicionar documentos via formulário no portal |
+| **CSV Import** | Upload de `.csv` com colunas `titulo,conteudo,fonte,area` |
+| **PDF Import** | Upload de `.pdf` com extração automática de texto (PyMuPDF) |
+| **RAG Auto-save** | Resultados de conectores são salvos automaticamente no RAG |
+| **Skills no RAG** | Skills do catálogo podem ser indexadas no knowledge |
+| **Monitor** | KPI cards: total docs, áreas, acessos, tamanho médio |
+
+### ⚙️ Skills
+
+- **Catálogo por área**: skills reutilizáveis (vendas, suporte, financeiro, RH, operações)
+- **Geração com IA**: botão ✨ Gerar com IA que usa o próprio modelo cadastrado para criar o SKILL.md
+- **Indexação no RAG**: skills podem ser importadas para a base de conhecimento (buscáveis por TF-IDF)
 
 ### 🔐 Segurança e Controle de Acesso
 
@@ -228,7 +264,7 @@ Resposta:
   "ok": true,
   "resposta": "O cliente C001 possui 3 interações no CRM...",
   "agente": "Agente Vendas",
-  "modelo": "bonsai-4b",
+  "modelo": "bonsai-8b",
   "contexto": [...],
   "ferramentas": [...],
   "webhook": {"enviado": true, "status": 200}
@@ -313,6 +349,7 @@ docker/
 | **Banco de Dados** | SQLite (on-premise, sem dependência de rede) |
 | **LLM Client** | urllib puro (OpenAI-compatible) |
 | **RAG** | TF-IDF + similaridade de cosseno (Python puro, sem numpy) |
+| **PDF Extraction** | PyMuPDF (extração de texto para RAG) |
 | **MCP** | JSON-RPC 2.0 sobre stdio (Python puro) |
 | **SSO** | OIDC via urllib + HMAC (sem libs OAuth) |
 | **Autenticação** | Login/senha local + SSO federado |
@@ -327,6 +364,7 @@ requests>=2.31      # HTTP client (license_client)
 pyyaml>=6.0         # YAML config
 mcp>=1.0            # FastMCP (conectores)
 psycopg[binary]>=3.1 # Postgres (conector ERP, opcional)
+PyMuPDF>=1.28       # PDF text extraction (RAG)
 ```
 
 ---
