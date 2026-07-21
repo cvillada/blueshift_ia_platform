@@ -5,6 +5,22 @@ o bloco de conteudo. Estilo dark/azul da marca BlueShift.
 """
 
 
+import secrets
+
+
+def _flashes() -> str:
+    """Renderiza mensagens flash do Flask (get_flashed_messages)."""
+    from flask import get_flashed_messages
+
+    msgs = get_flashed_messages(with_categories=True)
+    if not msgs:
+        return ""
+    out = ""
+    for cat, msg in msgs:
+        out += f'<div class="flash {cat}">{msg}</div>\n'
+    return out
+
+
 def page(title: str, content: str, active: str = "", user: dict | None = None,
          show_nav: bool = True) -> str:
     """Monta a pagina completa com header e menu lateral."""
@@ -20,6 +36,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
           </div>
           <a class="logout" href="/portal/logout">Sair</a>
         </div>"""
+    flashes = _flashes()
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -38,6 +55,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
   {nav}
   <main class="content">
     <h1 class="page-title">{title}</h1>
+    {flashes}
     {content}
   </main>
 </div>
@@ -146,6 +164,8 @@ background:var(--blue2);color:#fff;font-weight:600;text-decoration:none;cursor:p
 .btn:hover{background:var(--blue)}
 .btn.ghost{background:transparent;color:var(--blue);border-color:var(--line)}
 .btn.danger{background:transparent;border-color:#5a2330;color:var(--bad)}
+.btn-copy{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;vertical-align:middle;border-radius:4px}
+.btn-copy:hover{background:var(--panel2)}
 .btn-sso{display:inline-block;padding:9px 14px;border-radius:8px;border:1px solid #3b82f6;
 background:linear-gradient(90deg,#1e3a8a,#2563eb);color:#fff;font-weight:600;text-decoration:none;
 cursor:pointer;font-size:13px;width:100%;text-align:center}

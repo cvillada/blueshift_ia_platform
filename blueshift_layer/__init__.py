@@ -1,2 +1,2 @@
-"""BlueShift IA Platform - camada sobre Hermes-Agent."""
+"""BlueShift IA Platform — Flask standalone, 100% Python puro."""
 __version__ = "0.1.0"

@@ -619,6 +619,40 @@ def listar_canais(cliente_id: int | None = None) -> list[dict]:
         return [dict(r) for r in _rows(conn, "SELECT * FROM canais ORDER BY id DESC")]
 
 
+def regenerar_token_canal(canal_id: int) -> str:
+    """Gera um novo token para o canal e retorna o token."""
+    novo = gerar_token()
+    with get_conn() as conn:
+        conn.execute("UPDATE canais SET token=? WHERE id=?", (novo, canal_id))
+    return novo
+
+
+def alternar_canal(canal_id: int) -> dict | None:
+    """Alterna ativo/inativo. Retorna o canal atualizado ou None se não existir."""
+    with get_conn() as conn:
+        cur = conn.execute("SELECT * FROM canais WHERE id=?", (canal_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        novo_status = 0 if row["ativo"] else 1
+        conn.execute("UPDATE canais SET ativo=? WHERE id=?", (novo_status, canal_id))
+        return dict({**row, "ativo": novo_status})
+
+
+def buscar_canal(canal_id: int) -> dict | None:
+    """Retorna um canal pelo ID."""
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM canais WHERE id=?", (canal_id,))
+        return dict(row) if row else None
+
+
+def atualizar_canal(canal_id: int, **campos) -> None:
+    """Atualiza campos do canal (nome, tipo, agente_id, webhook_url)."""
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE canais SET {cols} WHERE id=?", list(campos.values()) + [canal_id])
+
+
 # --- Auditoria (rastreabilidade / LGPD) ------------------------------------
 
 def registrar_auditoria(usuario, papel, acao, alvo="", cliente_id=None, ip="", detalhe="") -> None:

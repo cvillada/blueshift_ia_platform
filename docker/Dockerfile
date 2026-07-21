@@ -4,9 +4,6 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 WORKDIR /opt/blueshift
 
-# Hermes-Agent como dependencia (MIT, nao modificado)
-RUN pip install hermes-agent==0.18.2
-
 COPY . /opt/blueshift
 RUN pip install --no-cache-dir -e .
 
@@ -14,8 +11,8 @@ RUN pip install --no-cache-dir -e .
 COPY docker/entrypoint.sh /opt/blueshift/docker/entrypoint.sh
 RUN chmod +x /opt/blueshift/docker/entrypoint.sh
 
-# Volume persistente: modelo fine-tuned + memoria do cliente
-VOLUME ["/opt/blueshift/models", "/opt/blueshift/data"]
+# Volume persistente: dados do portal + memoria do cliente
+VOLUME ["/opt/blueshift/data"]
 
 # License Server (mock) na 9000 + Update Channel (mock) na 9001 + app/portal na 8080.
 # BLUESHIFT_LICENSE_URL aponta para o mock dentro do container (validacao offline).

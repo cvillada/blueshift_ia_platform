@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Update Client: checa e aplica o Update Channel aprovado pela BlueShift.
 
-Como usamos LAYER sobre Hermes, as atualizacoes do motor vem do proprio Hermes.
-O BlueShift versiona sua camada (connectors, skills, installer).
+O BlueShift versiona sua propria camada (connectors, skills, portal).
 
 Sem dependencias externas: usa urllib (padrao do projeto, 100% offline-friendly).
 O canal e configurado via BLUESHIFT_UPDATE_URL (default: canal mock em dev).

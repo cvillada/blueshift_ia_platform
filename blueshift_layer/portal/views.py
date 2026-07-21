@@ -1404,10 +1404,16 @@ def canais():
     agentes = db.listar_agentes()
     if request.method == "POST":
         cid = int(request.form.get("cliente_id") or 1)
-        nome = request.form.get("nome", "").strip() or "Canal sem nome"
+        nome = request.form.get("nome", "").strip()
         agente_id = request.form.get("agente_id") or None
         if agente_id:
             agente_id = int(agente_id)
+        if not nome:
+            flash("Nome do canal é obrigatório.", "warn")
+            return redirect(url_for("portal.canais"))
+        if not agente_id:
+            flash("Selecione um agente para o canal.", "warn")
+            return redirect(url_for("portal.canais"))
         tipo = request.form.get("tipo", "api")
         webhook_url = request.form.get("webhook_url", "").strip() or None
         db.criar_canal(cid, nome, agente_id, tipo=tipo, webhook_url=webhook_url)
@@ -1420,10 +1426,28 @@ def canais():
     for c in rows:
         ag = next((a["nome"] for a in agentes if a["id"] == c["agente_id"]), "(sem agente)")
         wh = c.get("webhook_url") or "-"
-        body += f"""<tr><td>{c['nome']}</td><td>{c['tipo']}</td><td>{ag}</td>
-          <td><code>{c['token']}</code></td>
-          <td>{'ativo' if c['ativo'] else 'inativo'}</td>
-          <td><code>{wh}</code></td></tr>"""
+        st = "ativo" if c["ativo"] else "revogado"
+        body += f"""<tr>
+          <td><b>{c['nome']}</b></td>
+          <td>{c['tipo']}</td>
+          <td>{ag}</td>
+          <td style="max-width:260px"><code style="font-size:11px">{c['token']}</code>
+            <button class="btn-copy" onclick="navigator.clipboard.writeText('{c['token']}')" title="Copiar chave">📋</button>
+          </td>
+          <td>{templates.badge(st)}</td>
+          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis"><code>{wh}</code></td>
+          <td class="row-actions">
+            <a href="{url_for('portal.canal_editar', canal_id=c['id'])}">editar</a>
+            <a href="{url_for('portal.canal_regenerar_token', canal_id=c['id'])}">nova chave</a>
+            <a href="{url_for('portal.canal_alternar', canal_id=c['id'])}">{'revogar' if c['ativo'] else 'reativar'}</a>
+          </td></tr>"""
+    token_tooltip = """<div class="card muted" style="font-size:12px">
+      <b>⚠️ Importante sobre chaves de canal:</b><br>
+      Cada canal tem sua <b>própria chave de API</b> (token). Nunca use a chave de licença da plataforma
+      para autenticar chamadas de canal. Se a chave de um canal vazar, use <b>"nova chave"</b> para
+      gerar outra (a anterior para de funcionar imediatamente). Para desabilitar um canal sem deletar,
+      use <b>"revogar"</b>.
+    </div>"""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Criar canal de integração</h3>
@@ -1436,19 +1460,126 @@ def canais():
         <div style="margin-top:12px"><button class="btn" type="submit">Criar canal</button></div>
       </form>
     </div>
+    {token_tooltip}
     <div class="card">
-      <h3 style="margin-top:0">Canais</h3>
-      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Agente</th><th>Token</th><th>Status</th><th>Webhook saída</th></tr></thead>
-      <tbody>{body or '<tr><td colspan="6" class="muted">nenhum canal</td></tr>'}</tbody></table>
+      <h3 style="margin-top:0">Canais cadastrados</h3>
+      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Agente</th><th>Chave (token)</th><th>Status</th><th>Webhook saída</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan="7" class="muted">nenhum canal cadastrado</td></tr>'}</tbody></table>
     </div>
     <div class="card muted" style="font-size:13px">
-      <b>Como usar (canal real):</b><br>
-      <code>POST /portal/api/v1/agente</code> com header <code>Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;</code>
-      e body JSON <code>{{"pergunta": "..."}}</code>. O agente do canal responde via LLM + RAG + conectores.
-      Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada nessa URL.
+      <b>Como usar (canal real):</b><br><br>
+      Faça uma requisição <code>POST</code> para o endpoint do agente usando o token do canal:<br><br>
+      <pre style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">curl -X POST http://localhost:8080/portal/api/v1/agente \u005c<br>  -H "Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;" \u005c<br>  -H "Content-Type: application/json" \u005c<br>  -d '{{"pergunta": "Qual o hist\u00f3rico do cliente C001?"}}'</pre>
+      <br>
+      Substitua <code>&lt;TOKEN_DO_CANAL&gt;</code> pela chave do canal (use o botão 📋 ao lado do token para copiar).<br><br>
+      <b>Resposta (JSON):</b><br><br>
+      <pre style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">{{
+  "ok": true,
+  "resposta": "...",
+  "agente": "Agente Vendas",
+  "modelo": "bonsai-4b",
+  "contexto": [...],
+  "ferramentas": [...],
+  "webhook": {{"enviado": true, "status": 200}}
+}}</pre>
+      Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada na URL configurada.
     </div>
     """
     return templates.page("Canais", content, active="canais", user=_user())
+
+
+@bp.route("/canais/<int:canal_id>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def canal_editar(canal_id: int):
+    """Edita os dados do canal (nome, tipo, agente, webhook)."""
+    canal = db.buscar_canal(canal_id)
+    if not canal:
+        flash("Canal não encontrado.", "bad")
+        return redirect(url_for("portal.canais"))
+    agentes = db.listar_agentes()
+
+    if request.method == "POST":
+        nome = (request.form.get("nome") or canal["nome"]).strip()
+        tipo = request.form.get("tipo") or canal["tipo"]
+        agente_id = request.form.get("agente_id") or None
+        if agente_id:
+            agente_id = int(agente_id)
+        webhook_url = (request.form.get("webhook_url") or "").strip() or None
+        if not nome:
+            flash("Nome do canal é obrigatório.", "warn")
+            return redirect(url_for("portal.canal_editar", canal_id=canal_id))
+        if not agente_id:
+            flash("Selecione um agente para o canal.", "warn")
+            return redirect(url_for("portal.canal_editar", canal_id=canal_id))
+        db.atualizar_canal(canal_id, nome=nome, tipo=tipo, agente_id=agente_id, webhook_url=webhook_url)
+        db.registrar_auditoria(
+            _user()["login"], "admin", "editar_canal",
+            alvo=nome, cliente_id=canal["cliente_id"], ip=request.remote_addr,
+        )
+        flash(f"Canal '{nome}' atualizado.", "ok")
+        return redirect(url_for("portal.canais"))
+
+    opts = "".join(
+        f'<option value="{a["id"]}" {"selected" if a["id"] == canal["agente_id"] else ""}>{a["nome"]}</option>'
+        for a in agentes
+    )
+    content = f"""
+    <div class="card" style="max-width:640px">
+      <h3 style="margin-top:0">Editar canal #{canal_id}</h3>
+      <form method="post">
+        <label>Nome</label>
+        <input name="nome" value="{canal['nome']}">
+        <label>Tipo</label>
+        <select name="tipo">
+          <option value="api" {"selected" if canal['tipo'] == 'api' else ''}>API</option>
+          <option value="webhook" {"selected" if canal['tipo'] == 'webhook' else ''}>Webhook</option>
+        </select>
+        <label>Agente</label>
+        <select name="agente_id"><option value="">(nenhum)</option>{opts}</select>
+        <label>Webhook de saída (URL)</label>
+        <input name="webhook_url" value="{canal.get('webhook_url') or ''}" placeholder="https://... (POST da resposta)">
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/canais">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page("Editar canal", content, active="canais", user=_user())
+
+
+@bp.route("/canais/<int:canal_id>/regenerar")
+@auth.admin_required
+def canal_regenerar_token(canal_id: int):
+    """Gera nova chave para o canal. A anterior para de funcionar imediatamente."""
+    canal = db.listar_canais()
+    canal = next((c for c in canal if c["id"] == canal_id), None)
+    if not canal:
+        flash("Canal não encontrado.", "bad")
+        return redirect(url_for("portal.canais"))
+    novo = db.regenerar_token_canal(canal_id)
+    db.registrar_auditoria(
+        _user()["login"], "admin", "regenerar_token_canal",
+        alvo=canal["nome"], cliente_id=canal["cliente_id"], ip=request.remote_addr,
+    )
+    flash(f"Nova chave do canal '{canal['nome']}' gerada: {novo}. A chave anterior foi invalidada.", "ok")
+    return redirect(url_for("portal.canais"))
+
+
+@bp.route("/canais/<int:canal_id>/alternar")
+@auth.admin_required
+def canal_alternar(canal_id: int):
+    """Alterna entre ativo e revogado."""
+    canal = db.alternar_canal(canal_id)
+    if not canal:
+        flash("Canal não encontrado.", "bad")
+        return redirect(url_for("portal.canais"))
+    acao = "revogado" if not canal["ativo"] else "reativado"
+    db.registrar_auditoria(
+        _user()["login"], "admin", f"{acao}_canal",
+        alvo=canal["nome"], cliente_id=canal["cliente_id"], ip=request.remote_addr,
+    )
+    flash(f"Canal '{canal['nome']}' {acao}.", "ok" if canal["ativo"] else "warn")
+    return redirect(url_for("portal.canais"))
 
 
 # --------------------------------------------------------------------------- #
