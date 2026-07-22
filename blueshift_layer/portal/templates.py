@@ -5,7 +5,26 @@ o bloco de conteudo. Estilo dark/azul da marca BlueShift.
 """
 
 
+import html
 import secrets
+from flask import session
+
+
+def csrf_token() -> str:
+    """Retorna ou cria o token CSRF na sessao."""
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(16)
+    return session["csrf_token"]
+
+
+def csrf_field() -> str:
+    """Campo hidden para formularios."""
+    return f'<input type="hidden" name="_csrf_token" value="{csrf_token()}">'
+
+
+def h(texto: str | None) -> str:
+    """Escapa HTML para prevenir XSS."""
+    return html.escape(texto or "")
 
 
 def _flashes() -> str:

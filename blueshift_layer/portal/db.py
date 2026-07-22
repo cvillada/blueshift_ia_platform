@@ -797,7 +797,28 @@ def gerar_token(prefix: str = "bs_chan") -> str:
     return f"{prefix}_{secrets.token_urlsafe(24)}"
 
 
+def validar_webhook_url(url: str) -> str | None:
+    """Valida URL de webhook. Retorna None se ok, ou mensagem de erro."""
+    import urllib.parse
+    if not url:
+        return None
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return "Esquema deve ser http ou https"
+    host = parsed.hostname or ""
+    # Bloqueia enderecos internos
+    internos = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "::ffff:127.0.0.1"}
+    if host in internos or host.startswith("127.") or host.startswith("10.") \
+       or host.startswith("172.16.") or host.startswith("192.168."):
+        return "URL nao pode apontar para servicos internos (localhost, 10.x, 172.16.x, 192.168.x)"
+    return None
+
+
 def criar_canal(cliente_id, nome, agente_id, tipo="api", token=None, webhook_url=None) -> int:
+    if webhook_url:
+        erro = validar_webhook_url(webhook_url)
+        if erro:
+            raise ValueError(erro)
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO canais (cliente_id, nome, tipo, agente_id, token, webhook_url, ativo, criado_em)

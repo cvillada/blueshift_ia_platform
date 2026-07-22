@@ -59,6 +59,24 @@ def create_app() -> "Flask":
     db.seed_demo()
     app.register_blueprint(bp)
 
+    # ── CSRF protection for portal POST routes ──
+    from flask import request, session, flash, redirect, url_for
+
+    @app.before_request
+    def _csrf_check():
+        if request.method not in ("POST", "PUT", "DELETE"):
+            return
+        # Skip API routes (autenticadas por token, nao sessao)
+        if request.path.startswith("/portal/api/"):
+            return
+        # Skip login POST (o rate limit ja protege)
+        if request.path == "/portal/login":
+            return
+        token = (request.form or {}).get("_csrf_token", "")
+        if not token or token != session.get("csrf_token", ""):
+            flash("Sessão expirada ou requisição inválida. Tente novamente.", "bad")
+            return redirect(url_for("portal.monitorar"))
+
     @app.route("/")
     def _root():
         from flask import redirect, url_for

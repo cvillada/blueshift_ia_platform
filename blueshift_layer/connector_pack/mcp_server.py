@@ -179,7 +179,7 @@ def _handle(req: Dict[str, Any]) -> Dict[str, Any] | None:
             return {
                 "jsonrpc": "2.0", "id": msg_id,
                 "result": {
-                    "content": [{"type": "text", "text": f"Erro: {e}"}],
+                    "content": [{"type": "text", "text": f"Erro interno ao executar ferramenta"}],
                     "isError": True,
                 },
             }

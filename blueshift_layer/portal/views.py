@@ -62,7 +62,7 @@ def login():
     <div class="card" style="max-width:380px">
       <h3 style="margin-top:0">Acesso ao Portal</h3>
       <form method="post">
-        <label>Login</label>
+        {templates.csrf_field()}<label>Login</label>
         <input name="login" placeholder="admin" autofocus>
         <label>Senha</label>
         <input name="senha" type="password" placeholder="••••••">
@@ -364,7 +364,7 @@ def cliente_novo():
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Cadastrar cliente</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Código *</label><input name="codigo" placeholder="ex: porto"></div>
           <div><label>Nome *</label><input name="nome" placeholder="ex: Porto Seguros"></div>
         </div>
@@ -407,7 +407,7 @@ def cliente_editar(cid: int):
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Editar cliente #{cid}</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Código</label><input name="codigo" value="{c['codigo']}"></div>
           <div><label>Nome</label><input name="nome" value="{c['nome']}"></div>
         </div>
@@ -503,7 +503,7 @@ def usuario_novo():
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Cadastrar usuário</h3>
       <form method="post">
-        <label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select>
+        {templates.csrf_field()}<label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select>
         <div class="form-row">
           <div><label>Nome</label><input name="nome"></div>
           <div><label>Login</label><input name="login"></div>
@@ -623,7 +623,7 @@ def agente_testar(aid: int):
     </div>
     <div class="card" style="max-width:760px">
       <form method="post">
-        <label>Pergunta para o agente</label>
+        {templates.csrf_field()}<label>Pergunta para o agente</label>
         <textarea name="pergunta" rows="3" placeholder="Ex: qual o status do cliente 123?">{request.form.get("pergunta","")}</textarea>
         <div style="margin-top:12px"><button class="btn" type="submit">Enviar ao agente</button></div>
       </form>
@@ -687,7 +687,7 @@ def agente_novo():
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Montar agente (Agent Factory)</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select></div>
           <div><label>Nome do agente</label><input name="nome" placeholder="ex: Agente Vendas"></div>
         </div>
@@ -766,7 +766,7 @@ def agente_editar(aid: int):
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Editar agente #{aid}: {a['nome']}</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Nome do agente</label><input name="nome" value="{a['nome']}"></div>
           <div><label>Área</label><select name="area"><option value="">--</option>{areas_opts}</select></div>
         </div>
@@ -932,7 +932,7 @@ def skill_novo():
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Nova skill</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Nome (identificador)</label><input name="nome" placeholder="ex: vendas"></div>
           <div><label>Versão</label><input name="version" value="1.0.0"></div>
         </div>
@@ -972,7 +972,7 @@ def skill_editar(nome: str):
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Editar skill: {skill['name']}</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Nome</label><input name="nome" value="{skill['name']}" readonly style="color:var(--muted)"></div>
           <div><label>Versão</label><input name="version" value="{skill.get('version','1.0.0')}"></div>
         </div>
@@ -1119,7 +1119,7 @@ def conectores():
       <h3 style="margin-top:0">Cadastrar fonte externa</h3>
       <p class="muted">Conecte APIs, servidores MCP ou consultas SQL como fonte de dados para os agentes da área.</p>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área</label><select name="area"><option value="">selecione</option>{opts_area}</select></div>
         </div>
@@ -1226,7 +1226,7 @@ def conector_editar(cid: int):
     <div class="card" style="max-width:720px">
       <h3 style="margin-top:0">Editar conector #{cid}</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Nome</label><input name="nome" value="{con['nome']}"></div>
           <div><label>Área</label><select name="area">{opts_area}</select></div>
         </div>
@@ -1384,7 +1384,7 @@ def memoria():
     <div class="card" style="max-width:680px;margin-bottom:16px">
       <h3 style="margin-top:0">Salvar memória</h3>
       <form method="post">
-        <label>Cliente</label>
+        {templates.csrf_field()}<label>Cliente</label>
           <select name="cliente_id">
             {''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cliente_id else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}
           </select>
@@ -1545,7 +1545,7 @@ def conhecimento():
     <div class="card" style="max-width:720px;margin-bottom:16px">
       <h3 style="margin-top:0">Adicionar documento (RAG)</h3>
       <form method="post">
-        <input type="hidden" name="_action" value="add">
+        {templates.csrf_field()}<input type="hidden" name="_action" value="add">
         <div class="form-row">
           <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
@@ -1629,7 +1629,7 @@ def conhecimento_editar(did: int):
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Editar documento #{did}</h3>
       <form method="post">
-        <div class="form-row">
+        {templates.csrf_field()}<div class="form-row">
           <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
         </div>
@@ -1719,7 +1719,7 @@ def modelos():
     <div class="card" style="max-width:680px;margin-bottom:16px">
       <h3 style="margin-top:0">Cadastrar modelo de IA</h3>
       <form method="post">
-        <label>Cliente</label>
+        {templates.csrf_field()}<label>Cliente</label>
           <select name="cliente_id">
             {''.join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in db.listar_clientes())}
           </select>
@@ -1766,7 +1766,7 @@ def modelo_editar(mid: int):
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Editar modelo #{mid}: {m['nome']}</h3>
       <form method="post">
-        <label>Nome</label><input name="nome" value="{m['nome']}">
+        {templates.csrf_field()}<label>Nome</label><input name="nome" value="{m['nome']}">
         <label>Endpoint (base_url)</label><input name="base_url" value="{m['base_url']}">
         <label>Modelo</label><input name="modelo" value="{m['modelo']}">
         <label>Tipo</label>
@@ -1874,7 +1874,7 @@ def chat():
     </div>
     <div class="card" style="max-width:760px">
       <form method="post">
-        <label>Modelo de IA</label><select name="modelo_id">{opts}</select>
+        {templates.csrf_field()}<label>Modelo de IA</label><select name="modelo_id">{opts}</select>
         <label>Pergunta</label><textarea name="pergunta" rows="3" placeholder="Ex: qual a política de privacidade da BlueShift?">{request.form.get("pergunta","")}</textarea>
         <div style="margin-top:12px"><button class="btn" type="submit">Enviar</button></div>
       </form>
@@ -1997,7 +1997,7 @@ def canais():
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Criar canal de integração</h3>
       <form method="post">
-        <label>Cliente</label><select name="cliente_id">{''.join(f'<option value="{i}">{n}</option>' for i,n in clientes.items())}</select>
+        {templates.csrf_field()}<label>Cliente</label><select name="cliente_id">{''.join(f'<option value="{i}">{n}</option>' for i,n in clientes.items())}</select>
         <label>Nome</label><input name="nome" placeholder="Ex: Webhook Vendas Site">
         <label>Tipo</label><select name="tipo"><option value="api">API</option><option value="webhook">Webhook</option></select>
         <label>Agente</label><select name="agente_id"><option value="">(nenhum)</option>{''.join(f'<option value="{a["id"]}">{a["nome"]}</option>' for a in agentes)}</select>
@@ -2072,7 +2072,7 @@ def canal_editar(canal_id: int):
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Editar canal #{canal_id}</h3>
       <form method="post">
-        <label>Nome</label>
+        {templates.csrf_field()}<label>Nome</label>
         <input name="nome" value="{canal['nome']}">
         <label>Tipo</label>
         <select name="tipo">
