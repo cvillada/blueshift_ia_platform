@@ -449,6 +449,94 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 
 ---
 
+## 💻 Hardware Recomendado
+
+### Gargalos da plataforma
+
+| Componente | Limite | Causa |
+|:-----------|:-------|:------|
+| **SQLite** | ~50 escritas concorrentes | Single-writer (lock de tabela) |
+| **TF-IDF** (memória) | ~100k docs / ~500MB RAM | Índice carregado em RAM |
+| **Flask** (threaded) | ~20 req/s concorrentes | GIL + threads síncronas |
+| **LLM local** | 2-60s por chamada | Dependente do modelo/hardware |
+| **Busca vetorial** | O(n) = 50-200ms p/ 10k docs | Força bruta (cosseno), sem índice |
+
+### Tiers
+
+#### 🟢 TIER 1 — Pequeno (até 10 usuários, 1k docs, 500 queries/dia)
+
+| Recurso | Especificação |
+|:--------|:--------------|
+| **CPU** | 2 vCPU |
+| **RAM** | 8 GB |
+| **Disco** | 50 GB SSD |
+| **SO** | Linux (Ubuntu 22.04 / Debian 12) |
+| **Modelo LLM** | até 3B params (Q4, ~2GB RAM) |
+| **Custo estimado** | ~R$ 80/mês (VPS) |
+
+#### 🟡 TIER 2 — Médio (até 50 usuários, 10k docs, 5k queries/dia)
+
+| Recurso | Especificação |
+|:--------|:--------------|
+| **CPU** | 4 vCPU |
+| **RAM** | 16 GB |
+| **Disco** | 200 GB SSD |
+| **SO** | Linux (Ubuntu 22.04 / Debian 12) |
+| **Modelo LLM** | até 8B params (Q4_K_M, ~5GB RAM) |
+| **Custo estimado** | ~R$ 250/mês (VPS) |
+
+#### 🟠 TIER 3 — Grande (até 200 usuários, 50k docs, 20k queries/dia)
+
+| Recurso | Especificação |
+|:--------|:--------------|
+| **CPU** | 8 vCPU |
+| **RAM** | 32 GB |
+| **Disco** | 500 GB SSD NVMe |
+| **SO** | Linux (Ubuntu 22.04 / Debian 12) |
+| **GPU** | NVIDIA RTX 4060+ (opcional, p/ vLLM) |
+| **Modelo LLM** | até 14B params (Q4, ~9GB RAM) |
+| **Custo estimado** | ~R$ 800/mês (dedicated server) |
+
+**O que precisa mudar neste tier:**
+- Flask → **Gunicorn + workers** (4-8 workers)
+- TF-IDF O(n) → **ChromaDB** (HNSW index) ou SQLite FTS5
+- SQLite → **PostgreSQL** (já tem suporte via psycopg)
+- Adicionar **Redis** para cache de RAG
+
+#### 🔴 TIER 4 — Enterprise (500+ usuários, 200k docs, 100k queries/dia)
+
+| Recurso | Especificação |
+|:--------|:--------------|
+| **CPU** | 16 vCPU |
+| **RAM** | 64 GB |
+| **Disco** | 1 TB NVMe |
+| **SO** | Linux (Ubuntu 22.04 / Debian 12) |
+| **GPU** | 1-2x NVIDIA RTX 4090 / A4000+ |
+| **Modelo LLM** | até 70B params (via vLLM com GPU) |
+| **Custo estimado** | ~R$ 3.000+/mês (servidor dedicado) |
+
+**O que precisa mudar neste tier:**
+- Flask puro → **FastAPI** + async
+- TF-IDF → **ChromaDB / Qdrant / pgvector**
+- SQLite → **PostgreSQL + pgvector**
+- LLM em CPU → **vLLM** em GPU (50x mais rápido)
+- Cache → **Redis**
+- Fila → **Celery / RQ** para tarefas async
+- Monitor → **Prometheus + Grafana**
+
+### Resumo
+
+| Tier | CPU | RAM | Disco | GPU | Usuários | Custo/mês |
+|:----:|:---:|:---:|:-----:|:---:|:--------:|:---------:|
+| 🟢 1 | 2 vCPU | 8 GB | 50 GB | Não | 10 | ~R$ 80 |
+| 🟡 2 | 4 vCPU | 16 GB | 200 GB | Opc. | 50 | ~R$ 250 |
+| 🟠 3 | 8 vCPU | 32 GB | 500 GB | Rec. | 200 | ~R$ 800 |
+| 🔴 4 | 16 vCPU | 64 GB | 1 TB | Sim | 500+ | ~R$ 3.000+ |
+
+> **Nota:** o maior gargalo não é o hardware — é o **LLM local** sem GPU. Um modelo 8B em CPU gera 5-15 tok/s. Uma resposta de 300 tokens leva 20-60 segundos. Para produção com muitos usuários, **GPU é essencial** (via vLLM).
+
+---
+
 ## 📄 Licença
 
 Este projeto é distribuído sob **licença comercial de uso corporativo restrito**.
