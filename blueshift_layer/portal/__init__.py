@@ -8,37 +8,11 @@ Uso:
     from blueshift_layer.portal import create_app
     app = create_app()
     app.run(port=5000)
-
-Assinatura de autoria HMAC-SHA256 embutida.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
-import os
-
-from .views import bp
-
-# ──────────────────────────────────────────
-# Assinatura de autoria (HMAC-SHA256)
-# ──────────────────────────────────────────
-_MENSAGEM_AUTORIA = "Autor: Claudnei Villada - 072026"
-_CHAVE_AUTORIA = "cvil556556"
-_ASSINATURA_AUTORIA = "88a20f0a44a81c0ac38f0490804f45f8ad07abf705dbd40123e2ef5b490e4cb8"
-
-
-def verificar_autoria() -> bool:
-    """Verifica se a assinatura HMAC-SHA256 confere com a mensagem de autoria."""
-    esperado = hmac.new(_CHAVE_AUTORIA.encode(), _MENSAGEM_AUTORIA.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(esperado, _ASSINATURA_AUTORIA)
-
-
-def obter_assinatura() -> str:
-    """Retorna a assinatura HMAC-SHA256 da autoria (64 chars hex)."""
-    return _ASSINATURA_AUTORIA
-
-
 from . import db
+from .views import bp
 
 
 def create_app() -> "Flask":
@@ -61,4 +35,4 @@ def create_app() -> "Flask":
     return app
 
 
-__all__ = ["create_app", "db", "bp", "verificar_autoria", "obter_assinatura"]
+__all__ = ["create_app", "db", "bp"]
