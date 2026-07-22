@@ -71,7 +71,17 @@ def _skill_path(nome: str) -> str:
 
 
 def ler_skill(nome: str) -> dict | None:
-    """Retorna {name, description, version, body} de uma skill, ou None se nao existir."""
+    """Retorna {name, description, version, body} de uma skill.
+
+    Prioridade: banco de dados (persistente) > arquivo SKILL.md.
+    """
+    # Tenta banco primeiro (persiste entre rebuilds do Docker)
+    from . import db as _db
+    skill = _db.carregar_skill_db(nome)
+    if skill:
+        return skill
+
+    # Fallback: arquivo SKILL.md
     path = _skill_path(nome)
     if not os.path.isfile(path):
         return None
@@ -94,7 +104,16 @@ def ler_skill(nome: str) -> dict | None:
 
 
 def salvar_skill(nome: str, descricao: str, body: str, version: str = "1.0.0") -> None:
-    """Cria ou atualiza um arquivo SKILL.md."""
+    """Cria ou atualiza um arquivo SKILL.md e registra no banco para persistencia.
+
+    O arquivo SKILL.md ainda e escrito para compatibilidade com listar_skills(),
+    mas a fonte oficial de armazenamento e o banco de dados (volume persistente).
+    """
+    # Salva no banco (persiste mesmo apos rebuild do container)
+    from . import db as _db
+    _db.salvar_skill_db(nome, descricao, body, version)
+
+    # Arquivo local (tambem escreve para listar_skills() funcionar)
     dest = os.path.join(_SKILLS_DIR, nome)
     os.makedirs(dest, exist_ok=True)
     conteudo = (

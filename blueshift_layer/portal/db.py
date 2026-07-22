@@ -166,6 +166,16 @@ def init_db() -> None:
                 criado_em   TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS skills (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome        TEXT NOT NULL UNIQUE,
+                descricao   TEXT NOT NULL DEFAULT '',
+                body        TEXT NOT NULL DEFAULT '',
+                version     TEXT NOT NULL DEFAULT '1.0.0',
+                criado_em   TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS auditoria (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 usuario     TEXT NOT NULL,                     -- login
@@ -489,7 +499,54 @@ def listar_areas_com_conectores(cliente_id: int) -> list[str]:
             "SELECT DISTINCT area FROM conectores WHERE cliente_id=? AND ativo=1 AND area!='' ORDER BY area",
             (cliente_id,),
         ).fetchall()
-        return [r[0] for r in rows]
+    return [r[0] for r in rows]
+
+
+# --- Skills (armazenadas no banco para persistencia via volume) ---------------
+
+
+def salvar_skill_db(nome: str, descricao: str, body: str, version: str = "1.0.0") -> None:
+    """Salva ou atualiza uma skill no banco de dados (volume persistente)."""
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "SELECT id FROM skills WHERE nome=?",
+            (nome,),
+        )
+        row = cur.fetchone()
+        if row:
+            conn.execute(
+                "UPDATE skills SET descricao=?, body=?, version=?, atualizado_em=? WHERE nome=?",
+                (descricao, body, version, ts, nome),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO skills (nome, descricao, body, version, criado_em, atualizado_em) VALUES (?,?,?,?,?,?)",
+                (nome, descricao, body, version, ts, ts),
+            )
+
+
+def carregar_skill_db(nome: str) -> dict | None:
+    """Carrega uma skill do banco. Retorna None se nao existir."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT nome, descricao, body, version FROM skills WHERE nome=?",
+            (nome,),
+        ).fetchone()
+    if row:
+        return {"name": row[0], "description": row[1], "body": row[2], "version": row[3],
+                "fonte": "banco"}
+    return None
+
+
+def listar_skills_db() -> list[dict]:
+    """Lista todas as skills salvas no banco."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT nome, descricao, body, version FROM skills ORDER BY nome",
+        ).fetchall()
+    return [{"name": r[0], "description": r[1], "body": r[2], "version": r[3],
+             "fonte": "banco"} for r in rows]
 
 
 def _seed_conectores_demo(conn, cliente_id: int, ts: str) -> None:
