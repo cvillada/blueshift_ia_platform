@@ -369,12 +369,25 @@ Acesse `http://localhost:8080/portal` (login: `admin` / `admin123`).
 ### Manual
 
 ```bash
+# 1. Build da imagem
 docker build -t blueshift/platform -f docker/Dockerfile .
+
+# 2. Crie um volume para persistencia dos dados
+docker volume create blueshift_data
+
+# 3. Suba o container com volume montado
 docker run -d --name blueshift-platform \
   -p 8080:8080 \
+  -v blueshift_data:/data/blueshift \
+  -e BLUESHIFT_PORTAL_DB=/data/blueshift/portal.db \
   -e BLUESHIFT_LICENSE=BS-DEV-teste123 \
   blueshift/platform blueshift portal
 ```
+
+> **Persistencia de dados:** o banco SQLite e demais dados ficam no volume `blueshift_data`.
+> Você pode rebuildar o container (`docker build` + `docker stop` + `docker rm` + `docker run`)
+> que os dados (clientes, usuarios, agentes, conectores, documentos RAG) sao preservados.
+> Para backup: `docker run --rm -v blueshift_data:/data -v $(pwd):/backup alpine tar czf /backup/blueshift_backup.tar.gz -C /data .`
 
 ---
 
