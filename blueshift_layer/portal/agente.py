@@ -303,11 +303,16 @@ def _extrair_parametros(pergunta: str) -> dict:
             params["id_oportunidade"] = val.upper()
         elif re.match(r"^\d{4}-\d{2}", val) and "data" not in params:
             params["data"] = val
-    # Fallback: extrai números soltos após "cliente", "id", "customer" etc.
+    # Fallback: extrai números soltos após palavras-chave (ex: 'cliente 2', 'cliente id 2')
     if "id_cliente" not in params:
-        m = re.search(r"(?:cliente|customer|id)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
+        m = re.search(
+            r"(?:cliente|customer)\s+id\s*[#:]?\s*(\d+)"  # "cliente id 2"
+            r"|(?:cliente|customer)\s*[#:]?\s*(\d+)"       # "cliente 2"
+            r"|\bid\s*[#:]?\s*(\d+)(?:\s|$)",              # "id 2"
+            pergunta, re.IGNORECASE,
+        )
         if m:
-            params["id_cliente"] = m.group(1)
+            params["id_cliente"] = next(v for v in m.groups() if v is not None)
     if "id_colab" not in params:
         m = re.search(r"(?:colaborador|funcionario|employee|colab)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
         if m:
