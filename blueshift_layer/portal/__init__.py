@@ -11,8 +11,37 @@ Uso:
 """
 from __future__ import annotations
 
+import os
+
 from . import db
 from .views import bp
+
+
+# ──────────────────────────────────────────
+# Assinatura de autoria (HMAC-SHA256)
+# Apenas o hash e a mensagem ficam no codigo.
+# A chave secreta e mantida fora do repositorio.
+# ──────────────────────────────────────────
+_MENSAGEM_AUTORIA = "Autor: Claudnei Villada - 072026"
+_HASH_AUTORIA = "88a20f0a44a81c0ac38f0490804f45f8ad07abf705dbd40123e2ef5b490e4cb8"
+
+
+def verificar_autoria(chave: str) -> bool:
+    """Verifica se a chave informada produz o mesmo hash da mensagem de autoria.
+
+    Uso:
+        from blueshift_layer.portal import verificar_autoria
+        verificar_autoria("cvil556556")  # → True
+    """
+    import hashlib
+    import hmac
+    esperado = hmac.new(chave.encode(), _MENSAGEM_AUTORIA.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(esperado, _HASH_AUTORIA)
+
+
+def obter_hash_autoria() -> str:
+    """Retorna o hash HMAC-SHA256 da autoria (64 chars hex)."""
+    return _HASH_AUTORIA
 
 
 def create_app() -> "Flask":
@@ -35,4 +64,4 @@ def create_app() -> "Flask":
     return app
 
 
-__all__ = ["create_app", "db", "bp"]
+__all__ = ["create_app", "db", "bp", "verificar_autoria", "obter_hash_autoria"]
