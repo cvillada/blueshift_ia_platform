@@ -1176,7 +1176,7 @@ def conectores():
               <label>Query SQL
                 <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
               </label>
-              <textarea name="sql_query" id="sql-query" rows="3" placeholder="SELECT * FROM vw_clientes WHERE id_cliente = '{{id_cliente}}'"></textarea>
+              <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;  (use &#123;id_cliente&#125;, &#123;email&#125;, &#123;data&#125;)"></textarea>
             </div>
             <div>
               <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
