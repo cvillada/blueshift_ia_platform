@@ -1,18 +1,49 @@
-MIT License
-
-Copyright (c) 2025 Nous Research
-(Componente Hermes-Agent - licenca MIT. BlueShift e camada sobre o Hermes.)
+Licença BlueShift IA Platform — Uso Corporativo Restrito
 
 Copyright (c) 2026 BlueShift
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Todos os direitos reservados.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+A BlueShift IA Platform (doravante "Software") é um produto comercial
+de propriedade exclusiva da BlueShift.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+1. CONCESSÃO DE LICENÇA
+   O uso do Software é permitido APENAS para pessoas jurídicas que
+   possuam contrato de licenciamento válido e assinado com a BlueShift.
+   O contrato define o escopo, período, número de instalações e demais
+   condições de uso.
+
+2. RESTRIÇÕES
+   É expressamente proibido, sem autorização prévia por escrito da BlueShift:
+   a) Distribuir, ceder, sublicenciar, alugar ou disponibilizar o Software
+      a terceiros não autorizados no contrato;
+   b) Realizar engenharia reversa, descompilar ou desmontar o Software;
+   c) Remover ou alterar avisos de direitos autorais ou propriedade;
+   d) Utilizar o Software para fins diversos dos previstos no contrato.
+
+3. AUDITORIA
+   A BlueShift reserva-se o direito de auditar o uso do Software pelo
+   licenciado, mediante aviso prévio razoável, para verificar a
+   conformidade com os termos contratuais.
+
+4. ISENÇÃO DE GARANTIAS
+   O Software é fornecido "como está", sem garantias de qualquer tipo,
+   expressas ou implícitas, incluindo, mas não se limitando a, garantias
+   de comercialização, adequação a um fim específico e não violação.
+   O uso do Software é de inteira responsabilidade do licenciado.
+
+5. LIMITAÇÃO DE RESPONSABILIDADE
+   Em nenhum caso a BlueShift será responsável por quaisquer danos
+   diretos, indiretos, incidentais, especiais, exemplares ou
+   consequenciais decorrentes do uso ou da impossibilidade de uso
+   do Software.
+
+6. VIGÊNCIA
+   Esta licença é válida enquanto o contrato de licenciamento estiver
+   ativo. Ao término ou rescisão do contrato, o licenciado deve
+   cessar todo uso e eliminar todas as cópias do Software.
+
+---
+
+Para obter uma licença comercial, entre em contato:
+BlueShift — https://blueshift.nousresearch.com

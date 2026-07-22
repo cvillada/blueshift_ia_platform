@@ -206,7 +206,7 @@ O desenvolvimento do BlueShift segue o modelo **Flask standalone**:
 
 - **BlueShift (plataforma):** projeto em `~/bp-proj` com venv próprio (`bp-venv`), instalado via `pip install -e .`
 - **Git:** repo único no GitHub contendo toda a plataforma.
-- **Quem constrói:** o Hermes (rodando na máquina) escreve os arquivos do BlueShift a pedido do desenvolvedor.
+- **Quem constrói:** o desenvolvedor, utilizando ferramentas de IA auxiliares, escreve os arquivos do BlueShift.
 
 Passo-a-passo completo: ver **`blueshift_passo_a_passo.md`** (mesmo diretório).
 

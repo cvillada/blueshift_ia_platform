@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.1-000?logo=flask&logoColor=white)](https://flask.palletsprojects.com)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/License-Commercial-blue)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://docker.com)
 
 **Deploy on-premise · Dados 100% no cliente · Modelos híbridos (local/externo) · Agentes por área · Licença anual**
@@ -450,7 +450,13 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 
 ## 📄 Licença
 
-Este projeto é distribuído sob licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto é distribuído sob **licença comercial de uso corporativo restrito**.
+O uso do software é permitido apenas para pessoas jurídicas com contrato
+de licenciamento válido e assinado com a BlueShift.
+
+Veja o arquivo [LICENSE](LICENSE) para os termos completos.
+
+Para obter uma licença comercial, entre em contato.
 
 ---
 

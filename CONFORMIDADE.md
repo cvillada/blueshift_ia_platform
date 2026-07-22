@@ -1,6 +1,6 @@
 # BlueShift IA Platform — Check de Conformidade (PRD × HTML × Código)
 
-Gerado por Hermes em 2026-07-17. Base: `blueshift_prd.md` (§8-B Feature Matrix),
+Gerado em 2026-07-17. Base: `blueshift_prd.md` (§8-B Feature Matrix),
 `blueshift-ia-platform.html` (prospecto), código real em `blueshift_layer/`.
 
 Legenda: ✅ implementado e coerente · 🔧 parcial/incompleto · 🔴 gap de produto ·
@@ -33,8 +33,8 @@ Legenda: ✅ implementado e coerente · 🔧 parcial/incompleto · 🔴 gap de p
 | Item | Onde | Código real | Status |
 |:-----|:-----|:------------|:------|
 | Acesso Interno / Externo a Modelos | §7 | `llm_client.py` (Bearer só se `api_key`) + tela Modelos IA | ✅ híbrido local/externo. |
-| Segurança / Isolamento | §4.3 (1 profile Hermes/cliente) | SQLite por `cliente_id` + memória isolada por login + scoping por `area` | ⚠️ **Desvio:** o isolamento NÃO usa "1 profile Hermes por cliente" (PRD §4.3). É `cliente_id` no SQLite. Funciona, mas não é o mecanismo Hermes descrito. |
-| MCP ou API | §6 | `connector_pack/mcp_server.py` (MCP stdio JSON-RPC 2.0 puro) + `portal/api.py` (Bearer/x-api-key) | ✅ ambos reais. |
+| **Segurança / Isolamento** | §4.3 | SQLite por `cliente_id` + memória isolada por login + scoping por `area` | ✅ Isolamento lógico via `cliente_id` + RBAC |
+| **Planos e Precificação** | §9 | Apenas licenciamento anual por contrato; sem planos na tela |
 | Observabilidade | §8-F (Fase 4) | `db.health` (latencia, tokens_hoje, erros_24h) + `monitorar` | 🔧 parcial — métricas pontuais, sem histórico de série temporal nem dashboards por período. |
 | Monitoramento | §8-F (Fase 4) | `conectores` online/offline + `health.container/modelo_local` + `monitorar` | 🔧 parcial — sem alertas ativos (email/webhook de alerta) nem healthcheck de GPU. |
 
@@ -61,8 +61,8 @@ Legenda: ✅ implementado e coerente · 🔧 parcial/incompleto · 🔴 gap de p
 ## 6. Pendências / Gaps acionáveis (prioridade)
 
 1. 🔴 **Fine-Tuning**: decidir se vira serviço externo (ok, só fatura) ou se o produto precisa de um engine mínimo. Hoje só existe a fatura — alinhar com o claim do HTML/PRD.
-| ⚠️ **Isolamento por profile do Hermes**: o PRD §4.3 original prometia 1 profile Hermes/cliente; o código usa `cliente_id` no SQLite com RBAC e isolamento lógico. **Decisão (2026-07):** manter isolamento lógico (cliente_id + RBAC). PRD atualizado para refletir isso. | ✅ DECIDIDO |
-3. ~~🔧 **Fallback automático de modelo (robustez do fluxo ponta a ponta)**~~ → ✅ **IMPLEMENTADO**: `agente.responder()` tenta `modelo_id`; se `llm_client.chat()` falha, tenta `modelo_secundario_id` e entrega resposta + registra `model_fallback` na auditoria. Coluna migrada idempotentemente (`_migrar_colunas`). Tela do Agente expõe "Modelo de IA (fallback)". Testado em `tests/test_fallback.py` (principal falha → fallback entrega; principal ok → sem fallback). Garante "return do resultado resposta" mesmo em falha de 1 endpoint. |
+| 🔒 **Isolamento lógico vs profile**: SQLite por cliente + RBAC substitui o isolamento por perfil. | ✅ DECIDIDO |
+| ⚠️ **Plano gratuito sem restrição**: código não barra cliente sem contrato. Licenciamento é por contrato assinado + auditoria. | ⏳ PENDENTE — depende do license_client + heartbeat |
 4. 🔧 **Observabilidade/Monitoramento**: série temporal + alertas (sem quebrar on-premise). | Observabilidade de Uso: ✅ **IMPLEMENTADA** em conjunto com Uso de Tokens: `llm_client.chat()` captura `usage.total_tokens`; `registrar_uso_token` grava por chamada (cliente/usuário/agente/modelo/tokens/origem); tela `/uso-tokens` agrega por cliente/modelo/origem. Resta alertas/série temporal avançada. |
 5. ⚠️ **HTML prospecto**: I1/I2 resolvidos em (a). OK. |
 6. 🩹 `views.py` (fragmento `TO...ode`): ✅ **RESOLVIDO** — corrigido para `Bearer <TOKEN_DO_CANAL>` na tela de Canais. |
