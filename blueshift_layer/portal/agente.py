@@ -176,10 +176,10 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         system += f"\nSKILLS DISPONÍVEIS (use conforme adequado):\n{skills_txt}\n"
 
     system += (
-        "\nUse o contexto e os DADOS DE SISTEMA abaixo para responder com precisão. "
-        "Se não houver resposta, diga que não sabe.\n\n"
-        "CONTEXTO (base de conhecimento):\n"
-        + ("\n".join(f"- {c['texto']}" for c in contexto) or "(vazio)")
+        "\nUse os DADOS DE SISTEMA abaixo como fonte PRIMARIA — eles contem "
+        "informacoes ATUAIS dos bancos e sistemas da empresa. "
+        "O CONTEXTO (base de conhecimento) pode conter informacoes desatualizadas "
+        "e deve ser usado apenas como referencia SECUNDARIA.\n\n"
     )
     if ferramentas:
         blocos = []
@@ -189,7 +189,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
             else:
                 blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
                               f"args={f.get('args')} -> {f.get('resultado')}")
-        system += "\n\nDADOS DE SISTEMA (conectores executados):\n" + "\n".join(blocos)
+        system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+    system += (
+        "CONTEXTO (base de conhecimento — FONTE SECUNDARIA, pode estar desatualizado):\n"
+        + ("\n".join(f"- {c['texto']}" for c in contexto) or "(vazio)")
+    )
     mensagens = [
         {"role": "system", "content": system},
         {"role": "user", "content": pergunta},
