@@ -178,44 +178,101 @@ def _executar_mcp(nome: str, config: dict, params: dict, pergunta: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Executor: SQL View                                                         #
+def _resolver_host_sql(host: str) -> str:
+    """Se rodando em container e host for localhost, aponta pro host do Docker."""
+    if os.path.exists("/.dockerenv") and host in ("127.0.0.1", "localhost", "0.0.0.0"):
+        return "host.docker.internal"
+    return host
+
+
+# Executor: SQL View (PostgreSQL, MySQL, SQL Server)                            #
 # --------------------------------------------------------------------------- #
 
 def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
-    """Executa consulta SQL contra um banco configurado."""
-    dsn_key = config.get("dsn_env", "")
+    """Executa consulta SQL contra um banco configurado (PostgreSQL, MySQL ou SQL Server)."""
+    driver = config.get("sql_driver", "postgresql")
     query = config.get("query", "")
     if not query:
         return {"erro": "SQL query nao configurada"}
 
-    # Monta DSN: da env ou direto da config
-    if dsn_key:
-        dsn = os.environ.get(dsn_key, "")
-    else:
-        dsn = config.get("dsn", "")
-
-    if not dsn:
-        return {"erro": "DSN nao configurado (variavel de ambiente ou config.dsn)"}
-
     # Substitui placeholders na query
     query = _aplicar_params(query, params)
 
+    # Tenta DSN direto primeiro
+    dsn = config.get("dsn", "") or os.environ.get(config.get("dsn_env", ""), "")
+
     try:
-        import psycopg
-        conn = psycopg.connect(dsn)
-        try:
-            with conn.cursor() as cur:
-                cur.execute(query)
-                cols = [desc[0] for desc in cur.description] if cur.description else []
-                rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
-            conn.commit()
-            return {"tool": "sql:query", "args": query, "resultado": rows}
-        finally:
-            conn.close()
-    except ImportError:
-        return {"erro": "psycopg nao instalado — SQL indisponivel"}
+        if driver == "postgresql":
+            import psycopg
+            if dsn:
+                conn = psycopg.connect(dsn)
+            else:
+                host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
+                port = config.get("sql_port", "5432")
+                conn = psycopg.connect(
+                    host=host, port=port,
+                    dbname=config.get("sql_db", ""),
+                    user=config.get("sql_user", ""),
+                    password=config.get("sql_pass", ""),
+                )
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    cols = [desc[0] for desc in cur.description] if cur.description else []
+                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
+                conn.commit()
+                return {"tool": "sql:query", "args": query, "resultado": rows}
+            finally:
+                conn.close()
+
+        elif driver == "mysql":
+            import pymysql
+            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
+            port = int(config.get("sql_port", "3306"))
+            conn = pymysql.connect(
+                host=host, port=port,
+                database=config.get("sql_db", ""),
+                user=config.get("sql_user", ""),
+                password=config.get("sql_pass", ""),
+                charset="utf8mb4",
+            )
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    cols = [desc[0] for desc in cur.description] if cur.description else []
+                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
+                conn.commit()
+                return {"tool": "sql:query", "args": query, "resultado": rows}
+            finally:
+                conn.close()
+
+        elif driver == "sqlserver":
+            import pymssql
+            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
+            port = config.get("sql_port", "1433")
+            conn = pymssql.connect(
+                server=host, port=port,
+                database=config.get("sql_db", ""),
+                user=config.get("sql_user", ""),
+                password=config.get("sql_pass", ""),
+            )
+            try:
+                with conn.cursor(as_dict=True) as cur:
+                    cur.execute(query)
+                    rows = cur.fetchmany(50)
+                conn.commit()
+                return {"tool": "sql:query", "args": query, "resultado": rows}
+            finally:
+                conn.close()
+
+        else:
+            return {"erro": f"Driver SQL desconhecido: {driver}"}
+
+    except ImportError as e:
+        nome_driver = {"postgresql": "psycopg[binary]", "mysql": "pymysql", "sqlserver": "pymssql"}
+        return {"erro": f"Driver {driver} nao instalado. Instale: pip install {nome_driver.get(driver, driver)}"}
     except Exception as e:
-        return {"erro": f"Erro SQL: {e}"}
+        return {"erro": f"Erro SQL ({driver}): {e}"}
 
 
 # --------------------------------------------------------------------------- #

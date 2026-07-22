@@ -1079,6 +1079,12 @@ def conectores():
             except json.JSONDecodeError:
                 config["args"] = {}
         elif tipo == "sql":
+            config["sql_driver"] = request.form.get("sql_driver", "postgresql")
+            config["sql_host"] = request.form.get("sql_host", "").strip()
+            config["sql_port"] = request.form.get("sql_port", "").strip()
+            config["sql_db"] = request.form.get("sql_db", "").strip()
+            config["sql_user"] = request.form.get("sql_user", "").strip()
+            config["sql_pass"] = request.form.get("sql_pass", "").strip()
             config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
@@ -1088,7 +1094,7 @@ def conectores():
         db.criar_conector(cid, nome, tipo=tipo, area=area, config=config)
         db.registrar_auditoria(_user()["login"], "admin", "criar_conector",
                                alvo=nome, cliente_id=cid, ip=request.remote_addr)
-        flash(f"Conector '{nome}' criado na área {area}.", "ok")
+        flash(f"Conector '{nome}' criado na area {area}.", "ok")
         return redirect(url_for("portal.conectores"))
 
     # GET: listar com filtro de área
@@ -1146,8 +1152,25 @@ def conectores():
           <label>Argumentos (JSON)</label><input name="mcp_args" placeholder='{{"id_cliente": "{{id_cliente}}"}}'>
         </div>
         <div id="conn-fields-sql" style="display:none">
-          <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
-          <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
+          <label>Driver</label>
+          <select name="sql_driver" id="sql-driver">
+            <option value="postgresql">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+            <option value="sqlserver">SQL Server</option>
+          </select>
+          <div class="form-row">
+            <div><label>Host</label><input name="sql_host" placeholder="host.docker.internal"></div>
+            <div><label>Porta</label><input name="sql_port" placeholder="5432 (PG) / 3306 (MySQL) / 1433 (SQL Server)"></div>
+          </div>
+          <div class="form-row">
+            <div><label>Banco</label><input name="sql_db" placeholder="nome_do_banco"></div>
+            <div><label>Usuário</label><input name="sql_user" placeholder="usuario"></div>
+          </div>
+          <label>Senha</label><input name="sql_pass" type="password" placeholder="senha">
+          <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
+            <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
+            <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
+          </details>
           <label>Query SQL</label><textarea name="sql_query" rows="3" placeholder="SELECT * FROM vw_clientes WHERE id_cliente = '{{id_cliente}}'"></textarea>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
