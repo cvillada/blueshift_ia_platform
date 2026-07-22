@@ -226,6 +226,8 @@ justify-content:center;font-weight:700;color:#fff}
 .navlink.sub-toggle{cursor:pointer;user-select:none}
 .navlink.sub-toggle.open{color:var(--txt)}
 .navlink .arrow{display:inline-block;width:14px}
+.sub-items{margin-top:2px;display:flex;flex-direction:column;gap:3px}
+.sub-items .navlink{padding-left:42px;font-size:13px}
 .content{flex:1;padding:22px 26px}
 .page-title{margin:0 0 18px;font-size:22px;font-weight:700}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
