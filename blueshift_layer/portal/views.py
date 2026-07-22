@@ -1492,12 +1492,12 @@ def conector_editar(cid: int):
           <div class="form-row">
             <div style="flex:1">
               <label>Query SQL
-                <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
+                <button type="button" class="btn-ia" onclick="abrirModalQueryIAEdit()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
               </label>
               <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;">{sql_query}</textarea>
             </div>
             <div>
-              <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
+              <button type="button" class="btn ghost" onclick="testarConexaoEdit()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
             </div>
           </div>
           <div id="sql-test-resultado" style="margin-top:4px;font-size:12px"></div>
@@ -1514,12 +1514,82 @@ def conector_editar(cid: int):
         </div>
       </form>
     </div>
+    <div class="modal-overlay" id="modal-query-ia-edit" onclick="if(event.target===this)fecharModalQueryIAEdit()">
+      <div class="modal-box">
+        <h3>🤖 Gerar Query SQL com IA</h3>
+        <p class="muted" style="font-size:13px">Descreva o que a query deve fazer. A IA usara o primeiro modelo cadastrado para gerar o SQL.</p>
+        <textarea id="ia-query-desc-edit" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000"></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-spin" id="btn-gerar-query-edit" onclick="gerarQueryIAEdit()">🚀 Gerar</button>
+          <button class="btn ghost" onclick="copiarQueryIAEdit()" id="btn-copiar-query-edit" style="display:none">📋 Copiar para o campo</button>
+          <button class="btn ghost" onclick="fecharModalQueryIAEdit()">Fechar</button>
+        </div>
+        <div id="ia-query-resultado-edit" style="display:none;margin-top:12px">
+          <label>Query gerada:</label>
+          <textarea id="ia-query-conteudo-edit" rows="6" readonly></textarea>
+        </div>
+        <div id="ia-query-erro-edit" class="badge bad" style="display:none;margin-top:8px"></div>
+      </div>
+    </div>
     <script>
     function toggleEditConnFields() {{
       var t = document.getElementById('edit-conn-tipo').value;
       document.getElementById('edit-fields-api').style.display = t === 'api' ? '' : 'none';
       document.getElementById('edit-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('edit-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    function testarConexaoEdit() {{
+      var b = document.getElementById('btn-testar-conexao');
+      if(!b) return;
+      b.textContent = '⏳ Testando...';
+      b.disabled = true;
+      var r = document.getElementById('sql-test-resultado');
+      r.innerHTML = '';
+      var fd = new FormData();
+      fd.append('driver', (document.querySelector('[name=sql_driver]')||{{}}).value||'postgresql');
+      fd.append('host', (document.querySelector('[name=sql_host]')||{{}}).value||'');
+      fd.append('port', (document.querySelector('[name=sql_port]')||{{}}).value||'');
+      fd.append('db', (document.querySelector('[name=sql_db]')||{{}}).value||'');
+      fd.append('user', (document.querySelector('[name=sql_user]')||{{}}).value||'');
+      fd.append('password', (document.querySelector('[name=sql_pass]')||{{}}).value||'');
+      fd.append('dsn', (document.querySelector('[name=sql_dsn]')||{{}}).value||'');
+      fd.append('query', (document.querySelector('[name=sql_query]')||{{}}).value||'');
+      fetch('/portal/conectores/testar-conexao', {{method:'POST',body:fd}})
+        .then(function(r){{return r.json()}})
+        .then(function(d){{
+          b.textContent = '🔌 Testar Conexão';
+          b.disabled = false;
+          r.innerHTML = d.ok ? '<span style="color:var(--ok)">✅ Conexão OK</span>' : '<span style="color:var(--bad)">❌ ' + d.erro + '</span>';
+        }})
+        .catch(function(e){{
+          b.textContent = '🔌 Testar Conexão';
+          b.disabled = false;
+          r.innerHTML = '<span style="color:var(--bad)">❌ Erro: ' + e.message + '</span>';
+        }});
+    }}
+    function abrirModalQueryIAEdit(){{document.getElementById('modal-query-ia-edit').classList.add('show')}}
+    function fecharModalQueryIAEdit(){{document.getElementById('modal-query-ia-edit').classList.remove('show')}}
+    function gerarQueryIAEdit(){{
+      var desc=document.getElementById('ia-query-desc-edit').value.trim();
+      if(!desc){{alert('Descreva a query primeiro.');return}}
+      var driver=(document.querySelector('[name=sql_driver]')||{{}}).value||'postgresql';
+      var b=document.getElementById('btn-gerar-query-edit');b.classList.add('loading');b.disabled=true;
+      document.getElementById('ia-query-erro-edit').style.display='none';
+      fetch('/portal/conectores/gerar-query-ia',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{descricao:desc,driver:driver}})}})
+        .then(function(r){{return r.json()}})
+        .then(function(d){{
+          b.classList.remove('loading');b.disabled=false;
+          if(d.ok){{
+            document.getElementById('ia-query-resultado-edit').style.display='block';
+            document.getElementById('ia-query-conteudo-edit').value=d.query;
+            document.getElementById('btn-copiar-query-edit').style.display='inline-block';
+          }}else{{var e=document.getElementById('ia-query-erro-edit');e.textContent=d.erro;e.style.display='block'}}
+        }})
+        .catch(function(e){{b.classList.remove('loading');b.disabled=false;var er=document.getElementById('ia-query-erro-edit');er.textContent='Erro: '+e.message;er.style.display='block'}})
+    }}
+    function copiarQueryIAEdit(){{
+      document.getElementById('sql-query').value=document.getElementById('ia-query-conteudo-edit').value;
+      fecharModalQueryIAEdit();
     }}
     </script>"""
     return templates.page("Editar conector", content, active="conectores", user=_user())
