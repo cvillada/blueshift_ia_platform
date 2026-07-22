@@ -1394,6 +1394,12 @@ def conector_editar(cid: int):
             except json.JSONDecodeError:
                 config["args"] = {}
         elif tipo == "sql":
+            config["sql_driver"] = request.form.get("sql_driver", "postgresql")
+            config["sql_host"] = request.form.get("sql_host", "").strip()
+            config["sql_port"] = request.form.get("sql_port", "").strip()
+            config["sql_db"] = request.form.get("sql_db", "").strip()
+            config["sql_user"] = request.form.get("sql_user", "").strip()
+            config["sql_pass"] = request.form.get("sql_pass", "").strip()
             config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
