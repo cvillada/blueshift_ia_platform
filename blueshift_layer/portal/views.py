@@ -1562,7 +1562,7 @@ def conhecimento():
       <h3 style="margin-top:0">Importar CSV</h3>
       <p class="muted" style="font-size:13px">Formato: <code>titulo,conteudo,fonte</code> (opcional: <code>area</code>). Se area vazia, usa a selecionada abaixo.</p>
       <form method="post" enctype="multipart/form-data">
-        <input type="hidden" name="_action" value="csv_import">
+        {templates.csrf_field()}<input type="hidden" name="_action" value="csv_import">
         <div class="form-row">
           <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área padrão</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
@@ -1576,7 +1576,7 @@ def conhecimento():
       <h3 style="margin-top:0">Importar PDF</h3>
       <p class="muted" style="font-size:13px">Envie um arquivo PDF. O texto sera extraido e dividido em partes (chunks) de ate 2000 caracteres.</p>
       <form method="post" enctype="multipart/form-data">
-        <input type="hidden" name="_action" value="pdf_import">
+        {templates.csrf_field()}<input type="hidden" name="_action" value="pdf_import">
         <div class="form-row">
           <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Área</label><select name="area"><option value="">geral</option>{opts_area}</select></div>
