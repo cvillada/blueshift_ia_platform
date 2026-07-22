@@ -14,7 +14,7 @@ Telas:
 from __future__ import annotations
 
 from flask import (
-    Blueprint, request, redirect, url_for, session, flash, current_app, jsonify,
+    Blueprint, request, redirect, url_for, session, flash, current_app, jsonify, make_response,
 )
 import json
 import urllib.parse
@@ -1589,6 +1589,15 @@ def conhecimento():
         <div style="margin-top:12px"><button class="btn" type="submit">Importar PDF</button></div>
       </form>
     </div>
+    <div class="card" style="max-width:720px;margin-bottom:16px">
+      <h3 style="margin-top:0">Exportar para Fine-Tuning</h3>
+      <p class="muted" style="font-size:13px">Exporta a base de conhecimento como JSONL no formato <code>messages</code> (chat-style), compativel com <b>TreinarModelo</b> (MLX LoRA).</p>
+      <form method="get" style="display:flex;gap:8px;align-items:end">
+        <div><label>Cliente</label><select name="cliente_id">{''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}</select></div>
+        <div><label>Área</label><select name="area"><option value="">todas</option>{opts_area}</select></div>
+        <div><a class="btn" href="/portal/conhecimento/exportar-jsonl?cliente_id={cid_sel or ''}&area={area_sel or ''}">📥 Exportar JSONL</a></div>
+      </form>
+    </div>
     <div class="card">
       <h3 style="margin-top:0">Documentos</h3>
       <form method="get" style="margin-bottom:10px;display:flex;gap:8px;align-items:end">
@@ -1668,6 +1677,72 @@ def conhecimento_excluir(did: int):
                                cliente_id=doc["cliente_id"], ip=request.remote_addr)
         flash(f"Documento '{doc['titulo']}' excluído.", "ok")
     return redirect(url_for("portal.conhecimento"))
+
+
+@bp.route("/conhecimento/exportar-jsonl")
+@auth.admin_required
+def conhecimento_exportar_jsonl():
+    """Exporta a base de conhecimento como JSONL no formato messages (chat-style).
+
+    Formato compativel com TreinarModelo (mlx_lm lora):
+      {"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
+
+    Documentos do tipo "RAG auto:" sao parseados para extrair pergunta e resposta.
+    Demais documentos viram: user="Explique sobre {titulo}", assistant={conteudo}.
+    """
+    area = request.args.get("area", "")
+    cid = request.args.get("cliente_id", type=int)
+    docs = db.listar_documentos(cliente_id=cid, area=area or None)
+
+    linhas: list[str] = []
+    for d in docs:
+        titulo = d["titulo"]
+        conteudo = d["conteudo"]
+        user_msg = ""
+        assistant_msg = ""
+
+        # Tenta parsear documentos do RAG auto-save: "Pergunta: ...\nResposta: ...\nDados: ..."
+        if titulo.startswith("RAG auto:"):
+            partes = conteudo.split("\n", 2)
+            for p in partes:
+                if p.startswith("Pergunta:"):
+                    user_msg = p[len("Pergunta:"):].strip()
+                elif p.startswith("Resposta:"):
+                    assistant_msg = p[len("Resposta:"):].strip()
+            if not assistant_msg:
+                # Fallback: usa o conteudo inteiro como resposta
+                user_msg = titulo
+                assistant_msg = conteudo
+        else:
+            # Documento manual: pergunta generica sobre o titulo
+            user_msg = f"Explique sobre: {titulo}"
+            assistant_msg = conteudo
+
+        if user_msg and assistant_msg:
+            # Adiciona contexto da area e fonte como metadado no assistant
+            meta = f" [area: {d.get('area','') or 'geral'} | fonte: {d.get('fonte','manual')}]"
+            exemplo = {
+                "messages": [
+                    {"role": "user", "content": user_msg},
+                    {"role": "assistant", "content": assistant_msg + meta},
+                ]
+            }
+            linhas.append(json.dumps(exemplo, ensure_ascii=False))
+
+    if not linhas:
+        flash("Nenhum documento para exportar.", "warn")
+        return redirect(url_for("portal.conhecimento"))
+
+    # Monta resposta como download
+    conteudo_jsonl = "\n".join(linhas)
+    nome_arquivo = f"blueshift_rag_{area or 'todas'}_{len(linhas)}exemplos.jsonl"
+    response = make_response(conteudo_jsonl)
+    response.headers["Content-Type"] = "application/jsonl"
+    response.headers["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    db.registrar_auditoria(_user()["login"], "admin", "exportar_rag_jsonl",
+                           alvo=f"{len(linhas)} exemplos, area={area or 'todas'}",
+                           cliente_id=cid or 0, ip=request.remote_addr)
+    return response
 
 
 # ---------------------------------------------------------------------------
