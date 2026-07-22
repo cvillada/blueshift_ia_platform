@@ -75,6 +75,9 @@ def create_app() -> "Flask":
         # Skip login POST (o rate limit ja protege)
         if request.path == "/portal/login":
             return
+        # Skills gerar-ia e chamado via fetch (JSON), sem formulario padrao
+        if request.path == "/portal/skills/gerar-ia":
+            return
         token = (request.form or {}).get("_csrf_token", "")
         if not token or token != session.get("csrf_token", ""):
             flash("Sessão expirada ou requisição inválida. Tente novamente.", "bad")
