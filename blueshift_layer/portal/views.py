@@ -41,6 +41,7 @@ def _user() -> dict | None:
 # ---------------------------------------------------------------------------
 
 @bp.route("/login", methods=["GET", "POST"])
+@auth.rate_limit_login
 def login():
     if request.method == "POST":
         login_ = request.form.get("login", "").strip()
@@ -1890,6 +1891,7 @@ def chat():
 # --------------------------------------------------------------------------- #
 
 @bp.route("/api/v1/agente", methods=["POST"])
+@auth.rate_limit_api
 @auth.api_key_required
 def api_agente(canal):
     """Endpoint real de canal: recebe uma mensagem e responde com o agente do canal.

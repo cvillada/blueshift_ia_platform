@@ -57,7 +57,16 @@ def listar_skills_catalogo() -> list[tuple[str, dict, str]]:
 
 
 def _skill_path(nome: str) -> str:
-    """Caminho absoluto para o SKILL.md de uma skill."""
+    """Caminho absoluto para o SKILL.md de uma skill.
+
+    Valida o nome para prevenir path traversal (../).
+    So permite nomes simples: letras, numeros, underline.
+    """
+    if not nome:
+        return ""
+    # Bloqueia qualquer tentativa de path traversal
+    if "/" in nome or "\\" in nome or ".." in nome or not nome.isidentifier():
+        return ""
     return os.path.join(_SKILLS_DIR, nome, "SKILL.md")
 
 

@@ -51,6 +51,9 @@ def create_app() -> "Flask":
 
     app = Flask(__name__)
     app.secret_key = os.environ.get("BLUESHIFT_PORTAL_SECRET") or secrets.token_hex(32)
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["PERMANENT_SESSION_LIFETIME"] = 1800  # 30 min
 
     db.init_db()
     db.seed_demo()
