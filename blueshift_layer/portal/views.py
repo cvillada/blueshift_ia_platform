@@ -1417,26 +1417,111 @@ def conector_editar(cid: int):
         return redirect(url_for("portal.conectores"))
 
     opts_area = "".join(f'<option value="{a}" {"selected" if a == con["area"] else ""}>{a}</option>' for a in _AREAS)
+    opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==con["cliente_id"] else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
+    cfg = _parse_config(con.get("config", "{}"))
+    tipo = con["tipo"]
+
+    # Campos preenchidos
+    api_url = cfg.get("url", "")
+    api_method = cfg.get("method", "GET")
+    api_headers = cfg.get("headers", "{}")
+    api_body = cfg.get("body", "")
+    mcp_cmd = cfg.get("command", "")
+    mcp_tool = cfg.get("tool", "")
+    mcp_args = json.dumps(cfg.get("args", {}), ensure_ascii=False)
+    sql_driver = cfg.get("sql_driver", "postgresql")
+    sql_host = cfg.get("sql_host", "")
+    sql_port = cfg.get("sql_port", "")
+    sql_db = cfg.get("sql_db", "")
+    sql_user = cfg.get("sql_user", "")
+    sql_pass = cfg.get("sql_pass", "")
+    sql_dsn_env = cfg.get("dsn_env", "")
+    sql_dsn = cfg.get("dsn", "")
+    sql_query = cfg.get("query", "")
+    descricao = cfg.get("descricao", "")
+
+    api_sel = {"api": "", "mcp": "", "sql": ""}
+    api_sel[tipo] = 'selected'
+    sql_drv_opts = "".join(f'<option value="{d}" {"selected" if sql_driver==d else ""}>{d.upper()}</option>'
+                           for d in ["postgresql", "mysql", "sqlserver"])
+
     content = f"""
     <div class="card" style="max-width:720px">
       <h3 style="margin-top:0">Editar conector #{cid}</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
+          <div><label>Cliente</label><select name="cliente_id">{opts_cliente}</select></div>
           <div><label>Nome</label><input name="nome" value="{con['nome']}"></div>
-          <div><label>Área</label><select name="area">{opts_area}</select></div>
         </div>
         <div class="form-row">
-          <div><label>Tipo</label><select name="tipo"><option value="api" {"selected" if con['tipo']=='api' else ''}>API</option><option value="mcp" {"selected" if con['tipo']=='mcp' else ''}>MCP</option><option value="sql" {"selected" if con['tipo']=='sql' else ''}>SQL</option></select></div>
+          <div><label>Área</label><select name="area">{opts_area}</select></div>
+          <div><label>Tipo</label>
+            <select name="tipo" id="edit-conn-tipo" onchange="toggleEditConnFields()">
+              <option value="api" {api_sel["api"]}>API</option>
+              <option value="mcp" {api_sel["mcp"]}>MCP</option>
+              <option value="sql" {api_sel["sql"]}>SQL</option>
+            </select></div>
         </div>
-        <label>Config (JSON)</label><textarea name="config_json" rows="6" style="font-family:monospace;font-size:12px">{json.dumps(cfg, indent=2, ensure_ascii=False)}</textarea>
-        <p class="muted" style="font-size:12px">Edite o JSON de configuração diretamente.</p>
-        <label>Descrição</label><input name="descricao" value="{cfg.get('descricao','')}">
+
+        <div id="edit-fields-api" style="display:{'block' if tipo=='api' else 'none'}">
+          <div class="form-row">
+            <div><label>URL</label><input name="api_url" value="{api_url}" placeholder="https://api.externa.com/dados"></div>
+            <div><label>Método</label><select name="api_method"><option value="GET" {"selected" if api_method=='GET' else ''}>GET</option><option value="POST" {"selected" if api_method=='POST' else ''}>POST</option></select></div>
+          </div>
+          <label>Headers (JSON)</label><input name="api_headers" value='{api_headers}' placeholder='{{"Authorization": "Bearer ..."}}'>
+          <label>Body (JSON, só POST)</label><input name="api_body" value="{api_body}" placeholder='{{"id": "{{id_cliente}}"}}'>
+        </div>
+
+        <div id="edit-fields-mcp" style="display:{'block' if tipo=='mcp' else 'none'}">
+          <label>Comando</label><input name="mcp_command" value="{mcp_cmd}" placeholder="python /opt/blueshift/mcp_server.py">
+          <label>Ferramenta (tool)</label><input name="mcp_tool" value="{mcp_tool}" placeholder="erp_buscar_cliente">
+          <label>Argumentos (JSON)</label><input name="mcp_args" value='{mcp_args}' placeholder='{{"id_cliente": "{{id_cliente}}"}}'>
+        </div>
+
+        <div id="edit-fields-sql" style="display:{'block' if tipo=='sql' else 'none'}">
+          <label>Driver</label><select name="sql_driver">{sql_drv_opts}</select>
+          <div class="form-row">
+            <div><label>Host</label><input name="sql_host" value="{sql_host}" placeholder="host.docker.internal"></div>
+            <div><label>Porta</label><input name="sql_port" value="{sql_port}" placeholder="5432 / 3306 / 1433"></div>
+          </div>
+          <div class="form-row">
+            <div><label>Banco</label><input name="sql_db" value="{sql_db}"></div>
+            <div><label>Usuário</label><input name="sql_user" value="{sql_user}"></div>
+          </div>
+          <label>Senha</label><input name="sql_pass" type="password" value="{sql_pass}" placeholder="deixar em branco para manter">
+          <div class="form-row">
+            <div style="flex:1">
+              <label>Query SQL
+                <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
+              </label>
+              <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;">{sql_query}</textarea>
+            </div>
+            <div>
+              <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
+            </div>
+          </div>
+          <div id="sql-test-resultado" style="margin-top:4px;font-size:12px"></div>
+          <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
+            <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" value="{sql_dsn_env}">
+            <label>DSN direto (opcional)</label><input name="sql_dsn" value="{sql_dsn}">
+          </details>
+        </div>
+
+        <label>Descrição</label><input name="descricao" value="{descricao}">
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/conectores">Cancelar</a>
         </div>
       </form>
-    </div>"""
+    </div>
+    <script>
+    function toggleEditConnFields() {{
+      var t = document.getElementById('edit-conn-tipo').value;
+      document.getElementById('edit-fields-api').style.display = t === 'api' ? '' : 'none';
+      document.getElementById('edit-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
+      document.getElementById('edit-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    </script>"""
     return templates.page("Editar conector", content, active="conectores", user=_user())
 
 
