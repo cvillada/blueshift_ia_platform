@@ -158,10 +158,10 @@ h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-grad
 <div class="dep-card">
 <span class="tag tag-core">CORE</span>
 <h3>auth.py</h3>
-<p>Autenticação e RBAC (login_required / admin_required)</p>
+<p>Autenticacao, RBAC, rate limit (login 5/min, API 100/min), CSRF token, api_key_required</p>
 <div class="path">blueshift_layer/portal/auth.py</div>
 <div class="deps"><strong>Depende de:</strong>
-<span>db</span>
+<span>db</span><span>time</span><span>collections</span>
 </div>
 </div>
 

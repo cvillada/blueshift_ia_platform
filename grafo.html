@@ -53,7 +53,7 @@ const nodes = new vis.DataSet([
 
   // --- CORE ---
   {id:"db",       label:"db.py",            group:"core",      title:"SQLite — ponto único de dados",path:"portal/db.py"},
-  {id:"auth",     label:"auth.py",           group:"core",      title:"Autenticação e RBAC",         path:"portal/auth.py"},
+  {id:"auth",     label:"auth.py",           group:"core",      title:"Autenticacao, RBAC, rate limit, CSRF",         path:"portal/auth.py"},
   {id:"memory",   label:"memory.py",         group:"core",      title:"RAG — TF-IDF + cosseno",      path:"portal/memory.py"},
   {id:"llm",      label:"llm_client.py",     group:"core",      title:"LLM OpenAI-compatible",       path:"portal/llm_client.py"},
   {id:"agente",   label:"agente.py",         group:"core",      title:"Orquestrador: RAG->Conectores->LLM->RAG auto-save->Webhook retry 3x",      path:"portal/agente.py"},

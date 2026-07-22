@@ -196,10 +196,19 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 
 ### 🔐 Segurança e Controle de Acesso
 
+- **Senhas com hash**: scrypt (salt 16 bytes, N=16384) — sem plaintext no banco
 - **RBAC**: hierarquia `admin > gestor > usuario > sistema`
+- **Rate limit**: login 5 tentativas/IP/min (bloqueio 15min) + API 100 req/token/min
+- **CSRF**: token em todos os formulários do portal
+- **Session hardening**: cookie HttpOnly + SameSite=Lax + timeout 30min + Secure (HTTPS)
+- **SQL injection**: whitelist de colunas + queries parametrizadas
+- **Path traversal**: nomes de skills validados como `isidentifier()`
+- **Webhook URL**: bloqueio de IPs internos (localhost, 10.x, 192.168.x)
 - **SSO (OIDC)**: login federado opcional (mantém login local)
+- **CORS**: headers configurados (Allow-Origin: \*)
 - **Auditoria LGPD**: toda ação sensível é registrada
 - **Canais com token**: cada canal de integração tem chave própria (regenerável)
+- **Debug mode desligado**: sem tracebacks em produção
 - **Isolamento**: dados separados por `cliente_id` + área
 
 ---
