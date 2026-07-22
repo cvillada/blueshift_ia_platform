@@ -1591,7 +1591,7 @@ def conhecimento():
     </div>
     <div class="card" style="max-width:720px;margin-bottom:16px">
       <h3 style="margin-top:0">Exportar para Fine-Tuning</h3>
-      <p class="muted" style="font-size:13px">Exporta a base de conhecimento como JSONL no formato <code>messages</code> (chat-style), compativel com <b>TreinarModelo</b> (MLX LoRA).</p>
+      <p class="muted" style="font-size:13px">Exporta a base de conhecimento como JSONL no formato <code>messages</code> (chat-style), compativel com frameworks de fine-tuning como MLX, HuggingFace, Unsloth, LlamaFactory, Axolotl e OpenAI.</p>
       <form method="get" style="display:flex;gap:8px;align-items:end">
         <div><label>Cliente</label><select name="cliente_id">{''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}</select></div>
         <div><label>Área</label><select name="area"><option value="">todas</option>{opts_area}</select></div>
