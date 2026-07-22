@@ -70,7 +70,7 @@ def login():
         </div>
       </form>
       <p class="muted" style="margin-top:14px;font-size:12px">
-        Demo: admin / admin123</p>
+        &nbsp;</p>
       <hr style="margin:18px 0;border-color:#1e2a3a">
       <a class="btn btn-sso" href="/portal/sso/login">Entrar com SSO (OIDC)</a>
       <p class="muted" style="margin-top:10px;font-size:11px">Login federado via provedor OIDC (Azure AD, Okta, Keycloak, Google).</p>
