@@ -192,7 +192,9 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 ### ⚙️ Skills
 
 - **Catálogo por área**: skills reutilizáveis (vendas, suporte, financeiro, RH, operações)
-- **Geração com IA**: botão ✨ Gerar com IA que usa o próprio modelo cadastrado para criar o SKILL.md
+- **Edição persistente**: skills editadas são salvas no banco de dados (volume Docker),
+  sobrevivendo a rebuilds do container. O arquivo SKILL.md funciona como fallback.
+- **Geração com IA**: crie o conteúdo da skill descrevendo em português o que o agente deve fazer
 - **Indexação no RAG**: skills podem ser importadas para a base de conhecimento (buscáveis por TF-IDF)
 
 ### 🔐 Segurança e Controle de Acesso
@@ -386,7 +388,7 @@ docker run -d --name blueshift-platform \
 
 > **Persistencia de dados:** o banco SQLite e demais dados ficam no volume `blueshift_data`.
 > Você pode rebuildar o container (`docker build` + `docker stop` + `docker rm` + `docker run`)
-> que os dados (clientes, usuarios, agentes, conectores, documentos RAG) sao preservados.
+> que os dados (clientes, usuarios, agentes, conectores, skills editadas, documentos RAG) sao preservados.
 > Para backup: `docker run --rm -v blueshift_data:/data -v $(pwd):/backup alpine tar czf /backup/blueshift_backup.tar.gz -C /data .`
 
 ---
@@ -419,7 +421,7 @@ blueshift_layer/                    ← Código principal da plataforma
 │   ├── mcp_erp.py                  ← ERP (Postgres)
 │   ├── mcp_crm.py                  ← CRM (dados de exemplo)
 │   └── mcp_rh.py                   ← RH (dados de exemplo)
-└── template_skills/                ← ⚙️ Skills por área
+└── template_skills/                ← ⚙️ Skills por área (fallback; salvos no banco p/ persistencia)
     ├── vendas/SKILL.md
     ├── suporte/SKILL.md
     ├── financeiro/SKILL.md
