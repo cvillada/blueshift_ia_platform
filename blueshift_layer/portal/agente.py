@@ -279,11 +279,17 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
 
 
 # Padrão para extrair parâmetros da pergunta do usuário
-_RE_PARAMS = re.compile(r"(C\d{3,}|E\d{3,}|OP-\d+|[\w.]+@[\w.]+|\d{4}-\d{2}(?:-\d{2})?)", re.IGNORECASE)
+_RE_PARAMS = re.compile(
+    r"(C\d{2,}|E\d{2,}|OP-\d+|[\w.]+@[\w.]+\.[\w.]+|\d{4}-\d{2}(?:-\d{2})?)",
+    re.IGNORECASE,
+)
 
 
 def _extrair_parametros(pergunta: str) -> dict:
-    """Extrai IDs, emails e datas da pergunta para passar aos conectores."""
+    """Extrai IDs, emails e datas da pergunta para passar aos conectores.
+
+    Também captura números soltos após palavras-chave (ex: 'cliente 2' → id_cliente=2).
+    """
     params: dict[str, str] = {}
     for match in _RE_PARAMS.finditer(pergunta):
         val = match.group(1)
@@ -297,6 +303,15 @@ def _extrair_parametros(pergunta: str) -> dict:
             params["id_oportunidade"] = val.upper()
         elif re.match(r"^\d{4}-\d{2}", val) and "data" not in params:
             params["data"] = val
+    # Fallback: extrai números soltos após "cliente", "id", "customer" etc.
+    if "id_cliente" not in params:
+        m = re.search(r"(?:cliente|customer|id)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
+        if m:
+            params["id_cliente"] = m.group(1)
+    if "id_colab" not in params:
+        m = re.search(r"(?:colaborador|funcionario|employee|colab)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
+        if m:
+            params["id_colab"] = m.group(1)
     return params
 
 
