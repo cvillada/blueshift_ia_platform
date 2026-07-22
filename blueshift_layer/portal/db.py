@@ -5,11 +5,42 @@ da plataforma). Nenhuma outra parte do portal abre conexao direta com o
 SQLite — tudo passa por aqui.
 """
 from __future__ import annotations
-
+import hashlib
+import hmac
 import json
+import os
+import secrets
 import sqlite3
+import string
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+
+
+# ──────────────────────────────────────────
+# Hash de senha (scrypt — nativo, sem deps)
+# ──────────────────────────────────────────
+_SCRYPT_N = 16384
+_SCRYPT_R = 8
+_SCRYPT_P = 1
+
+
+def _hash_senha(senha: str) -> str:
+    """Retorna 'salt_hex$hash_hex' usando scrypt."""
+    salt = os.urandom(16)
+    h = hashlib.scrypt(senha.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+    return salt.hex() + "$" + h.hex()
+
+
+def _verificar_senha(senha: str, armazenado: str) -> bool:
+    """Verifica senha contra hash scrypt ou plaintext legado."""
+    if "$" not in armazenado:
+        # ── legado: plaintext (migra na proxima autenticacao bem-sucedida) ──
+        return hmac.compare_digest(senha, armazenado)
+    salt_hex, hash_hex = armazenado.split("$", 1)
+    salt = bytes.fromhex(salt_hex)
+    h = hashlib.scrypt(senha.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+    return hmac.compare_digest(h.hex(), hash_hex)
 
 from datetime import datetime, timezone
 
@@ -333,11 +364,12 @@ def listar_usuarios(cliente_id: int | None = None) -> list[dict]:
 
 
 def criar_usuario(cliente_id, nome, login, senha, papel="usuario", area="") -> int:
+    senha_hash = _hash_senha(senha)
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO usuarios (cliente_id, nome, login, senha, papel, area, ativo, criado_em)
                VALUES (?,?,?,?,?,?,1,?)""",
-            (cliente_id, nome, login, senha, papel, area, now_iso()),
+            (cliente_id, nome, login, senha_hash, papel, area, now_iso()),
         )
         return cur.lastrowid
 
@@ -345,8 +377,13 @@ def criar_usuario(cliente_id, nome, login, senha, papel="usuario", area="") -> i
 def autenticar(login: str, senha: str) -> dict | None:
     with get_conn() as conn:
         r = _row(conn, "SELECT * FROM usuarios WHERE login=? AND ativo=1", (login,))
-        if r and r["senha"] == senha:
-            return dict(r)
+        if r and _verificar_senha(senha, r["senha"]):
+            u = dict(r)
+            # ── migracao: se era plaintext, atualiza para hash ──
+            if "$" not in r["senha"]:
+                conn.execute("UPDATE usuarios SET senha=? WHERE id=?",
+                             (_hash_senha(senha), r["id"]))
+            return u
         return None
 
 
@@ -629,9 +666,15 @@ def buscar_documento(did: int) -> dict | None:
 def atualizar_documento(did: int, **campos) -> None:
     if "conteudo" in campos or "titulo" in campos:
         campos["vetor"] = "[]"  # marca para re-embedding
-    cols = ", ".join(f"{k}=?" for k in campos)
+    # Whitelist de colunas validas da tabela knowledge
+    _COLUNAS_VALIDAS = {"cliente_id", "area", "titulo", "categoria", "fonte",
+                        "conteudo", "vetor", "acessos", "ultimo_acesso"}
+    cols_validas = {k: v for k, v in campos.items() if k in _COLUNAS_VALIDAS}
+    if not cols_validas:
+        return
+    cols = ", ".join(f"{k}=?" for k in cols_validas)
     with get_conn() as conn:
-        conn.execute(f"UPDATE knowledge SET {cols} WHERE id=?", list(campos.values()) + [did])
+        conn.execute(f"UPDATE knowledge SET {cols} WHERE id=?", list(cols_validas.values()) + [did])
 
 
 def deletar_documento(did: int) -> None:

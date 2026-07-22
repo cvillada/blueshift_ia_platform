@@ -12,6 +12,7 @@ Uso:
 from __future__ import annotations
 
 import os
+import secrets
 
 from . import db
 from .views import bp
@@ -49,7 +50,7 @@ def create_app() -> "Flask":
     from flask import Flask
 
     app = Flask(__name__)
-    app.secret_key = "blueshift-portal-dev"  # em prod: BLUESHIFT_PORTAL_SECRET no .env
+    app.secret_key = os.environ.get("BLUESHIFT_PORTAL_SECRET") or secrets.token_hex(32)
 
     db.init_db()
     db.seed_demo()
