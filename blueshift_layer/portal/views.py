@@ -1171,11 +1171,39 @@ def conectores():
             <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
             <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
           </details>
-          <label>Query SQL</label><textarea name="sql_query" rows="3" placeholder="SELECT * FROM vw_clientes WHERE id_cliente = '{{id_cliente}}'"></textarea>
+          <div style="display:flex;gap:8px;align-items:end;margin-top:8px">
+            <div style="flex:1">
+              <label>Query SQL
+                <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
+              </label>
+              <textarea name="sql_query" id="sql-query" rows="3" placeholder="SELECT * FROM vw_clientes WHERE id_cliente = '{{id_cliente}}'"></textarea>
+            </div>
+            <div>
+              <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
+            </div>
+          </div>
+          <div id="sql-test-resultado" style="margin-top:4px;font-size:12px"></div>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
         <div style="margin-top:14px"><button class="btn" type="submit">Cadastrar conector</button></div>
       </form>
+    </div>
+    <div class="modal-overlay" id="modal-query-ia" onclick="if(event.target===this)fecharModalQueryIA()">
+      <div class="modal-box">
+        <h3>🤖 Gerar Query SQL com IA</h3>
+        <p class="muted" style="font-size:13px">Descreva o que a query deve fazer. A IA usara o primeiro modelo cadastrado para gerar o SQL.</p>
+        <textarea id="ia-query-desc" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000, ordenados por nome"></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-spin" id="btn-gerar-query" onclick="gerarQueryIA()">🚀 Gerar</button>
+          <button class="btn ghost" onclick="copiarQueryIA()" id="btn-copiar-query" style="display:none">📋 Copiar para o campo</button>
+          <button class="btn ghost" onclick="fecharModalQueryIA()">Fechar</button>
+        </div>
+        <div id="ia-query-resultado" style="display:none;margin-top:12px">
+          <label>Query gerada:</label>
+          <textarea id="ia-query-conteudo" rows="6" readonly></textarea>
+        </div>
+        <div id="ia-query-erro" class="badge bad" style="display:none;margin-top:8px"></div>
+      </div>
     </div>
     <script>
     function toggleConnFields() {{
@@ -1183,6 +1211,62 @@ def conectores():
       document.getElementById('conn-fields-api').style.display = t === 'api' ? '' : 'none';
       document.getElementById('conn-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('conn-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    function testarConexaoSQL() {{
+      var b = document.getElementById('btn-testar-conexao');
+      b.textContent = '⏳ Testando...';
+      b.disabled = true;
+      var r = document.getElementById('sql-test-resultado');
+      r.innerHTML = '';
+      var fd = new FormData();
+      fd.append('driver', document.getElementById('sql-driver').value);
+      fd.append('host', document.querySelector('[name=sql_host]').value);
+      fd.append('port', document.querySelector('[name=sql_port]').value);
+      fd.append('db', document.querySelector('[name=sql_db]').value);
+      fd.append('user', document.querySelector('[name=sql_user]').value);
+      fd.append('password', document.querySelector('[name=sql_pass]').value);
+      fd.append('dsn', document.querySelector('[name=sql_dsn]').value);
+      fd.append('query', document.querySelector('[name=sql_query]').value);
+      fetch('/portal/conectores/testar-conexao', {{method:'POST',body:fd}})
+        .then(function(r){{return r.json()}})
+        .then(function(d){{
+          b.textContent = '🔌 Testar Conexão';
+          b.disabled = false;
+          r.innerHTML = d.ok
+            ? '<span style="color:var(--ok)">✅ Conexão OK</span>'
+            : '<span style="color:var(--bad)">❌ ' + d.erro + '</span>';
+        }})
+        .catch(function(e){{
+          b.textContent = '🔌 Testar Conexão';
+          b.disabled = false;
+          r.innerHTML = '<span style="color:var(--bad)">❌ Erro: ' + e.message + '</span>';
+        }});
+    }}
+    function abrirModalQueryIA(){{document.getElementById('modal-query-ia').classList.add('show')}}
+    function fecharModalQueryIA(){{document.getElementById('modal-query-ia').classList.remove('show')}}
+    function gerarQueryIA(){{
+      var desc=document.getElementById('ia-query-desc').value.trim();
+      if(!desc){{alert('Descreva a query primeiro.');return}}
+      var driver=document.getElementById('sql-driver').value;
+      var b=document.getElementById('btn-gerar-query');b.classList.add('loading');b.disabled=true;
+      document.getElementById('ia-query-erro').style.display='none';
+      fetch('/portal/conectores/gerar-query-ia',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{descricao:desc,driver:driver}})}})
+        .then(function(r){{return r.json()}})
+        .then(function(d){{
+          b.classList.remove('loading');b.disabled=false;
+          if(d.ok){{
+            document.getElementById('ia-query-resultado').style.display='block';
+            document.getElementById('ia-query-conteudo').value=d.query;
+            document.getElementById('btn-copiar-query').style.display='inline-block';
+          }}else{{
+            var e=document.getElementById('ia-query-erro');e.textContent=d.erro;e.style.display='block';
+          }}
+        }})
+        .catch(function(e){{b.classList.remove('loading');b.disabled=false;var er=document.getElementById('ia-query-erro');er.textContent='Erro: '+e.message;er.style.display='block'}})
+    }}
+    function copiarQueryIA(){{
+      document.getElementById('sql-query').value=document.getElementById('ia-query-conteudo').value;
+      fecharModalQueryIA();
     }}
     </script>
     <div class="card">
@@ -1196,6 +1280,88 @@ def conectores():
         <tbody>{body or '<tr><td colspan="7" class="muted">Nenhum conector cadastrado. Crie um acima.</td></tr>'}</tbody></table>
     </div>"""
     return templates.page("Conectores", content, active="conectores", user=_user())
+
+
+@bp.route("/conectores/testar-conexao", methods=["POST"])
+@auth.admin_required
+def conector_testar_conexao():
+    """Testa a conexao com um banco SQL usando os parametros fornecidos."""
+    driver = request.form.get("driver", "postgresql")
+    host = request.form.get("host", "").strip()
+    port = request.form.get("port", "").strip()
+    db_name = request.form.get("db", "").strip()
+    user = request.form.get("user", "").strip()
+    password = request.form.get("password", "").strip()
+    dsn = request.form.get("dsn", "").strip()
+    query = request.form.get("query", "SELECT 1").strip()
+    if not query:
+        query = "SELECT 1"
+
+    try:
+        if driver == "postgresql":
+            import psycopg
+            if dsn:
+                conn = psycopg.connect(dsn)
+            else:
+                conn = psycopg.connect(host=host or "127.0.0.1", port=port or "5432",
+                                       dbname=db_name, user=user, password=password)
+        elif driver == "mysql":
+            import pymysql
+            conn = pymysql.connect(host=host or "127.0.0.1", port=int(port or "3306"),
+                                   database=db_name, user=user, password=password, charset="utf8mb4")
+        elif driver == "sqlserver":
+            import pymssql
+            conn = pymssql.connect(server=host or "127.0.0.1", port=port or "1433",
+                                   database=db_name, user=user, password=password)
+        else:
+            return jsonify({"ok": False, "erro": f"Driver desconhecido: {driver}"})
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query)
+            conn.commit()
+            return jsonify({"ok": True})
+        finally:
+            conn.close()
+    except ImportError:
+        return jsonify({"ok": False, "erro": f"Driver {driver} nao instalado. Execute: pip install {driver}"})
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)})
+
+
+@bp.route("/conectores/gerar-query-ia", methods=["POST"])
+@auth.admin_required
+def conector_gerar_query_ia():
+    """Usa o primeiro modelo de IA ativo para gerar uma query SQL."""
+    from . import llm_client
+    descricao = (request.form.get("descricao", "") or request.json.get("descricao", "") if request.is_json else "").strip()
+    driver = (request.form.get("driver", "") or request.json.get("driver", "postgresql") if request.is_json else "postgresql").strip()
+    if not descricao:
+        return jsonify({"ok": False, "erro": "Descricao obrigatoria"}), 400
+
+    clientes = db.listar_clientes()
+    if not clientes:
+        return jsonify({"ok": False, "erro": "Nenhum cliente cadastrado"}), 400
+    modelos = db.listar_modelos(clientes[0]["id"])
+    if not modelos:
+        return jsonify({"ok": False, "erro": "Nenhum modelo de IA cadastrado."}), 400
+
+    modelo = modelos[0]
+    dialetos = {"postgresql": "PostgreSQL", "mysql": "MySQL", "sqlserver": "SQL Server"}
+    dialeto = dialetos.get(driver, "SQL")
+    system = (
+        f"Voce e um especialista em SQL para {dialeto}. "
+        f"Gere apenas a query SQL, sem explicacoes, comentarios ou marcacao. "
+        f"Use a sintaxe correta para {dialeto}. "
+        f"Retorne somente o SQL puro."
+    )
+    mensagens = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Crie uma query {dialeto} para: {descricao}"},
+    ]
+    out = llm_client.chat(modelo, mensagens)
+    if out["ok"]:
+        return jsonify({"ok": True, "query": out["content"].strip()})
+    return jsonify({"ok": False, "erro": out.get("error", "Falha ao gerar query")}), 500
 
 
 @bp.route("/conectores/<int:cid>/editar", methods=["GET", "POST"])
