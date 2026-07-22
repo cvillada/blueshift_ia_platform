@@ -108,7 +108,7 @@ def init_db() -> None:
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
                 nome        TEXT NOT NULL,
                 area        TEXT,
-                modelo      TEXT NOT NULL DEFAULT 'finetuned-v1',  -- nome legado (string)
+                modelo      TEXT NOT NULL DEFAULT 'bonsai-8b',  -- nome do modelo (ref. modelo_id)
                 modelo_id   INTEGER,                              -- FK opcional -> modelos(id)
                 modelo_secundario_id INTEGER,                    -- FK opcional -> modelos(id) usado em fallback
                 skills      TEXT,                              -- CSV de skills
@@ -403,7 +403,7 @@ def buscar_agente(aid: int) -> dict | None:
         return dict(row) if row else None
 
 
-def criar_agente(cliente_id, nome, area="", modelo="finetuned-v1", skills="", conectores="",
+def criar_agente(cliente_id, nome, area="", modelo="bonsai-8b", skills="", conectores="",
                  modelo_id=None, modelo_secundario_id=None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
@@ -943,11 +943,11 @@ def seed_demo() -> None:
     criar_usuario(cid, "Beatriz RH", "bia", "bia123", "usuario", "rh")
     # modelo de IA demo (LM Studio local do cliente) — criado ANTES dos agentes
     mid = criar_modelo(cid, "bonsai-8b", "http://127.0.0.1:1234", "bonsai-8b", tipo="local")
-    aid_vendas = criar_agente(cid, "Agente Vendas", "vendas", "finetuned-v1", "vendas,suporte", "erp,crm", modelo_id=mid)
-    criar_agente(cid, "Agente Suporte", "suporte", "finetuned-v1", "suporte", "crm", modelo_id=mid)
-    criar_agente(cid, "Agente Financeiro", "financeiro", "finetuned-v1", "financeiro", "erp", modelo_id=mid)
-    criar_agente(cid, "Agente RH", "rh", "finetuned-v1", "rh", "", modelo_id=mid)
-    criar_agente(cid, "Agente Operações", "operacoes", "finetuned-v1", "operacoes", "erp", modelo_id=mid)
+    aid_vendas = criar_agente(cid, "Agente Vendas", "vendas", "bonsai-8b", "vendas,suporte", "erp,crm", modelo_id=mid)
+    criar_agente(cid, "Agente Suporte", "suporte", "bonsai-8b", "suporte", "crm", modelo_id=mid)
+    criar_agente(cid, "Agente Financeiro", "financeiro", "bonsai-8b", "financeiro", "erp", modelo_id=mid)
+    criar_agente(cid, "Agente RH", "rh", "bonsai-8b", "rh", "", modelo_id=mid)
+    criar_agente(cid, "Agente Operações", "operacoes", "bonsai-8b", "operacoes", "erp", modelo_id=mid)
     # canal de integracao real (API) apontando para o Agente Vendas
     criar_canal(cid, "API Vendas (Webhook)", aid_vendas,
                 tipo="api", token="bs_chan_demo_vendas_123")
