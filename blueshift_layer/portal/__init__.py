@@ -54,6 +54,9 @@ def create_app() -> "Flask":
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["PERMANENT_SESSION_LIFETIME"] = 1800  # 30 min
+    # Secure: so em producao (HTTPS). Local HTTP sem Secure para nao quebrar testes.
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("BLUESHIFT_PORTAL_SECURE", "").lower() in ("1", "true")
+    app.debug = False  # nunca rodar em debug em producao
 
     db.init_db()
     db.seed_demo()
@@ -76,6 +79,13 @@ def create_app() -> "Flask":
         if not token or token != session.get("csrf_token", ""):
             flash("Sessão expirada ou requisição inválida. Tente novamente.", "bad")
             return redirect(url_for("portal.monitorar"))
+
+    @app.after_request
+    def _add_cors(response):
+        response.headers.setdefault("Access-Control-Allow-Origin", "*")
+        response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.setdefault("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        return response
 
     @app.route("/")
     def _root():
