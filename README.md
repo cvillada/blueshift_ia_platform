@@ -282,6 +282,76 @@ Resposta:
 
 ---
 
+## 🤖 Modelos Locais de IA
+
+A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Você pode usar modelos locais (recomendado para on-premise) ou externos.
+
+### Opções de Servidor Local
+
+| Servidor | Descrição | Porta padrão |
+|:---------|:----------|:-------------|
+| **[LM Studio](https://lmstudio.ai)** | GUI para baixar e rodar modelos GGUF | `http://127.0.0.1:1234` |
+| **[Ollama](https://ollama.com)** | CLI simples para rodar modelos locais | `http://127.0.0.1:11434` |
+| **[llama.cpp](https://github.com/ggerganov/llama.cpp)** | Engine C++ leve, via `llama-server` | `http://127.0.0.1:8080` |
+| **[vLLM](https://github.com/vllm-project/vllm)** | Alto throughput, ideal para GPU | `http://127.0.0.1:8000` |
+
+### Setup com LM Studio (recomendado para dev)
+
+```bash
+# 1. Baixe o LM Studio em https://lmstudio.ai
+# 2. Na aba "Discover", busque e baixe um modelo GGUF
+
+# Modelo usado nos testes de desenvolvimento:
+#   bonsai-8b da prism-ml (Q1_0, ~1.2 GB)
+#   → https://huggingface.co/prism-ml/bonsai-8b-GGUF
+
+# 3. Na aba "Local Server":
+#    - Selecione o modelo baixado
+#    - Ative "Cross-Origin-Resource-Sharing (CORS)"
+#    - Ative "Start Server"
+#    - Porta: 1234 (padrão)
+
+# 4. No Portal BlueShift, vá em Modelos IA e cadastre:
+#    - Nome: bonsai-8b
+#    - Endpoint: http://host.docker.internal:1234 (se estiver no Docker)
+#               ou http://127.0.0.1:1234 (se estiver rodando local)
+#    - Modelo: bonsai-8b (ou o nome exato que o servidor espera)
+#    - Tipo: Local
+```
+
+> ⚠️ **No Docker:** o container precisa acessar o LM Studio no host. Use `host.docker.internal` no lugar de `127.0.0.1`. Em Linux, use `--add-host=host.docker.internal:host-gateway`.
+
+### Setup com Ollama
+
+```bash
+# 1. Instale o Ollama: https://ollama.com
+# 2. Baixe um modelo:
+ollama pull llama3.2:3b
+ollama pull phi4:14b
+# 3. Inicie o servidor (já inicia automático no macOS):
+ollama serve
+# 4. No Portal, cadastre:
+#    - Nome: llama3.2
+#    - Endpoint: http://host.docker.internal:11434
+#    - Modelo: llama3.2:3b
+#    - Tipo: Local
+```
+
+### Modelos Externos (OpenAI-compatible)
+
+Se preferir usar APIs externas em vez de modelos locais:
+
+| Provedor | Endpoint | API Key |
+|:---------|:---------|:--------|
+| **DeepSeek** | `https://api.deepseek.com` | ✅ Necessária |
+| **OpenRouter** | `https://openrouter.ai/api/v1` | ✅ Necessária |
+| **OpenAI** | `https://api.openai.com/v1` | ✅ Necessária |
+| **NVIDIA NIM** | `https://integrate.api.nvidia.com/v1` | ✅ Necessária |
+
+No Portal, cadastre como **Tipo: Híbrido** e preencha a API Key.
+
+---
+
 ## 🐳 Docker
 
 ### Instalação via Installer (recomendado)
