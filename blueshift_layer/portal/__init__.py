@@ -31,7 +31,7 @@ def verificar_autoria(chave: str) -> bool:
 
     Uso:
         from blueshift_layer.portal import verificar_autoria
-        verificar_autoria("cvil556556")  # → True
+        verificar_autoria("sua_chave_aqui")  # retorna True se a chave for correta
     """
     import hashlib
     import hmac
