@@ -187,6 +187,7 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 | **RAG Auto-save** | Resultados de conectores são salvos automaticamente no RAG |
 | **Skills no RAG** | Skills do catálogo podem ser indexadas no knowledge |
 | **Monitor** | KPI cards: total docs, áreas, acessos, tamanho médio |
+| **Export Fine-Tuning** | Exporta RAG como JSONL (formato `messages`) para MLX, HuggingFace, Unsloth, OpenAI |
 
 ### ⚙️ Skills
 
