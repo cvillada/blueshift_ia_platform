@@ -1848,8 +1848,25 @@ def conhecimento():
     area_sel = request.args.get("area", "")
     docs = db.listar_documentos(cliente_id=cid_sel, area=area_sel or None)
 
+    # Paginação
+    pagina = request.args.get("pagina", 1, type=int)
+    limite = request.args.get("limite", 20, type=int)
+    if limite not in (10, 20, 50, 100, 200):
+        limite = 20
+    total = len(docs)
+    total_paginas = max(1, (total + limite - 1) // limite)
+    pagina = max(1, min(pagina, total_paginas))
+    inicio = (pagina - 1) * limite
+    fim = inicio + limite
+    pagina_atual = docs[inicio:fim]
+
+    def _url(**kw):
+        args = dict(request.args)
+        args.update(kw)
+        return url_for("portal.conhecimento", **args)
+
     body = ""
-    for d in docs:
+    for d in pagina_atual:
         preview = d['conteudo'][:120] + ("…" if len(d['conteudo']) > 120 else "")
         acessos_txt = f"{d.get('acessos',0)} acesso(s)" if d.get('acessos', 0) else "0 acesso"
         ultimo = f" · último: {d.get('ultimo_acesso','-')[:10]}" if d.get('ultimo_acesso') else ""
@@ -1864,6 +1881,26 @@ def conhecimento():
             <a href="{url_for('portal.conhecimento_editar', did=d['id'])}">editar</a>
             <a href="{url_for('portal.conhecimento_excluir', did=d['id'])}" onclick="return confirm('Excluir documento?')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
+
+    # Botões de paginação
+    pag_btns = ""
+    if total_paginas > 1:
+        pag_btns = '<div class="paginacao" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px">'
+        pag_btns += f'<span class="muted">{inicio+1}–{min(fim, total)} de {total}</span>'
+        pag_btns += '<div style="display:flex;gap:4px">'
+        if pagina > 1:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=1, limite=limite)}" style="padding:4px 10px;font-size:12px">«</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina-1, limite=limite)}" style="padding:4px 10px;font-size:12px">‹</a>'
+        for p in range(max(1, pagina-2), min(total_paginas, pagina+2)+1):
+            ativo = ' style="padding:4px 10px;font-size:12px"'
+            if p == pagina:
+                pag_btns += f'<button class="btn" style="padding:4px 10px;font-size:12px">{p}</button>'
+            else:
+                pag_btns += f'<a class="btn ghost" href="{_url(pagina=p, limite=limite)}" style="padding:4px 10px;font-size:12px">{p}</a>'
+        if pagina < total_paginas:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina+1, limite=limite)}" style="padding:4px 10px;font-size:12px">›</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=total_paginas, limite=limite)}" style="padding:4px 10px;font-size:12px">»</a>'
+        pag_btns += '</div></div>'
 
     # --- Estatisticas ---
     stats = db.contar_documentos(cliente_id=cid_sel)
@@ -1953,9 +1990,13 @@ def conhecimento():
       <form method="get" style="margin-bottom:10px;display:flex;gap:8px;align-items:end">
         <div><label>Cliente</label><select name="cliente_id" onchange="this.form.submit()"><option value="">todos</option>{''.join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())}</select></div>
         <div><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">todas</option>{opts_area}</select></div>
+        <div><label>Por página</label><select name="limite" onchange="this.form.submit()">
+          {' '.join(f'<option value="{n}" {"selected" if limite==n else ""}>{n}</option>' for n in [10,20,50,100,200])}
+        </select></div>
       </form>
       <table><thead><tr><th>Título</th><th>Área</th><th>Categoria</th><th>Conteúdo</th><th>Acessos</th><th>Quando</th><th></th></tr></thead>
         <tbody>{body or '<tr><td colspan="7" class="muted">Nenhum documento.</td></tr>'}</tbody></table>
+      {pag_btns}
     </div>"""
     return templates.page("Base de Conhecimento", content, active="conhecimento", user=u)
 
