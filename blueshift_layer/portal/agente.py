@@ -147,12 +147,12 @@ def _skills_text(skills_csv: str) -> str:
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001") -> dict:
-    """Executa o agente: RAG → conectores da área → modelo + skills.
+    """Executa o agente: conectores (1º) → RAG (se necessário) → modelo + skills.
 
     Hierarquia de execução:
-      1. RAG (memória do usuário + base de conhecimento) — mais rápido
-      2. Conectores da área do agente (API/MCP/SQL) — só se precisar de dado externo
-      3. LLM com todo o contexto montado
+      1. Conectores da área do agente (API/MCP/SQL) — fonte primária de dados
+      2. RAG (memória + base de conhecimento) — só se conectores não retornaram dados
+      3. LLM com skills + contexto + dados montado
 
     Fallback de modelo: tenta o `modelo_id` do agente; se o endpoint falhar
     tenta `modelo_secundario_id` antes de desistir.
@@ -166,16 +166,12 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
                 "error": "Agente não tem um Modelo de IA válido cadastrado.", "contexto": [],
                 "ferramentas": []}
 
-    # --- 1. RAG: contexto da base de conhecimento (mais rápido) ---
-    contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=4)
-
-    # --- 2. Conectores da área do agente (se houver) ---
+    # --- 1. Conectores da área do agente (fonte primária de dados) ---
     ferramentas = []
     area = agente.get("area") or ""
     if area:
         try:
             from ..connector_pack import registry
-            # Extrai parâmetros da pergunta (IDs, emails, códigos)
             params = _extrair_parametros(pergunta)
             params.setdefault("id_cliente", id_cliente)
             ferramentas = registry.executar_conectores_area(
@@ -183,6 +179,15 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
             )
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
+
+    # --- 2. RAG: só busca se conectores não retornaram dados ---
+    tem_dados_vivos = any(
+        f.get("resultado") for f in ferramentas
+    )
+    if not tem_dados_vivos:
+        contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=4)
+    else:
+        contexto = []
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
