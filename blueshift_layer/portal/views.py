@@ -2026,7 +2026,7 @@ def conhecimento():
           <td>{templates.badge(d['categoria'])}</td>
           <td class="muted">{preview}</td>
           <td style="font-size:12px">{acessos_txt}{ultimo}</td>
-          <td class="muted">{d['criado_em'][:10]}</td>
+          <td class="muted">{d['criado_em'][:16]}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conhecimento_editar', did=d['id'])}">editar</a>
             <a href="{url_for('portal.conhecimento_excluir', did=d['id'])}" onclick="return confirm('Excluir documento?')" style="color:var(--bad)">excluir</a>
