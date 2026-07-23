@@ -336,6 +336,13 @@ def clientes():
       <div class="muted">Gerencie e cadastre os clientes da plataforma.</div>
       <a class="btn" href="{url_for('portal.cliente_novo')}">+ Cadastrar cliente</a>
     </div>
+    <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:8px">
+      <div class="muted" style="font-size:13px">{total} memória(s) registrada(s)</div>
+      <div><label style="font-size:12px">Por página</label>
+        <select onchange="var u=new URL(location.href);u.searchParams.set('limite',this.value);u.searchParams.set('pagina','1');location.href=u.toString()" style="font-size:12px;padding:3px 6px">
+          {limite_opts}
+        </select></div>
+    </div>
     {tabela}"""
     return templates.page("Clientes", content, active="clientes", user=_user())
 
@@ -1717,16 +1724,56 @@ def memoria():
     dono = u["login"] if u and u["papel"] not in ("admin", "gestor") else None
     rows = db.listar_memorias(cliente_id) if (u and u["papel"] in ("admin", "gestor")) else \
         [m for m in db.listar_memorias(cliente_id or None) if m["usuario"] == u["login"]]
+
+    # Paginacao
+    pagina = request.args.get("pagina", 1, type=int)
+    limite = request.args.get("limite", 20, type=int)
+    if limite not in (10, 20, 50, 100, 200):
+        limite = 20
+    total = len(rows)
+    total_paginas = max(1, (total + limite - 1) // limite)
+    pagina = max(1, min(pagina, total_paginas))
+    inicio = (pagina - 1) * limite
+    fim = inicio + limite
+    pagina_atual = rows[inicio:fim]
+
+    def _url(**kw):
+        args = dict(request.args)
+        args.update(kw)
+        return url_for("portal.memoria", **args)
+
     body = ""
-    for m in rows:
+    for m in pagina_atual:
         body += f"""<tr>
           <td>{templates.badge(m['tipo'])}</td>
           <td>{m['conteudo']}</td>
           <td>{m['usuario']}</td>
           <td class="muted">{m['criado_em']}</td>
         </tr>"""
+
+    pag_btns = ""
+    if total_paginas > 1:
+        pag_btns = '<div class="paginacao" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px">'
+        pag_btns += f'<span class="muted">{inicio+1}–{min(fim, total)} de {total}</span>'
+        pag_btns += '<div style="display:flex;gap:4px">'
+        if pagina > 1:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=1, limite=limite)}" style="padding:4px 10px;font-size:12px">«</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina-1, limite=limite)}" style="padding:4px 10px;font-size:12px">‹</a>'
+        for p in range(max(1, pagina-2), min(total_paginas, pagina+2)+1):
+            if p == pagina:
+                pag_btns += f'<button class="btn" style="padding:4px 10px;font-size:12px">{p}</button>'
+            else:
+                pag_btns += f'<a class="btn ghost" href="{_url(pagina=p, limite=limite)}" style="padding:4px 10px;font-size:12px">{p}</a>'
+        if pagina < total_paginas:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina+1, limite=limite)}" style="padding:4px 10px;font-size:12px">›</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=total_paginas, limite=limite)}" style="padding:4px 10px;font-size:12px">»</a>'
+        pag_btns += '</div></div>'
+
+    # Opcoes do seletor de limite
+    limite_opts = " ".join(f'<option value="{n}" {"selected" if limite==n else ""}>{n}</option>' for n in [10,20,50,100,200])
+
     tabela = f"""<table><thead><tr><th>Tipo</th><th>Conteúdo</th><th>Usuário</th><th>Quando</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=4 class="empty">Nenhuma memória.</td></tr>'}</tbody></table>"""
+      <tbody>{body or '<tr><td colspan=4 class="empty">Nenhuma memória.</td></tr>'}</tbody></table>{pag_btns}"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
       Memória persistente por usuário (banco vetorial local). Isolada por login — cada usuário vê só a própria.
@@ -1743,6 +1790,13 @@ def memoria():
         <label>Conteúdo</label><textarea name="conteudo" rows="3" placeholder="Ex: cliente prefere contato por email"></textarea>
         <div style="margin-top:12px"><button class="btn" type="submit">Salvar memória</button></div>
       </form>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:8px">
+      <div class="muted" style="font-size:13px">{total} memória(s) registrada(s)</div>
+      <div><label style="font-size:12px">Por página</label>
+        <select onchange="var u=new URL(location.href);u.searchParams.set('limite',this.value);u.searchParams.set('pagina','1');location.href=u.toString()" style="font-size:12px;padding:3px 6px">
+          {limite_opts}
+        </select></div>
     </div>
     {tabela}"""
     return templates.page("Memória", content, active="memoria", user=u)
