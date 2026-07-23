@@ -112,20 +112,22 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 1   Usuário pergunta
     │
 2   ▼
-    RAG (TF-IDF)  ← busca na base de conhecimento + memórias
-    │                * Se achar resposta com score alto, usa direto
-    │                * Skills indexadas também são encontráveis aqui
-    │
-    ▼ (se precisar de dado externo)
-3   Conectores da área  →  API REST / MCP stdio / SQL
-    │   Parâmetros (C001, email, datas) extraídos da pergunta
+    Conectores da área  →  SQL / API REST / MCP stdio
+    │   Parâmetros (id_cliente, email, datas) extraídos da pergunta
+    │   * Placeholder {id_cliente} substituído pelos valores extraídos
     │
     ▼
-4   LLM + contexto  →  Resposta (JSON)
-    │   Modelo principal + fallback automático
+3   RAG (TF-IDF)  ← sempre busca, top_k=2 se conectores ok, 4 se vazios
+    │   * Skills indexadas também são encontráveis aqui
+    │
+    ▼
+4   LLM + Skills + Dados + Contexto  →  Resposta (JSON)
+    │   * Dados de sistema = FONTE PRIMÁRIA
+    │   * Contexto RAG = FONTE SECUNDÁRIA
+    │   * Modelo principal + fallback automático
     │
     ▼ (pós-resposta)
-5   RAG auto-save  →  Guarda resultado dos conectores no knowledge
+5   Auto-alimentação  →  Guarda pergunta + resposta na memória
     │   Próxima pergunta similar: etapa 2 responde direto, sem conector
     │
     ▼
