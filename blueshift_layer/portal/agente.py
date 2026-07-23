@@ -336,6 +336,7 @@ def _extrair_parametros(pergunta: str) -> dict:
             r"(?:cliente|customer)\s+id\s*[#:]?\s*(\d+)"  # "cliente id 2"
             r"|(?:cliente|customer)\s*[#:]?\s*(\d+)"       # "cliente 2"
             r"|\bid\s*[#:]?\s*(\d+)(?:[\s?.!,;:'`]|$)",    # "id 2" ou "id 22?"
+            r"|id_cliente\s*[#:]?\s*(\d+)",                 # "id_cliente 22"
             pergunta, re.IGNORECASE,
         )
         if m:
