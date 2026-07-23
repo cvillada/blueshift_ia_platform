@@ -1178,18 +1178,14 @@ def conectores():
             <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
             <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
           </details>
-          <div style="display:flex;gap:8px;align-items:end;margin-top:8px">
-            <div style="flex:1">
-              <label>Query SQL
-                <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
-              </label>
-              <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;  (use &#123;id_cliente&#125;, &#123;email&#125;, &#123;data&#125;)"></textarea>
-            </div>
-            <div>
-              <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
-            </div>
+          <div style="text-align:center;margin:10px 0">
+            <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px" id="btn-testar-conexao">🔌 Testar Conexão</button>
           </div>
-          <div id="sql-test-resultado" style="margin-top:4px;font-size:12px"></div>
+          <div id="sql-test-resultado" style="margin-bottom:6px;font-size:12px;text-align:center"></div>
+          <label>Query SQL
+            <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
+          </label>
+          <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;  (use &#123;id_cliente&#125;, &#123;email&#125;, &#123;data&#125;)"></textarea>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
         <div style="margin-top:14px"><button class="btn" type="submit">Cadastrar conector</button></div>
@@ -1496,6 +1492,14 @@ def conector_editar(cid: int):
             <div><label>Usuário</label><input name="sql_user" value="{sql_user}"></div>
           </div>
           <label>Senha</label><input name="sql_pass" type="password" value="{sql_pass}" placeholder="deixar em branco para manter">
+          <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
+            <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" value="{sql_dsn_env}">
+            <label>DSN direto (opcional)</label><input name="sql_dsn" value="{sql_dsn}">
+          </details>
+          <div style="text-align:center;margin:10px 0">
+            <button type="button" class="btn ghost" onclick="testarConexaoEdit()" style="font-size:12px" id="btn-testar-conexao">🔌 Testar Conexão</button>
+          </div>
+          <div id="sql-test-resultado" style="margin-bottom:6px;font-size:12px;text-align:center"></div>
           <div class="form-row">
             <div style="flex:1">
               <label>Query SQL
@@ -1503,15 +1507,7 @@ def conector_editar(cid: int):
               </label>
               <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;">{sql_query}</textarea>
             </div>
-            <div>
-              <button type="button" class="btn ghost" onclick="testarConexaoEdit()" style="font-size:12px;white-space:nowrap" id="btn-testar-conexao">🔌 Testar Conexão</button>
-            </div>
           </div>
-          <div id="sql-test-resultado" style="margin-top:4px;font-size:12px"></div>
-          <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
-            <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" value="{sql_dsn_env}">
-            <label>DSN direto (opcional)</label><input name="sql_dsn" value="{sql_dsn}">
-          </details>
         </div>
 
         <label>Descrição</label><input name="descricao" value="{descricao}">
