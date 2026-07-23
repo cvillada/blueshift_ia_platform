@@ -667,11 +667,17 @@ def agente_testar(aid: int):
       skills [{a['skills'] or '-'}], {conn_info}.
     </div>
     <div class="card" style="max-width:760px">
-      <form method="post">
+      <form method="post" id="form-agente-test">
         {templates.csrf_field()}<label>Pergunta para o agente</label>
         <textarea name="pergunta" rows="3" placeholder="Ex: qual o status do cliente 123?">{request.form.get("pergunta","")}</textarea>
-        <div style="margin-top:12px"><button class="btn" type="submit">Enviar ao agente</button></div>
+        <div style="margin-top:12px"><button class="btn btn-spin" id="btn-enviar-agente" type="submit">Enviar ao agente</button></div>
       </form>
+      <script>
+      document.getElementById('form-agente-test').addEventListener('submit',function(){
+        var b=document.getElementById('btn-enviar-agente');
+        b.classList.add('loading');b.disabled=true;b.innerHTML='\u23f3 Processando...';
+      });
+      </script>
       {ctx_html}
       {fer_html}
       {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}</div>' if resposta else ''}
