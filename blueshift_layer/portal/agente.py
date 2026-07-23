@@ -146,7 +146,7 @@ def _skills_text(skills_csv: str) -> str:
     return "\n".join(partes)
 
 
-def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001") -> dict:
+def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -> dict:
     """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
 
     Hierarquia de execução:
@@ -158,7 +158,8 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
     Fallback de modelo: tenta o `modelo_id` do agente; se o endpoint falhar
     tenta `modelo_secundario_id` antes de desistir.
 
-    Retorna dict {ok, content, model, model_fallback, error, contexto, ferramentas}.
+    id_cliente: opcional. Se fornecido, usado como fallback se a extração
+    automática não encontrar. Padrão vazio — nenhum ID forçado.
     """
     cliente_id = agente["cliente_id"]
     modelo = db.buscar_modelo(agente["modelo_id"]) if agente.get("modelo_id") else None
@@ -174,7 +175,6 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         try:
             from ..connector_pack import registry
             params = _extrair_parametros(pergunta)
-            params.setdefault("id_cliente", id_cliente)
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
             )
@@ -305,38 +305,66 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
         pass  # fallback silencioso — RAG e best-effort
 
 
-# Padrão para extrair parâmetros da pergunta do usuário
-_RE_PARAMS = re.compile(
-    r"(C\d{2,}|E\d{2,}|OP-\d+|[\w.]+@[\w.]+\.[\w.]+|\d{4}-\d{2}(?:-\d{2})?)",
-    re.IGNORECASE,
-)
+# --------------------------------------------------------------------------- #
+# Extrator inteligente de parâmetros da pergunta do usuário
+# --------------------------------------------------------------------------- #
+
+# Mapeamento de prefixos conhecidos para nomes de parâmetros
+_PREFIX_MAP = {
+    "c": "id_cliente",
+    "e": "id_colab",
+    "op": "id_oportunidade",
+    "ped": "id_pedido",
+}
+
+# Regex para capturar códigos como C001, E001, PED-99, FUNC42
+_RE_CODIGO = re.compile(r"([A-Za-z]+)-?(\d{2,})")
+
+# Regex para email
+_RE_EMAIL = re.compile(r"[\w.]+@[\w.]+\.[\w.]+")
 
 
 def _extrair_parametros(pergunta: str) -> dict:
-    """Extrai IDs, emails e datas da pergunta para passar aos conectores.
+    """Extrai parâmetros da pergunta do usuário de forma genérica.
 
-    Também captura números soltos após palavras-chave (ex: 'cliente 2' → id_cliente=2).
+    Reconhece automaticamente:
+      - Códigos: C001, E001, PED-99, FUNC42 → prefixo vira nome do param
+      - Emails: usuario@dominio.com
+      - Datas: 2026-07-22
+      - chave='valor' na pergunta
+      - Números após palavras-chave (fallback)
+
+    Não usa default C001 — se não extrair, o placeholder {param} na query
+    fica literal (e o banco retorna vazio, que é mais honesto).
     """
     params: dict[str, str] = {}
-    for match in _RE_PARAMS.finditer(pergunta):
-        val = match.group(1)
-        if "@" in val and "email" not in params:
-            params["email"] = val
-        elif val.upper().startswith("C") and "id_cliente" not in params:
-            params["id_cliente"] = val.upper()
-        elif val.upper().startswith("E") and "id_colab" not in params:
-            params["id_colab"] = val.upper()
-        elif val.upper().startswith("OP-") and "id_oportunidade" not in params:
-            params["id_oportunidade"] = val.upper()
-        elif re.match(r"^\d{4}-\d{2}", val) and "data" not in params:
-            params["data"] = val
-    # Fallback: extrai números soltos após palavras-chave (ex: 'cliente 2', 'cliente id 2')
+
+    # --- 1. Códigos (C001, E001, PED-99, FUNC42, OP-123) ---
+    for m in _RE_CODIGO.finditer(pergunta):
+        prefixo = m.group(1).lower()
+        numero = m.group(2)
+        chave = _PREFIX_MAP.get(prefixo, f"id_{prefixo}")
+        if chave not in params:
+            # Preserva maiusculas do codigo original (C001, nao c001)
+            params[chave] = f"{m.group(1).upper()}{numero}" if prefixo in ("c", "e") else m.group(0).upper()
+
+    # --- 2. Email ---
+    m = _RE_EMAIL.search(pergunta)
+    if m and "email" not in params:
+        params["email"] = m.group(0)
+
+    # --- 3. Data (YYYY-MM-DD) ---
+    m = re.search(r"\b(\d{4}-\d{2}(?:-\d{2})?)\b", pergunta)
+    if m and "data" not in params:
+        params["data"] = m.group(1)
+
+    # --- 4. Fallback: números após palavras-chave (se ainda não extraiu) ---
     if "id_cliente" not in params:
         m = re.search(
-            r"(?:cliente|customer)\s+id\s*[#:]?\s*(\d+)"  # "cliente id 2"
-            r"|(?:cliente|customer)\s*[#:]?\s*(\d+)"       # "cliente 2"
-            r"|\bid\s*[#:]?\s*(\d+)(?:[\s?.!,;:'`]|$)"            # "id 2" ou "id 22?"
-            r"|id_cliente\s*[#:=]?\s*(\d+)",                 # "id_cliente 22" ou "id_cliente=10"
+            r"(?:cliente|customer)\s+id\s*[#:]?\s*(\d+)"   # "cliente id 2"
+            r"|(?:cliente|customer)\s*[#:]?\s*(\d+)"        # "cliente 2"
+            r"|\bid\s*[#:]?\s*(\d+)(?:[\s?.!,;:'`]|$)"     # "id 2" ou "id 22?"
+            r"|id_cliente\s*[#:=]?\s*(\d+)",                # "id_cliente 22" ou "id_cliente=10"
             pergunta, re.IGNORECASE,
         )
         if m:
@@ -345,12 +373,14 @@ def _extrair_parametros(pergunta: str) -> dict:
         m = re.search(r"(?:colaborador|funcionario|employee|colab)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
         if m:
             params["id_colab"] = m.group(1)
-    # Extrator generico: captura qualquer chave='valor' ou chave="valor" na pergunta
+
+    # --- 5. Extrator genérico: chave='valor' ou chave="valor" ---
     for m in re.finditer(r"""([\w_]+)\s*=\s*['\"]([^'\"]+)['\"]""", pergunta):
         chave = m.group(1).lower()
         valor = m.group(2)
         if chave not in params:
             params[chave] = valor
+
     return params
 
 

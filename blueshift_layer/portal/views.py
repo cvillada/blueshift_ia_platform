@@ -631,7 +631,7 @@ def agente_testar(aid: int):
     if request.method == "POST":
         pergunta = request.form.get("pergunta", "").strip()
         if pergunta:
-            out = agente_mod.responder(a, pergunta, u["login"], id_cliente="C001")
+            out = agente_mod.responder(a, pergunta, u["login"])
             fallback_usado = out.get("model_fallback", False)
             if out["ok"]:
                 resposta = out["content"]
