@@ -1678,9 +1678,28 @@ def uso_tokens():
 @auth.admin_required
 def auditoria():
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    rows = db.listar_auditoria(200)
+    filtro_usuario = request.args.get("usuario", "").strip()
+    limite = request.args.get("limite", 50, type=int)
+    if limite not in (10, 20, 50, 100, 200):
+        limite = 50
+    pagina = request.args.get("pagina", 1, type=int)
+
+    # Carrega registros com filtro (limite generoso para paginar)
+    rows = db.listar_auditoria(5000, usuario=filtro_usuario or None)
+    total = len(rows)
+    total_paginas = max(1, (total + limite - 1) // limite)
+    pagina = max(1, min(pagina, total_paginas))
+    inicio = (pagina - 1) * limite
+    fim = inicio + limite
+    pagina_atual = rows[inicio:fim]
+
+    def _url(**kw):
+        args = dict(request.args)
+        args.update(kw)
+        return url_for("portal.auditoria", **args)
+
     body = ""
-    for a in rows:
+    for a in pagina_atual:
         cliente = clientes.get(a["cliente_id"], "-") if a["cliente_id"] else "-"
         body += f"""<tr>
           <td class="muted">{a['criado_em']}</td>
@@ -1691,12 +1710,55 @@ def auditoria():
           <td>{cliente}</td>
           <td class="muted">{a['ip'] or '-'}</td>
         </tr>"""
+
+    # Paginacao
+    pag_btns = ""
+    if total_paginas > 1:
+        pag_btns = '<div class="paginacao" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px">'
+        pag_btns += f'<span class="muted">{inicio+1}–{min(fim, total)} de {total}</span>'
+        pag_btns += '<div style="display:flex;gap:4px">'
+        if pagina > 1:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=1)}" style="padding:4px 10px;font-size:12px">«</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina-1)}" style="padding:4px 10px;font-size:12px">‹</a>'
+        for p in range(max(1, pagina-2), min(total_paginas, pagina+2)+1):
+            if p == pagina:
+                pag_btns += f'<button class="btn" style="padding:4px 10px;font-size:12px">{p}</button>'
+            else:
+                pag_btns += f'<a class="btn ghost" href="{_url(pagina=p)}" style="padding:4px 10px;font-size:12px">{p}</a>'
+        if pagina < total_paginas:
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina+1)}" style="padding:4px 10px;font-size:12px">›</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url(pagina=total_paginas)}" style="padding:4px 10px;font-size:12px">»</a>'
+        pag_btns += '</div></div>'
+
+    # Opcoes do seletor de limite
+    limite_opts = " ".join(f'<option value="{n}" {"selected" if limite==n else ""}>{n}</option>' for n in [10,20,50,100,200])
+
+    # Lista de usuarios para o filtro
+    usuarios = sorted(set(r["usuario"] for r in rows))
+
     tabela = f"""<table><thead><tr><th>Data/Hora</th><th>Usuário</th><th>Papel</th><th>Ação</th><th>Alvo</th><th>Cliente</th><th>IP</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum evento registrado.</td></tr>'}</tbody></table>"""
+      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum evento registrado.</td></tr>'}</tbody></table>{pag_btns}"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
       Rastreabilidade completa (LGPD): todo login e toda ação sensível é registrada com usuário, papel, alvo, cliente e IP.
-    </div>{tabela}"""
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Filtros</h3>
+      <form method="get" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+        <div><label>Usuário</label>
+          <select name="usuario">
+            <option value="">todos</option>
+            {''.join(f'<option value="{u}" {"selected" if filtro_usuario==u else ""}>{u}</option>' for u in usuarios)}
+          </select></div>
+        <div><label>Por página</label>
+          <select name="limite" onchange="this.form.submit()">
+            {limite_opts}
+          </select></div>
+        <div><button class="btn ghost" type="submit">Filtrar</button>
+          <a class="btn ghost" href="/portal/auditoria" style="margin-left:4px">Limpar</a></div>
+      </form>
+    </div>
+    {tabela}"""
     return templates.page("Auditoria", content, active="auditoria", user=_user())
 
 

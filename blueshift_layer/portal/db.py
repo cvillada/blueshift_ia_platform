@@ -944,10 +944,16 @@ def registrar_auditoria(usuario, papel, acao, alvo="", cliente_id=None, ip="", d
         )
 
 
-def listar_auditoria(limite: int = 100) -> list[dict]:
+def listar_auditoria(limite: int = 100, usuario: str | None = None) -> list[dict]:
     with get_conn() as conn:
-        return [dict(r) for r in _rows(
-            conn, "SELECT * FROM auditoria ORDER BY id DESC LIMIT ?", (limite,))]
+        sql = "SELECT * FROM auditoria"
+        params = []
+        if usuario:
+            sql += " WHERE usuario=?"
+            params.append(usuario)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limite)
+        return [dict(r) for r in _rows(conn, sql, params)]
 
 def buscar_sso_config() -> dict | None:
     """Retorna a configuracao de SSO (unica linha). None se nao houver."""
