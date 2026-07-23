@@ -181,14 +181,12 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
 
-    # --- 2. RAG: complementa contexto se conectores nao retornaram dados ---
+    # --- 2. RAG: complementa contexto mesmo se conectores retornaram dados ---
     tem_dados_vivos = any(
         f.get("resultado") for f in ferramentas
     )
-    if tem_dados_vivos:
-        contexto = []
-    else:
-        contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=4)
+    top_k = 2 if tem_dados_vivos else 4
+    contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
