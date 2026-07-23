@@ -1505,7 +1505,7 @@ def conector_editar(cid: int):
               <label>Query SQL
                 <button type="button" class="btn-ia" onclick="abrirModalQueryIAEdit()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
               </label>
-              <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;">{sql_query}</textarea>
+              <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;" style="width:100%;box-sizing:border-box">{sql_query}</textarea>
             </div>
           </div>
         </div>
