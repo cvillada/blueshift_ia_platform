@@ -1501,7 +1501,7 @@ def conector_editar(cid: int):
           </div>
           <div id="sql-test-resultado" style="margin-bottom:6px;font-size:12px;text-align:center"></div>
           <div class="form-row">
-            <div style="flex:1">
+            <div style="flex:1;width:100%">
               <label>Query SQL
                 <button type="button" class="btn-ia" onclick="abrirModalQueryIAEdit()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
               </label>
