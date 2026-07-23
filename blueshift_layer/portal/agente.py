@@ -345,6 +345,12 @@ def _extrair_parametros(pergunta: str) -> dict:
         m = re.search(r"(?:colaborador|funcionario|employee|colab)\s*[#:]?\s*(\d+)", pergunta, re.IGNORECASE)
         if m:
             params["id_colab"] = m.group(1)
+    # Extrator generico: captura qualquer chave='valor' ou chave="valor" na pergunta
+    for m in re.finditer(r"""([\w_]+)\s*=\s*['\"]([^'\"]+)['\"]""", pergunta):
+        chave = m.group(1).lower()
+        valor = m.group(2)
+        if chave not in params:
+            params[chave] = valor
     return params
 
 
