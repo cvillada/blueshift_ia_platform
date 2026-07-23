@@ -147,11 +147,12 @@ def _skills_text(skills_csv: str) -> str:
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001") -> dict:
-    """Executa o agente: conectores (1º) → RAG (se necessário) → modelo + skills.
+    """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
 
     Hierarquia de execução:
       1. Conectores da área do agente (API/MCP/SQL) — fonte primária de dados
-      2. RAG (memória + base de conhecimento) — só se conectores não retornaram dados
+      2. RAG (memória + base de conhecimento) — sempre busca, mas com menos
+         documentos (top_k=2) se conectores já retornaram dados vivos
       3. LLM com skills + contexto + dados montado
 
     Fallback de modelo: tenta o `modelo_id` do agente; se o endpoint falhar
@@ -180,14 +181,12 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "C001
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
 
-    # --- 2. RAG: só busca se conectores não retornaram dados ---
+    # --- 2. RAG: complementa contexto mesmo se conectores retornaram dados ---
     tem_dados_vivos = any(
         f.get("resultado") for f in ferramentas
     )
-    if not tem_dados_vivos:
-        contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=4)
-    else:
-        contexto = []
+    top_k = 2 if tem_dados_vivos else 4
+    contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
