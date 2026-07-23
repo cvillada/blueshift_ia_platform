@@ -278,7 +278,7 @@ Resposta:
   "ok": true,
   "resposta": "O cliente C001 possui 3 interações no CRM...",
   "agente": "Agente Vendas",
-  "modelo": "bonsai-8b",
+  "modelo": "hermes-3-llama-3.1-8b",
   "contexto": [...],
   "ferramentas": [...],
   "webhook": {"enviado": true, "status": 200}
@@ -307,8 +307,13 @@ A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Voc
 # 2. Na aba "Discover", busque e baixe um modelo GGUF
 
 # Modelo usado nos testes de desenvolvimento:
-#   bonsai-8b da prism-ml (Q1_0, ~1.2 GB)
-#   → https://huggingface.co/prism-ml/bonsai-8b-GGUF
+#   NousResearch/Hermes-3-Llama-3.1-8B (Q4_K_M, ~5.5 GB)
+#   → Buscar no LM Studio: "hermes-3-llama-3.1-8b"
+#
+# Alternativas leves:
+#   - Llama 3.1 8B Instruct
+#   - Mistral 7B v0.3
+#   - Qwen 2.5 7B Instruct
 
 # 3. Na aba "Local Server":
 #    - Selecione o modelo baixado
@@ -317,10 +322,10 @@ A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Voc
 #    - Porta: 1234 (padrão)
 
 # 4. No Portal BlueShift, vá em Modelos IA e cadastre:
-#    - Nome: bonsai-8b
+#    - Nome: Hermes-3-Llama-3.1-8B
 #    - Endpoint: http://host.docker.internal:1234 (se estiver no Docker)
 #               ou http://127.0.0.1:1234 (se estiver rodando local)
-#    - Modelo: bonsai-8b (ou o nome exato que o servidor espera)
+#    - Modelo: hermes-3-llama-3.1-8b (ou o nome exato que o servidor espera)
 #    - Tipo: Local
 ```
 
