@@ -58,7 +58,7 @@ def login():
         flash("Login ou senha inválidos.", "bad")
     if _user():
         return redirect(url_for("portal.monitorar"))
-    content = """
+    content = f"""
     <div class="card" style="max-width:380px">
       <h3 style="margin-top:0">Acesso ao Portal</h3>
       <form method="post">
