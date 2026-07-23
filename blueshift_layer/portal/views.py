@@ -673,10 +673,10 @@ def agente_testar(aid: int):
         <div style="margin-top:12px"><button class="btn btn-spin" id="btn-enviar-agente" type="submit">Enviar ao agente</button></div>
       </form>
       <script>
-      document.getElementById('form-agente-test').addEventListener('submit',function(){
+      document.getElementById('form-agente-test').addEventListener('submit',function(){{
         var b=document.getElementById('btn-enviar-agente');
         b.classList.add('loading');b.disabled=true;b.innerHTML='\u23f3 Processando...';
-      });
+      }});
       </script>
       {ctx_html}
       {fer_html}
