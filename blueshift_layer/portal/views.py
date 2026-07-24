@@ -700,7 +700,7 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}</div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span></div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>"""
