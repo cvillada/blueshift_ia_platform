@@ -768,10 +768,14 @@ def agregar_metricas_diarias(data: str | None = None) -> int:
         for r in fb_rows:
             fb_map[(r["agente_id"], r["modelo"])] = {"total": r["total"], "util": r["util"]}
 
-        # Insere/atualiza metricas
+        # Insere/atualiza metricas (deleta antes para evitar duplicatas com NULL)
         inseridas = 0
         for r in rows:
             modelo = r["modelo"]
+            conn.execute(
+                "DELETE FROM metricas_diarias WHERE data=? AND modelo=?",
+                (data, modelo),
+            )
             fb = fb_map.get((None, modelo), {"total": 0, "util": 0})
             ts = now_iso()
             conn.execute(
@@ -779,15 +783,7 @@ def agregar_metricas_diarias(data: str | None = None) -> int:
                    (data, agente_id, modelo, chamadas, tokens_total,
                     latencia_p50, latencia_p95, erros,
                     feedback_util, feedback_total, criado_em)
-                   VALUES (?,NULL,?,?,?,?,?,?,?,?,?)
-                   ON CONFLICT(data, agente_id, modelo) DO UPDATE SET
-                   chamadas=excluded.chamadas,
-                   tokens_total=excluded.tokens_total,
-                   latencia_p50=excluded.latencia_p50,
-                   latencia_p95=excluded.latencia_p95,
-                   erros=excluded.erros,
-                   feedback_util=excluded.feedback_util,
-                   feedback_total=excluded.feedback_total""",
+                   VALUES (?,NULL,?,?,?,?,?,?,?,?,?)""",
                 (data, modelo, r["chamadas"], r["tokens_total"] or 0,
                  int(r["avg_lat"] or 0), int(r["avg_lat"] or 0), r["erros"] or 0,
                  fb["util"], fb["total"], ts),
