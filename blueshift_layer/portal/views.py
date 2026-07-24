@@ -628,6 +628,7 @@ def agente_testar(aid: int):
     ferramentas = []
     erro = None
     fallback_usado = False
+    trace_id = None
     if request.method == "POST":
         pergunta = request.form.get("pergunta", "").strip()
         if pergunta:
