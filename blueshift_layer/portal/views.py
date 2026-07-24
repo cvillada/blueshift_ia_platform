@@ -2862,11 +2862,9 @@ def api_agente(canal):
         "resposta": out["content"],
         "agente": a["nome"],
         "modelo": out.get("model"),
-        "contexto": [c["texto"] for c in out.get("contexto", [])],
-        "ferramentas": out.get("ferramentas", []),
+        "feedback_url": out.get("feedback_url"),
         "erro": out.get("error"),
     }
-    # webhook de saida (item 3): POST da resposta para a URL configurada no canal
     if canal.get("webhook_url"):
         wh = agente_mod.enviar_webhook(canal["webhook_url"], {
             "canal": canal["nome"],
