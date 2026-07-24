@@ -1815,11 +1815,11 @@ def auditoria():
       </div>
     </div>
     <script>
-    function abrirRastreio(tid){
+    function abrirRastreio(tid){{
       document.getElementById('modal-rastreio').classList.add('show');
       document.getElementById('rastreio-conteudo').innerHTML = '<p class="muted">Carregando...</p>';
-      fetch('/portal/rastreio/'+tid).then(r=>r.json()).then(d=>{
-        if(!d.ok){document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+d.erro+'</p>';return}
+      fetch('/portal/rastreio/'+tid).then(r=>r.json()).then(d=>{{
+        if(!d.ok){{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+d.erro+'</p>';return}}
         var t=d.trace;
         var h='<h3>Rastreio #'+t.id+'</h3><p class="muted">Pergunta: <b>'+t.pergunta+'</b></p><hr>';
         h+='<b>1. Parametros:</b> '+JSON.stringify(t.params)+'<br>';
@@ -1828,9 +1828,9 @@ def auditoria():
         h+='<b>4. Modelo:</b> '+t.modelo+' ('+t.tempo_ms+'ms)'+(t.modelo_fallback?' fallback':'')+'<br>';
         h+='<hr><b>Resposta:</b><pre>'+t.resposta+'</pre>';
         document.getElementById('rastreio-conteudo').innerHTML=h;
-      }).catch(e=>{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'});
-    }
-    function fecharRastreio(){document.getElementById('modal-rastreio').classList.remove('show');}
+      }}).catch(e=>{{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'}});
+    }}
+    function fecharRastreio(){{document.getElementById('modal-rastreio').classList.remove('show');}}
     </script>
 """
     return templates.page("Auditoria", content, active="auditoria", user=_user())
