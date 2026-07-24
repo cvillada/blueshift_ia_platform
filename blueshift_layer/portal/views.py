@@ -2532,8 +2532,6 @@ def modelos():
             db.criar_modelo(cid, nome, base_url, modelo,
                             preco_input=float(request.form.get("preco_input", 0) or 0),
                             preco_output=float(request.form.get("preco_output", 0) or 0),
-                            preco_input=float(request.form.get("preco_input", 0) or 0),
-                            preco_output=float(request.form.get("preco_output", 0) or 0),
                             tipo=request.form.get("tipo", "local"),
                             api_key=request.form.get("api_key") or None,
                             max_tokens=request.form.get("max_tokens") or None)
