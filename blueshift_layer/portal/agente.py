@@ -190,6 +190,14 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
     top_k = 2 if tem_dados_vivos else 4
     contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
 
+    # Filtra contexto RAG: remove documentos com id_cliente diferente do extraido
+    id_filtro = params.get("id_cliente", "") if "params" in dir() else ""
+    if id_filtro:
+        contexto = [c for c in contexto if id_filtro not in c.get("texto", "")]
+        # Se filtrou tudo e tem dados vivos, ok. Senao busca sem filtro.
+        if not contexto and not tem_dados_vivos:
+            contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
+
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
 
