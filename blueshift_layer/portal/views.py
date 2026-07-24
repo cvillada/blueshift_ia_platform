@@ -674,7 +674,7 @@ def agente_testar(aid: int):
         var m=document.getElementById("feedback-msg");
         if(b1)b1.disabled=true; if(b2)b2.disabled=true;
         if(m)m.textContent="Enviando...";
-        fetch("/portal/api/v1/feedback/"+_tid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({util:util})})
+        fetch("/portal/api/v1/feedback/"+_tid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({util:util,tipo:"manual"})})
           .then(function(r){return r.json()})
           .then(function(d){if(m)m.textContent=d.ok?"OK":"Erro";})
           .catch(function(e){if(m)m.textContent="Erro";if(b1)b1.disabled=false;if(b2)b2.disabled=false;});
@@ -2811,6 +2811,7 @@ def api_feedback(trace_id: int):
     """Registra feedback para uma resposta do agente."""
     data = request.get_json(silent=True) or {}
     util = data.get("util", True)
+    tipo = data.get("tipo", "api")  # 'api' via curl, 'manual' via UI
     trace = db.buscar_trace(trace_id)
     if not trace:
         return jsonify({"ok": False, "erro": "trace nao encontrado"}), 404
@@ -2818,7 +2819,7 @@ def api_feedback(trace_id: int):
         trace_id, None, trace.get("pergunta", ""),
         trace.get("resposta", ""),
         "util" if util else "nao_util",
-        tipo="api",
+        tipo=tipo,
     )
     return jsonify({"ok": True, "feedback_id": fid})
 
