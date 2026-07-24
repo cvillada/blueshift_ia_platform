@@ -211,6 +211,17 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_knowledge_area ON knowledge(area);
             CREATE INDEX IF NOT EXISTS idx_knowledge_criado ON knowledge(criado_em);
 
+            CREATE TABLE IF NOT EXISTS feedback (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                trace_id    INTEGER,
+                agente_id   INTEGER,
+                pergunta    TEXT NOT NULL,
+                resposta    TEXT NOT NULL DEFAULT '',
+                feedback    TEXT NOT NULL,           -- 'util', 'nao_util'
+                tipo        TEXT NOT NULL DEFAULT 'manual',  -- 'manual', 'implicito', 'api'
+                criado_em   TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS memories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
@@ -615,6 +626,72 @@ def limpar_auditoria_antiga(dias: int = 90) -> int:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM auditoria WHERE criado_em < ?", (ts,))
         return cur.rowcount
+
+
+# --- Feedback (avaliacao de respostas do agente) -------------------------------
+
+
+def salvar_feedback(trace_id: int | None, agente_id: int | None,
+                    pergunta: str, resposta: str,
+                    feedback: str, tipo: str = "manual") -> int:
+    """Registra feedback (util/nao_util) para uma resposta do agente.
+
+    Retorna o id do feedback.
+    """
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO feedback (trace_id, agente_id, pergunta, resposta,
+               feedback, tipo, criado_em) VALUES (?,?,?,?,?,?,?)""",
+            (trace_id, agente_id, pergunta[:200], resposta[:500],
+             feedback, tipo, ts),
+        )
+        return cur.lastrowid
+
+
+def verificar_pergunta_repetida(agente_id: int, pergunta: str,
+                                limite_minutos: int = 5) -> dict | None:
+    """Detecta se a mesma pergunta foi feita recentemente (feedback implicito).
+
+    Se encontrar, marca a resposta anterior como 'nao_util' e retorna os dados.
+    Retorna None se nao houver repeticao.
+    """
+    ts_limite = (datetime.utcnow() - timedelta(minutes=limite_minutos)).isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT id, trace_id, pergunta, resposta FROM feedback
+               WHERE agente_id=? AND pergunta=?
+               AND criado_em >= ? AND feedback='util'
+               ORDER BY id DESC LIMIT 1""",
+            (agente_id, pergunta[:200], ts_limite),
+        ).fetchone()
+    if row:
+        # Marca a anterior como nao_util (nao resolveu)
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE feedback SET feedback='nao_util' WHERE id=?",
+                (row["id"],),
+            )
+        return dict(row)
+    return None
+
+
+def listar_feedback(agente_id: int | None = None,
+                    limite: int = 100) -> list[dict]:
+    """Lista feedbacks recentes, opcionalmente filtrados por agente."""
+    sql = "SELECT * FROM feedback"
+    params: list = []
+    if agente_id:
+        sql += " WHERE agente_id=?"
+        params.append(agente_id)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limite)
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- Seed / Demo ----------------------------------------------------------------
 
 
 def _seed_conectores_demo(conn, cliente_id: int, ts: str) -> None:

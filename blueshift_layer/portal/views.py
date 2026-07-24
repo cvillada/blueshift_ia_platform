@@ -633,6 +633,7 @@ def agente_testar(aid: int):
         if pergunta:
             out = agente_mod.responder(a, pergunta, u["login"])
             fallback_usado = out.get("model_fallback", False)
+            trace_id = out.get("trace_id")
             if out["ok"]:
                 resposta = out["content"]
                 contexto = out["contexto"]
@@ -661,6 +662,23 @@ def agente_testar(aid: int):
     conn_count = len(db.listar_conectores(cliente_id=a["cliente_id"], area=area)) if area else 0
     conn_info = f"{conn_count} conector(es) da área" if conn_count else "sem conectores configurados para esta área"
     badge_fallback = ' <span class=\"badge warn\">⚡ fallback de modelo</span>' if fallback_usado else ""
+    # Feedback script (evita f-string dentro de f-string)
+    fb_script = ""
+    if trace_id:
+        fb_script = '''<script>
+      var _tid = ''' + str(trace_id) + ''';
+      function enviarFeedback(util){
+        var b1=document.getElementById("btn-util");
+        var b2=document.getElementById("btn-nao-util");
+        var m=document.getElementById("feedback-msg");
+        if(b1)b1.disabled=true; if(b2)b2.disabled=true;
+        if(m)m.textContent="Enviando...";
+        fetch("/portal/api/v1/feedback/"+_tid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({util:util})})
+          .then(function(r){return r.json()})
+          .then(function(d){if(m)m.textContent=d.ok?"OK":"Erro";})
+          .catch(function(e){if(m)m.textContent="Erro";if(b1)b1.disabled=false;if(b2)b2.disabled=false;});
+      }
+      </script>'''
     content = f"""
     <div class="muted" style="margin-bottom:10px">
       Teste do agente <b>{a['nome']}</b> (área {area or 'geral'}) — modelo <b>{a['modelo']}</b>,
@@ -678,6 +696,7 @@ def agente_testar(aid: int):
         b.classList.add('loading');b.disabled=true;b.innerHTML='\u23f3 Processando...';
       }});
       </script>
+      {fb_script}
       {ctx_html}
       {fer_html}
       {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}</div>' if resposta else ''}
@@ -2586,6 +2605,28 @@ def chat():
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>"""
     return templates.page("Chat de Teste", content, active="chat", user=u)
+
+
+# --------------------------------------------------------------------------- #
+# Feedback API (avaliacao de respostas)
+# --------------------------------------------------------------------------- #
+
+@bp.route("/api/v1/feedback/<int:trace_id>", methods=["POST"])
+@auth.rate_limit_api
+def api_feedback(trace_id: int):
+    """Registra feedback para uma resposta do agente."""
+    data = request.get_json(silent=True) or {}
+    util = data.get("util", True)
+    trace = db.buscar_trace(trace_id)
+    if not trace:
+        return jsonify({"ok": False, "erro": "trace nao encontrado"}), 404
+    fid = db.salvar_feedback(
+        trace_id, None, trace.get("pergunta", ""),
+        trace.get("resposta", ""),
+        "util" if util else "nao_util",
+        tipo="api",
+    )
+    return jsonify({"ok": True, "feedback_id": fid})
 
 
 # --------------------------------------------------------------------------- #

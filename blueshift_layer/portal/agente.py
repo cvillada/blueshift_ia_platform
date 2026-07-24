@@ -275,10 +275,28 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
         # --- RAG automatico: salva resultado dos conectores no knowledge base ---
         _salvar_no_knowledge(cliente_id, area, pergunta, out["content"], ferramentas)
 
+    # --- Feedback implicito: detecta pergunta repetida ---
+    repetida = None
+    if out["ok"] and agente.get("id"):
+        try:
+            repetida = db.verificar_pergunta_repetida(agente["id"], pergunta)
+        except Exception:
+            pass
+        # Salva feedback automatico (util por default, exceto se repetida)
+        try:
+            db.salvar_feedback(
+                trace_id, agente.get("id"), pergunta,
+                out["content"], "nao_util" if repetida else "util",
+                tipo="implicito" if repetida else "implicito",
+            )
+        except Exception:
+            pass
+
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas,
-            "trace_id": trace_id}
+            "trace_id": trace_id,
+            "feedback_url": f"/portal/api/v1/feedback/{trace_id}" if out["ok"] else None}
 
 
 def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,
