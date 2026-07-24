@@ -284,19 +284,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
         _salvar_no_knowledge(cliente_id, area, pergunta, out["content"], ferramentas)
 
     # --- Feedback implicito: detecta pergunta repetida ---
-    repetida = None
     if out["ok"] and agente.get("id"):
         try:
-            repetida = db.verificar_pergunta_repetida(agente["id"], pergunta)
-        except Exception:
-            pass
-        # Salva feedback automatico (util por default, exceto se repetida)
-        try:
-            db.salvar_feedback(
-                trace_id, agente.get("id"), pergunta,
-                out["content"], "nao_util" if repetida else "util",
-                tipo="implicito" if repetida else "implicito",
-            )
+            db.verificar_pergunta_repetida(agente["id"], pergunta)
         except Exception:
             pass
 
