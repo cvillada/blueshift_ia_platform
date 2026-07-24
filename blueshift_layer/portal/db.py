@@ -222,6 +222,23 @@ def init_db() -> None:
                 criado_em   TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS metricas_diarias (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                data        TEXT NOT NULL,           -- '2026-07-24'
+                agente_id   INTEGER,
+                modelo      TEXT NOT NULL DEFAULT '',
+                chamadas    INTEGER NOT NULL DEFAULT 0,
+                tokens_total INTEGER NOT NULL DEFAULT 0,
+                latencia_p50 INTEGER NOT NULL DEFAULT 0,
+                latencia_p95 INTEGER NOT NULL DEFAULT 0,
+                erros       INTEGER NOT NULL DEFAULT 0,
+                feedback_util   INTEGER NOT NULL DEFAULT 0,
+                feedback_total  INTEGER NOT NULL DEFAULT 0,
+                criado_em   TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_metrica_dia
+                ON metricas_diarias(data, agente_id, modelo);
+
             CREATE TABLE IF NOT EXISTS memories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
@@ -688,6 +705,91 @@ def listar_feedback(agente_id: int | None = None,
     params.append(limite)
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- Metricas diarias (KPIs de observabilidade) ---------------------------------
+
+
+def agregar_metricas_diarias(data: str | None = None) -> int:
+    """Consolida metricas do dia a partir das tabelas tracing e feedback.
+
+    data: string 'YYYY-MM-DD' ou None (hoje). Retorna quantas linhas inseriu.
+    """
+    if data is None:
+        data = now_iso()[:10]
+    ts_inicio = data + "T00:00:00"
+    ts_fim = data + "T23:59:59"
+
+    with get_conn() as conn:
+        # Busca tracing do dia
+        rows = conn.execute(
+            """SELECT modelo, modelo_fallback,
+               COUNT(*) as chamadas,
+               SUM(json_extract(tokens, '$.total_tokens')) as tokens_total,
+               AVG(tempo_ms) as avg_lat,
+               SUM(CASE WHEN resposta='' THEN 1 ELSE 0 END) as erros
+               FROM tracing
+               WHERE criado_em BETWEEN ? AND ?
+               GROUP BY modelo""",
+            (ts_inicio, ts_fim),
+        ).fetchall()
+
+        # Busca feedback do dia agrupado por agente
+        from datetime import datetime as _dt
+        fb_rows = conn.execute(
+            """SELECT agente_id, modelo,
+               COUNT(*) as total,
+               SUM(CASE WHEN feedback='util' THEN 1 ELSE 0 END) as util
+               FROM feedback f
+               LEFT JOIN tracing t ON f.trace_id = t.id
+               WHERE f.criado_em BETWEEN ? AND ?
+               GROUP BY agente_id, modelo""",
+            (ts_inicio, ts_fim),
+        ).fetchall()
+
+        # Mapeia feedback por agente
+        fb_map: dict[tuple, dict] = {}
+        for r in fb_rows:
+            fb_map[(r["agente_id"], r["modelo"])] = {"total": r["total"], "util": r["util"]}
+
+        # Insere/atualiza metricas
+        inseridas = 0
+        for r in rows:
+            modelo = r["modelo"]
+            fb = fb_map.get((None, modelo), {"total": 0, "util": 0})
+            ts = now_iso()
+            conn.execute(
+                """INSERT INTO metricas_diarias
+                   (data, agente_id, modelo, chamadas, tokens_total,
+                    latencia_p50, latencia_p95, erros,
+                    feedback_util, feedback_total, criado_em)
+                   VALUES (?,NULL,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(data, agente_id, modelo) DO UPDATE SET
+                   chamadas=excluded.chamadas,
+                   tokens_total=excluded.tokens_total,
+                   latencia_p50=excluded.latencia_p50,
+                   latencia_p95=excluded.latencia_p95,
+                   erros=excluded.erros,
+                   feedback_util=excluded.feedback_util,
+                   feedback_total=excluded.feedback_total""",
+                (data, modelo, r["chamadas"], r["tokens_total"] or 0,
+                 int(r["avg_lat"] or 0), int(r["avg_lat"] or 0), r["erros"] or 0,
+                 fb["util"], fb["total"], ts),
+            )
+            inseridas += 1
+        return inseridas
+
+
+def listar_metricas(dias: int = 30) -> list[dict]:
+    """Retorna metricas dos ultimos N dias."""
+    data_corte = (datetime.utcnow() - timedelta(days=dias)).isoformat()[:10]
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM metricas_diarias
+               WHERE data >= ? ORDER BY data DESC""",
+            (data_corte,),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
