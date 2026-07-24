@@ -313,6 +313,22 @@ curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \
 
 > O uso do feedback é **opcional**. A API funciona sem ele. Os dados aparecem no Dashboard de Observabilidade.
 
+### Agendamento da Agregação de Métricas
+
+O dashboard de observabilidade consolida dados das tabelas `tracing` e `feedback` na tabela `metricas_diarias`. A agregação é feita manualmente pelo botão **"Processar métricas"** no próprio dashboard.
+
+Para automatizar (ex: rodar todo dia às 2h da manhã), adicione no crontab do servidor:
+
+```cron
+0 2 * * * cd /opt/blueshift && python3 -c "from blueshift_layer.portal import db; db.agregar_metricas_diarias()"
+```
+
+Ou dentro do Docker:
+
+```bash
+docker exec blueshift-platform python3 -c "from blueshift_layer.portal import db; db.agregar_metricas_diarias()"
+```
+
 ---
 
 ## 🤖 Modelos Locais de IA
