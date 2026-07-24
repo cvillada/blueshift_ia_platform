@@ -793,6 +793,60 @@ def listar_metricas(dias: int = 30) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def comparar_periodos(dias: int = 7) -> list[dict]:
+    """Compara metricas entre periodo atual e anterior.
+
+    Retorna lista com modelo, chamadas, latencia_media, taxa_acerto, delta.
+    delta > 0 = melhorou, delta < 0 = piorou.
+    """
+    hoje = datetime.utcnow()
+    ini_atual = (hoje - timedelta(days=dias)).isoformat()[:10]
+    ini_anterior = (hoje - timedelta(days=dias * 2)).isoformat()[:10]
+    fim_anterior = (hoje - timedelta(days=dias)).isoformat()[:10]
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT modelo,
+               SUM(CASE WHEN data >= ? THEN chamadas ELSE 0 END) as chamadas_atual,
+               SUM(CASE WHEN data < ? THEN chamadas ELSE 0 END) as chamadas_anterior,
+               AVG(CASE WHEN data >= ? THEN latencia_p50 ELSE NULL END) as lat_atual,
+               AVG(CASE WHEN data < ? THEN latencia_p50 ELSE NULL END) as lat_anterior,
+               SUM(CASE WHEN data >= ? THEN feedback_util ELSE 0 END) as util_atual,
+               SUM(CASE WHEN data >= ? THEN feedback_total ELSE 0 END) as fb_atual,
+               SUM(CASE WHEN data < ? THEN feedback_util ELSE 0 END) as util_anterior,
+               SUM(CASE WHEN data < ? THEN feedback_total ELSE 0 END) as fb_anterior
+               FROM metricas_diarias
+               WHERE data >= ?
+               GROUP BY modelo""",
+            (ini_atual, ini_atual,
+             ini_atual, ini_atual,
+             ini_atual, ini_atual,
+             ini_atual, ini_atual,
+             ini_anterior),
+        ).fetchall()
+
+    resultado = []
+    for r in rows:
+        lat_media = int(r["lat_atual"] or 0)
+        lat_ant = int(r["lat_anterior"] or 0)
+        tx_atual = (r["util_atual"] / r["fb_atual"] * 100) if r["fb_atual"] else None
+        tx_anterior = (r["util_anterior"] / r["fb_anterior"] * 100) if r["fb_anterior"] else None
+        delta_tx = round(tx_atual - tx_anterior, 1) if tx_atual is not None and tx_anterior is not None else None
+        delta_lat = round((lat_media - lat_ant) / lat_ant * 100, 1) if lat_media and lat_ant else None
+        resultado.append({
+            "modelo": r["modelo"],
+            "chamadas": r["chamadas_atual"] or 0,
+            "chamadas_anterior": r["chamadas_anterior"] or 0,
+            "latencia_media": lat_media,
+            "latencia_anterior": lat_ant,
+            "taxa_acerto": f"{tx_atual:.0f}%" if tx_atual else "--",
+            "taxa_anterior": f"{tx_anterior:.0f}%" if tx_anterior else "--",
+            "delta_taxa": delta_tx,
+            "delta_latencia": delta_lat,
+        })
+    return resultado
+
+
 # --- Seed / Demo ----------------------------------------------------------------
 
 

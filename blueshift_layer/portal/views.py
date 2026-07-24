@@ -1918,6 +1918,20 @@ def observabilidade():
     taxa_acerto = f"{(total_util / total_fb * 100):.0f}%" if total_fb else "--"
     lat_media = int(sum(m["latencia_p50"] * m["chamadas"] for m in metricas) / total_chamadas) if total_chamadas else 0
 
+    # Drift detection
+    comparacao = db.comparar_periodos(dias)
+    drift_rows = ""
+    for c in comparacao:
+        d_tx = c.get("delta_taxa")
+        d_lat = c.get("delta_latencia")
+        tx_delta_class = "delta-ok" if (d_tx or 0) >= 0 else "delta-bad"
+        lat_delta_class = "delta-bad" if (d_lat or 0) > 10 else "delta-ok"
+        tx_delta_str = f"{d_tx:+.1f}%" if d_tx is not None else "--"
+        lat_delta_str = f"{d_lat:+.1f}%" if d_lat is not None else "--"
+        drift_rows += f'<tr><td><b>{c["modelo"]}</b></td><td>{c["chamadas"]}</td><td>{c["taxa_acerto"]}</td><td>{c["taxa_anterior"]}</td><td class="{tx_delta_class}">{tx_delta_str}</td><td>{c["latencia_media"]}ms</td><td>{c["latencia_anterior"]}ms</td><td class="{lat_delta_class}">{lat_delta_str}</td></tr>'
+    if not drift_rows:
+        drift_rows = '<tr><td colspan=8 class="empty">Sem dados suficientes para comparacao.</td></tr>'
+
     fb_rows = ""
     for f in feedbacks[:20]:
         fb_icon = f'<span style="color:var(--ok)">👍</span>' if f["feedback"] == "util" else f'<span style="color:var(--bad)">👎</span>'
@@ -1940,6 +1954,8 @@ def observabilidade():
     .kpi-card .sub{{font-size:11px;color:#5a7a9a}}
     .sparkline{{display:flex;align-items:flex-end;gap:1px;height:40px;margin:8px 0}}
     .sparkline .bar{{flex:1;min-width:2px;background:linear-gradient(to top,#2563eb,#60a5fa);border-radius:1px 1px 0 0}}
+    .delta-ok{{color:var(--ok);font-weight:700}}
+    .delta-bad{{color:var(--bad);font-weight:700}}
     </style>
     <div class="muted" style="margin-bottom:14px">
       Dashboard de observabilidade — metricas consolidadas dos ultimos {dias} dias.
@@ -1956,6 +1972,12 @@ def observabilidade():
       <b>Chamadas por dia</b>
       <div class="sparkline">{spark_html}</div>
     </div>
+    </div>
+    <h3>Drift Detection — comparacao com periodo anterior</h3>
+    <table>
+      <thead><tr><th>Modelo</th><th>Chamadas</th><th>Taxa Acerto</th><th>Anterior</th><th>Delta</th><th>Latencia</th><th>Anterior</th><th>Delta</th></tr></thead>
+      <tbody>{drift_rows}</tbody>
+    </table>
     <h3>Feedback recente</h3>
     <table>
       <thead><tr><th></th><th>Tipo</th><th>Pergunta</th><th>Resposta</th><th>Quando</th></tr></thead>
