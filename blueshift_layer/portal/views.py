@@ -2967,9 +2967,9 @@ def canais():
 }}</pre>
       <br>
       <b>Feedback (opcional):</b> a resposta inclui <code>feedback_url</code>.<br>
-      POST <code>/portal/api/v1/feedback/&lt;trace_id&gt;</code> com <code>{"util": true}</code>.<br>
+      POST <code>/portal/api/v1/feedback/&lt;trace_id&gt;</code> com <code>{{{"util": true}}}</code>.<br>
       Exemplo: <pre style="background:#0e1726;padding:6px;border-radius:4px;font-size:12px">curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \n  -H "Authorization: Bearer &lt;TOKEN&gt;" \n  -H "Content-Type: application/json" \n  -d '{"util": true}'</pre>
-      Retorno: <code>{"ok": true, "feedback_id": 1}</code>.<br>
+      Retorno: <code>{{"ok": true, "feedback_id": 1}}</code>.<br>
       <b>Opcional</b> — a API funciona sem ele. Use para acompanhar qualidade no dashboard de observabilidade.<br>
       Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada na URL configurada.
     </div>
