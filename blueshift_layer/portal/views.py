@@ -1981,7 +1981,7 @@ def observabilidade():
       <button class="btn" id="btn-processar" onclick="processarMetricas()" style="font-size:12px;padding:4px 10px">Processar metricas</button>
     </div>
     <script>
-    function infoAlerta(){{alert("Os alertas sao disparados quando as metricas ultrapassam thresholds pre-definidos. Ajuste os valores em _ALERTA_THRESHOLDS no codigo.");}}
+    function infoAlerta(){{alert("Os alertas sao disparados quando as metricas ultrapassam thresholds definidos. Ajuste os valores em Cadastros > Alertas.");}}
     function processarMetricas(){{
       var b=document.getElementById("btn-processar");
       b.innerHTML="Processando...";b.disabled=true;
