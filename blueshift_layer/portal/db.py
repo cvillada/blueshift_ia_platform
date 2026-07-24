@@ -733,8 +733,8 @@ def agregar_metricas_diarias(data: str | None = None) -> int:
     """
     if data is None:
         data = now_iso()[:10]
-    ts_inicio = data + "T00:00:00"
-    ts_fim = data + "T23:59:59"
+    ts_inicio = data + " 00:00:00"
+    ts_fim = data + " 23:59:59"
 
     with get_conn() as conn:
         # Busca tracing do dia
