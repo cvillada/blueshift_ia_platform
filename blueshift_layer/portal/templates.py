@@ -97,7 +97,7 @@ def _nav(active: str, user: dict | None) -> str:
         "canais": "\U0001f4e1", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
-        "atualizacoes": "\U0001f504", "sso": "\U0001f511",
+        "observabilidade": "\U0001f4ca", "atualizacoes": "\U0001f504", "sso": "\U0001f511",
     }
     _nl = lambda key, label, href, cls_extra="": (
         f'<a class="navlink{cls_extra}" href="{href}" title="{label}">'
@@ -127,6 +127,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("chat", "Chat", "/portal/chat"),
         ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
         ("auditoria", "Auditoria", "/portal/auditoria"),
+        ("observabilidade", "Observabilidade", "/portal/observabilidade"),
         ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
         ("sso", "SSO (OIDC)", "/portal/sso/config"),
     ]

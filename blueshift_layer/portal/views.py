@@ -1892,6 +1892,79 @@ def auditoria():
     return templates.page("Auditoria", content, active="auditoria", user=_user())
 
 
+def _url_dias(d):
+    args = dict(request.args)
+    args["dias"] = str(d)
+    return url_for("portal.observabilidade", **args)
+
+
+@bp.route("/observabilidade")
+@auth.admin_required
+def observabilidade():
+    """Dashboard de observabilidade: KPIs, graficos e tabela de feedback."""
+    u = _user()
+    dias = request.args.get("dias", 7, type=int)
+    if dias not in (1, 7, 30, 90):
+        dias = 7
+
+    metricas = db.listar_metricas(dias)
+    feedbacks = db.listar_feedback(limite=50)
+
+    total_chamadas = sum(m["chamadas"] for m in metricas)
+    total_tokens = sum(m["tokens_total"] for m in metricas)
+    total_erros = sum(m["erros"] for m in metricas)
+    total_util = sum(m["feedback_util"] for m in metricas)
+    total_fb = sum(m["feedback_total"] for m in metricas)
+    taxa_acerto = f"{(total_util / total_fb * 100):.0f}%" if total_fb else "--"
+    lat_media = int(sum(m["latencia_p50"] * m["chamadas"] for m in metricas) / total_chamadas) if total_chamadas else 0
+
+    fb_rows = ""
+    for f in feedbacks[:20]:
+        fb_icon = f'<span style="color:var(--ok)">👍</span>' if f["feedback"] == "util" else f'<span style="color:var(--bad)">👎</span>'
+        fb_rows += f'<tr><td>{fb_icon}</td><td>{f["tipo"]}</td><td class="muted">{f["pergunta"][:80]}</td><td>{f["resposta"][:60]}</td><td>{f["criado_em"][:16]}</td></tr>'
+
+    spark_html = ""
+    if metricas:
+        rev = list(reversed(metricas))
+        max_c = max(m["chamadas"] for m in metricas) or 1
+        for m in rev[-30:]:
+            h = int(m["chamadas"] / max_c * 40)
+            spark_html += f'<div class="bar" style="height:{h}px" title="{m["data"]}: {m["chamadas"]} chamadas"></div>'
+
+    content = f"""
+    <style>
+    .kpis{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}}
+    .kpi-card{{flex:1;min-width:140px;background:#1a2744;border-radius:10px;padding:14px}}
+    .kpi-card .label{{font-size:11px;color:#8899bb;text-transform:uppercase;letter-spacing:.5px}}
+    .kpi-card .value{{font-size:28px;font-weight:700;margin:4px 0}}
+    .kpi-card .sub{{font-size:11px;color:#5a7a9a}}
+    .sparkline{{display:flex;align-items:flex-end;gap:1px;height:40px;margin:8px 0}}
+    .sparkline .bar{{flex:1;min-width:2px;background:linear-gradient(to top,#2563eb,#60a5fa);border-radius:1px 1px 0 0}}
+    </style>
+    <div class="muted" style="margin-bottom:14px">
+      Dashboard de observabilidade — metricas consolidadas dos ultimos {dias} dias.
+      [<a href="{_url_dias(1)}">1d</a> | <a href="{_url_dias(7)}">7d</a> | <a href="{_url_dias(30)}">30d</a> | <a href="{_url_dias(90)}">90d</a>]
+    </div>
+    <div class="kpis">
+      <div class="kpi-card"><div class="label">Chamadas</div><div class="value">{total_chamadas:,}</div><div class="sub">ultimos {dias}d</div></div>
+      <div class="kpi-card"><div class="label">Taxa de Acerto</div><div class="value" style="color:{'var(--ok)' if taxa_acerto!='--' else '#8899bb'}">{taxa_acerto}</div><div class="sub">{total_util}/{total_fb} uteis</div></div>
+      <div class="kpi-card"><div class="label">Latencia Media</div><div class="value">{lat_media}ms</div><div class="sub">ultimos {dias}d</div></div>
+      <div class="kpi-card"><div class="label">Tokens</div><div class="value">{total_tokens:,}</div><div class="sub">{total_chamadas} chamadas</div></div>
+      <div class="kpi-card"><div class="label">Erros</div><div class="value" style="color:{'var(--bad)' if total_erros else 'var(--ok)'}">{total_erros}</div><div class="sub">{'sem erros' if not total_erros else f'{total_erros} falhas'}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <b>Chamadas por dia</b>
+      <div class="sparkline">{spark_html}</div>
+    </div>
+    <h3>Feedback recente</h3>
+    <table>
+      <thead><tr><th></th><th>Tipo</th><th>Pergunta</th><th>Resposta</th><th>Quando</th></tr></thead>
+      <tbody>{fb_rows or '<tr><td colspan=5 class="empty">Nenhum feedback registrado.</td></tr>'}</tbody>
+    </table>
+"""
+    return templates.page("Observabilidade", content, active="observabilidade", user=u)
+
+
 @bp.route("/rastreio/<int:tid>")
 @auth.admin_required
 def rastreio(tid: int):
