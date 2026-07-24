@@ -282,9 +282,36 @@ Resposta:
   "modelo": "hermes-3-llama-3.1-8b",
   "contexto": [...],
   "ferramentas": [...],
-  "webhook": {"enviado": true, "status": 200}
+  "webhook": {"enviado": true, "status": 200},
+  "feedback_url": "http://localhost:8080/portal/api/v1/feedback/123"
 }
 ```
+
+### Feedback da Resposta (opcional)
+
+A resposta da API inclui `feedback_url` — uma URL para registrar se a resposta foi útil.
+
+**Endpoint:** `POST /portal/api/v1/feedback/<trace_id>`
+
+**Body (JSON):**
+```json
+{"util": true}   // ou false
+```
+
+**Exemplo:**
+```bash
+curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \
+  -H "Authorization: Bearer <TOKEN_DO_CANAL>" \
+  -H "Content-Type: application/json" \
+  -d '{"util": true}'
+```
+
+**Resposta:**
+```json
+{"ok": true, "feedback_id": 1}
+```
+
+> O uso do feedback é **opcional**. A API funciona sem ele. Os dados aparecem no Dashboard de Observabilidade.
 
 ---
 
