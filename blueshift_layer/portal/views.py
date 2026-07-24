@@ -1810,8 +1810,11 @@ def auditoria():
     </div>
     {tabela}
     <div class="modal-overlay" id="modal-rastreio" onclick="if(event.target===this)fecharRastreio()">
-      <div class="modal-box" style="max-width:800px">
+      <div class="modal-box" style="max-width:900px;width:92%">
         <div id="rastreio-conteudo"><p class="muted">Carregando...</p></div>
+        <div style="text-align:center;margin-top:14px">
+          <button class="btn ghost" onclick="fecharRastreio()">Fechar</button>
+        </div>
       </div>
     </div>
     <script>
