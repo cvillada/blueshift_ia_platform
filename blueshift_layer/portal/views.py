@@ -1932,6 +1932,14 @@ def observabilidade():
     if not drift_rows:
         drift_rows = '<tr><td colspan=8 class="empty">Sem dados suficientes para comparacao.</td></tr>'
 
+    # Alertas
+    alertas = db.verificar_alertas()
+    alerta_html = ''
+    for a in alertas:
+        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">a {a["desc"]} ({a["modelo"]}: {a["valor"]})</div>'
+    if not alertas:
+        alerta_html = '<span class="muted">Nenhum alerta ativo — tudo ok</span>'
+
     # Cost intelligence
     custos = db.calcular_custos(dias)
     custo_rows = ""
@@ -1977,6 +1985,10 @@ def observabilidade():
       <div class="kpi-card"><div class="label">Latencia Media</div><div class="value">{lat_media}ms</div><div class="sub">ultimos {dias}d</div></div>
       <div class="kpi-card"><div class="label">Tokens</div><div class="value">{total_tokens:,}</div><div class="sub">{total_chamadas} chamadas</div></div>
       <div class="kpi-card"><div class="label">Erros</div><div class="value" style="color:{'var(--bad)' if total_erros else 'var(--ok)'}">{total_erros}</div><div class="sub">{'sem erros' if not total_erros else f'{total_erros} falhas'}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <b>Alertas ativos</b>
+      {alerta_html}
     </div>
     <div class="card" style="margin-bottom:16px">
       <b>Chamadas por dia</b>
