@@ -239,6 +239,20 @@ def init_db() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_metrica_dia
                 ON metricas_diarias(data, agente_id, modelo);
 
+            CREATE TABLE IF NOT EXISTS custos_modelo (
+                modelo      TEXT PRIMARY KEY,
+                preco_input REAL NOT NULL DEFAULT 0.15,
+                preco_output REAL NOT NULL DEFAULT 0.60,
+                atualizado_em TEXT NOT NULL
+            );
+
+            -- Precos padrao para modelos comuns
+            INSERT OR IGNORE INTO custos_modelo (modelo, preco_input, preco_output, atualizado_em)
+            VALUES
+              ('hermes-3-llama-3.1-8b', 0.15, 0.60, ''),
+              ('bonsai-8b', 0.10, 0.40, ''),
+              ('qwen2.5-7b', 0.12, 0.50, '');
+
             CREATE TABLE IF NOT EXISTS memories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
@@ -843,6 +857,39 @@ def comparar_periodos(dias: int = 7) -> list[dict]:
             "taxa_anterior": f"{tx_anterior:.0f}%" if tx_anterior else "--",
             "delta_taxa": delta_tx,
             "delta_latencia": delta_lat,
+        })
+    return resultado
+
+
+def calcular_custos(dias: int = 30) -> list[dict]:
+    """Calcula custo estimado por modelo baseado nos tokens consumidos.
+
+    Preco em USD por 1M tokens. Retorna lista com modelo, tokens, custo.
+    """
+    data_corte = (datetime.utcnow() - timedelta(days=dias)).isoformat()[:10]
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT m.modelo,
+               SUM(m.tokens_total) as tokens,
+               c.preco_input, c.preco_output
+               FROM metricas_diarias m
+               LEFT JOIN custos_modelo c ON m.modelo = c.modelo
+               WHERE m.data >= ?
+               GROUP BY m.modelo""",
+            (data_corte,),
+        ).fetchall()
+
+    resultado = []
+    for r in rows:
+        tokens = r["tokens"] or 0
+        preco = r["preco_input"] or 0.15  # fallback
+        # Simplificado: usa preco_input como media
+        custo = tokens / 1_000_000 * preco
+        resultado.append({
+            "modelo": r["modelo"],
+            "tokens": tokens,
+            "custo": round(custo, 4),
+            "preco_milhao": preco,
         })
     return resultado
 

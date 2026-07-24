@@ -1932,6 +1932,16 @@ def observabilidade():
     if not drift_rows:
         drift_rows = '<tr><td colspan=8 class="empty">Sem dados suficientes para comparacao.</td></tr>'
 
+    # Cost intelligence
+    custos = db.calcular_custos(dias)
+    custo_rows = ""
+    custo_total = 0.0
+    for c in custos:
+        custo_total += c["custo"]
+        custo_rows += f'<tr><td><b>{c["modelo"]}</b></td><td>{c["tokens"]:,}</td><td>R$ {c["custo"]:.2f}</td><td>R$ {c["preco_milhao"]}/M</td></tr>'
+    if not custo_rows:
+        custo_rows = '<tr><td colspan=4 class="empty">Sem dados de custo.</td></tr>'
+
     fb_rows = ""
     for f in feedbacks[:20]:
         fb_icon = f'<span style="color:var(--ok)">👍</span>' if f["feedback"] == "util" else f'<span style="color:var(--bad)">👎</span>'
@@ -1977,6 +1987,12 @@ def observabilidade():
     <table>
       <thead><tr><th>Modelo</th><th>Chamadas</th><th>Taxa Acerto</th><th>Anterior</th><th>Delta</th><th>Latencia</th><th>Anterior</th><th>Delta</th></tr></thead>
       <tbody>{drift_rows}</tbody>
+    </table>
+    <h3>Cost Intelligence — custo estimado</h3>
+    <table>
+      <thead><tr><th>Modelo</th><th>Tokens</th><th>Custo ({dias}d)</th><th>Preco/M</th></tr></thead>
+      <tbody>{custo_rows}</tbody>
+      <tfoot><tr><td><b>Total</b></td><td></td><td><b>R$ {custo_total:.2f}</b></td><td></td></tr></tfoot>
     </table>
     <h3>Feedback recente</h3>
     <table>
