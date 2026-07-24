@@ -1994,7 +1994,6 @@ def observabilidade():
       <b>Chamadas por dia</b>
       <div class="sparkline">{spark_html}</div>
     </div>
-    </div>
     <h3>Drift Detection — comparacao com periodo anterior</h3>
     <table>
       <thead><tr><th>Modelo</th><th>Chamadas</th><th>Taxa Acerto</th><th>Anterior</th><th>Delta</th><th>Latencia</th><th>Anterior</th><th>Delta</th></tr></thead>
