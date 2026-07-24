@@ -304,7 +304,10 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas,
             "trace_id": trace_id,
-            "feedback_url": f"/portal/api/v1/feedback/{trace_id}" if out["ok"] else None}
+            "feedback_url": f"/portal/api/v1/feedback/{trace_id}" if out["ok"] else None,
+            "tokens": out.get("tokens", {}),
+            "tempo_ms": tempo_ms,
+            }
 
 
 def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,

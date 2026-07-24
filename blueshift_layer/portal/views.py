@@ -2865,6 +2865,8 @@ def api_agente(canal):
         "modelo": out.get("model"),
         "feedback_url": out.get("feedback_url"),
         "erro": out.get("error"),
+        "tokens": out.get("tokens", {}),
+        "tempo_ms": out.get("tempo_ms", 0),
     }
     if canal.get("webhook_url"):
         wh = agente_mod.enviar_webhook(canal["webhook_url"], {
