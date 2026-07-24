@@ -860,6 +860,82 @@ def comparar_periodos(dias: int = 7) -> list[dict]:
     return resultado
 
 
+def calcular_custos(dias: int = 30) -> list[dict]:
+    """Calcula custo estimado por modelo baseado nos tokens consumidos."""
+    data_corte = (datetime.utcnow() - timedelta(days=dias)).isoformat()[:10]
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT m.modelo,
+               SUM(m.tokens_total) as tokens,
+               c.preco_input, c.preco_output
+               FROM metricas_diarias m
+               LEFT JOIN custos_modelo c ON m.modelo = c.modelo
+               WHERE m.data >= ?
+               GROUP BY m.modelo""",
+            (data_corte,),
+        ).fetchall()
+    resultado = []
+    for r in rows:
+        tokens = r["tokens"] or 0
+        preco = r["preco_input"] or 0.15
+        custo = tokens / 1_000_000 * preco
+        resultado.append({
+            "modelo": r["modelo"],
+            "tokens": tokens,
+            "custo": round(custo, 4),
+            "preco_milhao": preco,
+        })
+    return resultado
+
+
+_ALERTA_THRESHOLDS = {"taxa_acerto_baixa": 70.0, "latencia_alta": 1000, "erros_altos": 5}
+
+
+def verificar_alertas() -> list[dict]:
+    """Verifica thresholds e retorna alertas ativos."""
+    hoje = datetime.utcnow().isoformat()[:10]
+    alertas = []
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT modelo,
+               SUM(feedback_util) * 100.0 / NULLIF(SUM(feedback_total), 0) as taxa
+               FROM metricas_diarias
+               WHERE data >= ?
+               GROUP BY modelo""",
+            ((datetime.utcnow() - timedelta(days=7)).isoformat()[:10],),
+        ).fetchall()
+        for r in rows:
+            if r["taxa"] is not None and r["taxa"] < _ALERTA_THRESHOLDS["taxa_acerto_baixa"]:
+                alertas.append({
+                    "tipo": "taxa_acerto_baixa", "modelo": r["modelo"],
+                    "valor": round(r["taxa"], 1), "threshold": 70.0,
+                    "desc": "Taxa de acerto < 70% (7d)",
+                })
+        rows = conn.execute(
+            "SELECT modelo, latencia_p50 FROM metricas_diarias WHERE data=? AND chamadas>0",
+            (hoje,),
+        ).fetchall()
+        for r in rows:
+            if r["latencia_p50"] > _ALERTA_THRESHOLDS["latencia_alta"]:
+                alertas.append({
+                    "tipo": "latencia_alta", "modelo": r["modelo"],
+                    "valor": r["latencia_p50"], "threshold": 1000,
+                    "desc": "Latencia > 1000ms hoje",
+                })
+        rows = conn.execute(
+            "SELECT modelo, SUM(erros) as total_erros FROM metricas_diarias WHERE data=? GROUP BY modelo",
+            (hoje,),
+        ).fetchall()
+        for r in rows:
+            if r["total_erros"] > _ALERTA_THRESHOLDS["erros_altos"]:
+                alertas.append({
+                    "tipo": "erros_altos", "modelo": r["modelo"],
+                    "valor": r["total_erros"], "threshold": 5,
+                    "desc": "Mais de 5 erros hoje",
+                })
+    return alertas
+
+
 # --- Seed / Demo ----------------------------------------------------------------
 
 
