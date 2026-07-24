@@ -1908,9 +1908,6 @@ def observabilidade():
         dias = 7
 
     metricas = db.listar_metricas(dias)
-    if not metricas:
-        db.agregar_metricas_diarias()
-        metricas = db.listar_metricas(dias)
     feedbacks = db.listar_feedback(limite=50)
 
     total_chamadas = sum(m["chamadas"] for m in metricas)
@@ -1978,10 +1975,23 @@ def observabilidade():
     .delta-ok{{color:var(--ok);font-weight:700}}
     .delta-bad{{color:var(--bad);font-weight:700}}
     </style>
-    <div class="muted" style="margin-bottom:14px">
-      Dashboard de observabilidade — metricas consolidadas dos ultimos {dias} dias.
-      [<a href="{_url_dias(1)}">1d</a> | <a href="{_url_dias(7)}">7d</a> | <a href="{_url_dias(30)}">30d</a> | <a href="{_url_dias(90)}">90d</a>]
+    <div class="muted" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:end">
+      <span>Dashboard de observabilidade — metricas consolidadas dos ultimos {dias} dias.
+      [<a href="{_url_dias(1)}">1d</a> | <a href="{_url_dias(7)}">7d</a> | <a href="{_url_dias(30)}">30d</a> | <a href="{_url_dias(90)}">90d</a>]</span>
+      <button class="btn" id="btn-processar" onclick="processarMetricas()" style="font-size:12px;padding:4px 10px">Processar metricas</button>
     </div>
+    <script>
+    function processarMetricas(){
+      var b=document.getElementById("btn-processar");
+      b.innerHTML="Processando...";b.disabled=true;
+      fetch("/portal/processar-metricas").then(r=>r.json()).then(d=>{
+        b.innerHTML="OK ("+d.inseridas+" linhas)";
+        setTimeout(function(){window.location.reload();},1000);
+      }).catch(function(e){
+        b.innerHTML="Erro";b.disabled=false;
+      });
+    }
+    </script>
     <div class="kpis">
       <div class="kpi-card"><div class="label">Chamadas</div><div class="value">{total_chamadas:,}</div><div class="sub">ultimos {dias}d</div></div>
       <div class="kpi-card"><div class="label">Taxa de Acerto</div><div class="value" style="color:{'var(--ok)' if taxa_acerto!='--' else '#8899bb'}">{taxa_acerto}</div><div class="sub">{total_util}/{total_fb} uteis</div></div>
@@ -2745,6 +2755,18 @@ def chat():
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>"""
     return templates.page("Chat de Teste", content, active="chat", user=u)
+
+
+# --------------------------------------------------------------------------- #
+# Processar metricas (agregacao manual)
+# --------------------------------------------------------------------------- #
+
+@bp.route("/processar-metricas")
+@auth.admin_required
+def processar_metricas():
+    """Agrega metricas do dia no banco e retorna quantas linhas foram inseridas."""
+    inseridas = db.agregar_metricas_diarias()
+    return jsonify({"ok": True, "inseridas": inseridas})
 
 
 # --------------------------------------------------------------------------- #
