@@ -239,6 +239,16 @@ def init_db() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_metrica_dia
                 ON metricas_diarias(data, agente_id, modelo);
 
+            CREATE TABLE IF NOT EXISTS alertas_config (
+                chave       TEXT PRIMARY KEY,
+                valor       REAL NOT NULL,
+                descricao   TEXT NOT NULL DEFAULT ''
+            );
+            INSERT OR IGNORE INTO alertas_config (chave, valor, descricao) VALUES
+                ('taxa_acerto_min', 70.0, 'Taxa de acerto minima (%)'),
+                ('latencia_max', 1000, 'Latencia maxima (ms)'),
+                ('erros_max', 5, 'Erros maximos por dia');
+
             CREATE TABLE IF NOT EXISTS custos_modelo (
                 modelo      TEXT PRIMARY KEY,
                 preco_input REAL NOT NULL DEFAULT 0.15,
@@ -886,52 +896,46 @@ def calcular_custos(dias: int = 30) -> list[dict]:
     return resultado
 
 
-_ALERTA_THRESHOLDS = {"taxa_acerto_baixa": 70.0, "latencia_alta": 1000, "erros_altos": 5}
 
 
 def verificar_alertas() -> list[dict]:
-    """Verifica thresholds e retorna alertas ativos."""
+    """Verifica thresholds (lidos do banco) e retorna alertas ativos."""
+    config = obter_alertas_config()
+    taxa_min = config.get("taxa_acerto_min", {}).get("valor", 70.0)
+    lat_max = config.get("latencia_max", {}).get("valor", 1000)
+    err_max = config.get("erros_max", {}).get("valor", 5)
     hoje = datetime.utcnow().isoformat()[:10]
     alertas = []
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT modelo,
-               SUM(feedback_util) * 100.0 / NULLIF(SUM(feedback_total), 0) as taxa
-               FROM metricas_diarias
-               WHERE data >= ?
-               GROUP BY modelo""",
+            "SELECT modelo, SUM(feedback_util)*100.0/NULLIF(SUM(feedback_total),0) as taxa FROM metricas_diarias WHERE data >= ? GROUP BY modelo",
             ((datetime.utcnow() - timedelta(days=7)).isoformat()[:10],),
         ).fetchall()
         for r in rows:
-            if r["taxa"] is not None and r["taxa"] < _ALERTA_THRESHOLDS["taxa_acerto_baixa"]:
-                alertas.append({
-                    "tipo": "taxa_acerto_baixa", "modelo": r["modelo"],
-                    "valor": round(r["taxa"], 1), "threshold": 70.0,
-                    "desc": "Taxa de acerto < 70% (7d)",
-                })
-        rows = conn.execute(
-            "SELECT modelo, latencia_p50 FROM metricas_diarias WHERE data=? AND chamadas>0",
-            (hoje,),
-        ).fetchall()
+            if r["taxa"] is not None and r["taxa"] < taxa_min:
+                alertas.append({"tipo": "taxa_acerto_baixa", "modelo": r["modelo"], "valor": round(r["taxa"], 1), "threshold": taxa_min, "desc": f"Taxa de acerto < {taxa_min:.0f}% (7d)"})
+        rows = conn.execute("SELECT modelo, latencia_p50 FROM metricas_diarias WHERE data=? AND chamadas>0", (hoje,)).fetchall()
         for r in rows:
-            if r["latencia_p50"] > _ALERTA_THRESHOLDS["latencia_alta"]:
-                alertas.append({
-                    "tipo": "latencia_alta", "modelo": r["modelo"],
-                    "valor": r["latencia_p50"], "threshold": 1000,
-                    "desc": "Latencia > 1000ms hoje",
-                })
-        rows = conn.execute(
-            "SELECT modelo, SUM(erros) as total_erros FROM metricas_diarias WHERE data=? GROUP BY modelo",
-            (hoje,),
-        ).fetchall()
+            if r["latencia_p50"] > lat_max:
+                alertas.append({"tipo": "latencia_alta", "modelo": r["modelo"], "valor": r["latencia_p50"], "threshold": lat_max, "desc": f"Latencia > {lat_max:.0f}ms hoje"})
+        rows = conn.execute("SELECT modelo, SUM(erros) as total_erros FROM metricas_diarias WHERE data=? GROUP BY modelo", (hoje,)).fetchall()
         for r in rows:
-            if r["total_erros"] > _ALERTA_THRESHOLDS["erros_altos"]:
-                alertas.append({
-                    "tipo": "erros_altos", "modelo": r["modelo"],
-                    "valor": r["total_erros"], "threshold": 5,
-                    "desc": "Mais de 5 erros hoje",
-                })
+            if r["total_erros"] > err_max:
+                alertas.append({"tipo": "erros_altos", "modelo": r["modelo"], "valor": r["total_erros"], "threshold": err_max, "desc": f"Mais de {err_max:.0f} erros hoje"})
     return alertas
+
+
+def obter_alertas_config() -> dict[str, dict]:
+    """Retorna todas as configuracoes de alerta."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT chave, valor, descricao FROM alertas_config").fetchall()
+    return {r["chave"]: {"valor": r["valor"], "descricao": r["descricao"]} for r in rows}
+
+
+def salvar_alerta_config(chave: str, valor: float) -> None:
+    """Atualiza o valor de um alerta config."""
+    with get_conn() as conn:
+        conn.execute("UPDATE alertas_config SET valor=? WHERE chave=?", (valor, chave))
 
 
 # --- Seed / Demo ----------------------------------------------------------------

@@ -2028,6 +2028,37 @@ def observabilidade():
     return templates.page("Observabilidade", content, active="observabilidade", user=u)
 
 
+@bp.route("/alertas-config", methods=["GET", "POST"])
+@auth.admin_required
+def alertas_config():
+    """Pagina de configuracao de alertas da observabilidade."""
+    u = _user()
+    if request.method == "POST":
+        for chave in ("taxa_acerto_min", "latencia_max", "erros_max"):
+            val = request.form.get(chave)
+            if val:
+                db.salvar_alerta_config(chave, float(val))
+        flash("Configuracoes salvas.", "ok")
+        return redirect(url_for("portal.alertas_config"))
+    config = db.obter_alertas_config()
+    rows = ""
+    for chave in ("taxa_acerto_min", "latencia_max", "erros_max"):
+        cfg = config.get(chave, {"valor": 0, "descricao": chave})
+        rows += f'<tr><td><b>{cfg["descricao"]}</b></td><td><input name="{chave}" type="number" step="any" value="{cfg["valor"]}" style="width:120px"></td></tr>'
+    content = f"""<div class="card" style="max-width:600px">
+      <h3 style="margin-top:0">Alertas da Observabilidade</h3>
+      <form method="post">
+        {templates.csrf_field()}<table>
+          <thead><tr><th>Alerta</th><th>Valor</th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+        <div style="margin-top:12px"><button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/observabilidade">Voltar</a></div>
+      </form>
+    </div>"""
+    return templates.page("Alertas", content, active="alertas_config", user=u)
+
+
 @bp.route("/rastreio/<int:tid>")
 @auth.admin_required
 def rastreio(tid: int):

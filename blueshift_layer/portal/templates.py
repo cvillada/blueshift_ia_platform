@@ -94,6 +94,7 @@ def _nav(active: str, user: dict | None) -> str:
         "clientes": "\U0001f465", "usuarios": "\U0001f464",
         "agentes": "\U0001f916", "skills": "\u2699\ufe0f",
         "modelos": "\U0001f9e0", "conectores": "\U0001f50c",
+        "alertas_config": "\U0001f514",
         "canais": "\U0001f4e1", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
@@ -117,6 +118,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("skills", "Skills", "/portal/skills"),
         ("modelos", "Modelos IA", "/portal/modelos"),
         ("conectores", "Conectores", "/portal/conectores"),
+        ("alertas_config", "Alertas", "/portal/alertas-config"),
         ("canais", "Canais", "/portal/canais"),
     ]
     cadastro_keys = {k for k, _, _ in cadastro_itens}
