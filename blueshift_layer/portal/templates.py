@@ -134,27 +134,6 @@ def _nav(active: str, user: dict | None) -> str:
 
     seta_aberto = "\u25be"
     seta_fechado = "\u25b8"
-    links = ""
-    for key, label, href in itens:
-        links += _nl(key, label, href, " active" if key == active else "")
-
-    # Submenu Cadastros
-    seta = seta_aberto if cadastro_aberto else seta_fechado
-    display = "block" if cadastro_aberto else "none"
-    cadastro_html = "".join(
-        _nl(k, l, h, " active" if k == active else "")
-        for k, l, h in cadastro_itens
-    )
-    links += f"""
-    <div class="submenu">
-      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)" title="Cadastros">
-        <span class="nav-icon">{ICONS.get("clientes", "")}</span>
-        <span class="nav-label"><span class="arrow">{seta}</span> Cadastros</span>
-      </a>
-      <div class="sub-items" style="display:{display}">
-        {cadastro_html}
-      </div>
-    </div>"""
 
     for key, label, href in outros:
         links += _nl(key, label, href, " active" if key == active else "")
