@@ -1936,7 +1936,7 @@ def observabilidade():
     alertas = db.verificar_alertas()
     alerta_html = ''
     for a in alertas:
-        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">a {a["desc"]} ({a["modelo"]}: {a["valor"]})</div>'
+        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">⚠️ {a["desc"]} ({a["modelo"]}: {a["valor"]})</div>'
     if not alertas:
         alerta_html = '<span class="muted">Nenhum alerta ativo — tudo ok</span>'
 
