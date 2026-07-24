@@ -1908,6 +1908,9 @@ def observabilidade():
         dias = 7
 
     metricas = db.listar_metricas(dias)
+    if not metricas:
+        db.agregar_metricas_diarias()
+        metricas = db.listar_metricas(dias)
     feedbacks = db.listar_feedback(limite=50)
 
     total_chamadas = sum(m["chamadas"] for m in metricas)
