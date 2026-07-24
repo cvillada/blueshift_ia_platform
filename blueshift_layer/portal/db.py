@@ -285,8 +285,14 @@ def init_db() -> None:
                 tipo        TEXT NOT NULL DEFAULT 'local',     -- local (LM Studio) | hibrido
                 api_key     TEXT,                              -- opcional
                 ativo       INTEGER NOT NULL DEFAULT 1,
+                preco_input REAL NOT NULL DEFAULT 0.0,
+                preco_output REAL NOT NULL DEFAULT 0.0,
                 criado_em   TEXT NOT NULL
             );
+
+            -- Migracao: adiciona colunas de preco se nao existirem
+            ALTER TABLE modelos ADD COLUMN preco_input REAL NOT NULL DEFAULT 0.0;
+            ALTER TABLE modelos ADD COLUMN preco_output REAL NOT NULL DEFAULT 0.0;
 
             CREATE TABLE IF NOT EXISTS api_keys (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1174,12 +1180,14 @@ def contar_documentos(cliente_id: int | None = None) -> list[dict]:
 
 # --- Modelos de IA (cadastro de LLMs por cliente) --------------------------
 
-def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1, max_tokens=None) -> int:
+def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1, max_tokens=None,
+                 preco_input=0.0, preco_output=0.0) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, ativo, criado_em)
-               VALUES (?,?,?,?,?,?,?,1,?)""",
-            (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, now_iso()),
+            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, ativo,
+               preco_input, preco_output, criado_em)
+               VALUES (?,?,?,?,?,?,?,1,?,?,?)""",
+            (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, preco_input, preco_output, now_iso()),
         )
         return cur.lastrowid
 

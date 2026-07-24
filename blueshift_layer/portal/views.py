@@ -2530,6 +2530,10 @@ def modelos():
         modelo = request.form.get("modelo", "").strip()
         if cid and nome and base_url and modelo:
             db.criar_modelo(cid, nome, base_url, modelo,
+                            preco_input=float(request.form.get("preco_input", 0) or 0),
+                            preco_output=float(request.form.get("preco_output", 0) or 0),
+                            preco_input=float(request.form.get("preco_input", 0) or 0),
+                            preco_output=float(request.form.get("preco_output", 0) or 0),
                             tipo=request.form.get("tipo", "local"),
                             api_key=request.form.get("api_key") or None,
                             max_tokens=request.form.get("max_tokens") or None)
@@ -2576,6 +2580,12 @@ def modelos():
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
         <label>Max tokens</label><input name="max_tokens" type="number" value="4096" placeholder="4096" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking/reasoning (ex: 8192, 16384). Timeout: 180s.</div>
+        <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="0.15" placeholder="0.15" style="width:200px">
+        <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="0.60" placeholder="0.60" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
+        <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="0.15" placeholder="0.15" style="width:200px">
+        <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="0.60" placeholder="0.60" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
         <div style="margin-top:12px"><button class="btn" type="submit">Cadastrar</button></div>
       </form>
     </div>
