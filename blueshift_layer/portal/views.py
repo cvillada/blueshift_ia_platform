@@ -1965,8 +1965,8 @@ def observabilidade():
 
     content = f"""
     <style>
-    .kpis{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}}
-    .kpi-card{{flex:1;min-width:140px;background:#1a2744;border-radius:10px;padding:14px}}
+    .kpis{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;max-width:100%}}
+    .kpi-card{{flex:1 1 130px;min-width:120px;max-width:220px;background:#1a2744;border-radius:10px;padding:14px}}
     .kpi-card .label{{font-size:11px;color:#8899bb;text-transform:uppercase;letter-spacing:.5px}}
     .kpi-card .value{{font-size:28px;font-weight:700;margin:4px 0}}
     .kpi-card .sub{{font-size:11px;color:#5a7a9a}}
