@@ -2581,9 +2581,6 @@ def modelos():
         <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="0.15" placeholder="0.15" style="width:200px">
         <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="0.60" placeholder="0.60" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
-        <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="0.15" placeholder="0.15" style="width:200px">
-        <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="0.60" placeholder="0.60" style="width:200px">
-        <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
         <div style="margin-top:12px"><button class="btn" type="submit">Cadastrar</button></div>
       </form>
     </div>
