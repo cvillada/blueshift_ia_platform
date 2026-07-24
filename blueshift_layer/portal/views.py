@@ -2633,6 +2633,9 @@ def modelo_editar(mid: int):
         <label>API Key</label><input name="api_key" value="{m.get('api_key') or ''}">
         <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking (8192, 16384). Timeout: 180s.</div>
+        <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="{m.get('preco_input') or 0.15}" style="width:200px">
+        <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="{m.get('preco_output') or 0.60}" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
         <div style="margin-top:12px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/modelos">Cancelar</a>
