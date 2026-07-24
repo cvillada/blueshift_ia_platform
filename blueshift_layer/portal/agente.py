@@ -161,6 +161,8 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
     id_cliente: opcional. Se fornecido, usado como fallback se a extração
     automática não encontrar. Padrão vazio — nenhum ID forçado.
     """
+    import time as _time
+    _t0 = _time.time()
     cliente_id = agente["cliente_id"]
     modelo = db.buscar_modelo(agente["modelo_id"]) if agente.get("modelo_id") else None
     if not modelo:
@@ -237,11 +239,27 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
                 modelo_usado = modelo2["modelo"]
                 usou_fallback = True
 
+    tok = out.get("tokens") or {}
+
+    # --- Tracing: salva o rastreio detalhado da execucao ---
+    import time as _time
+    tempo_ms = int((_time.time() - _t0) * 1000)
+    trace_id = db.salvar_trace(
+        pergunta=pergunta,
+        params=params if "params" in dir() else {},
+        conectores=ferramentas,
+        rag=[{"texto": c["texto"][:200]} for c in contexto],
+        modelo=modelo_usado,
+        modelo_fallback=usou_fallback,
+        tokens=tok,
+        resposta=out.get("content", ""),
+        tempo_ms=tempo_ms,
+    )
+
     if out["ok"]:
         db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {out['content']}",
                          tipo="conversa")
-        detalhe = pergunta[:80] + (f" [fallback->{modelo_usado}]" if usou_fallback else "")
-        tok = out.get("tokens") or {}
+        detalhe = f"trace:{trace_id} | {pergunta[:60]}" + (f" | fallback->{modelo_usado}" if usou_fallback else "")
         db.registrar_uso_token(
             cliente_id=cliente_id, modelo=modelo_usado,
             total_tokens=tok.get("total_tokens", 0),
@@ -259,7 +277,8 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
 
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
-            "contexto": contexto, "ferramentas": ferramentas}
+            "contexto": contexto, "ferramentas": ferramentas,
+            "trace_id": trace_id}
 
 
 def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,

@@ -176,6 +176,20 @@ def init_db() -> None:
                 atualizado_em TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS tracing (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                pergunta    TEXT NOT NULL,
+                params      TEXT NOT NULL DEFAULT '{}',
+                conectores  TEXT NOT NULL DEFAULT '[]',
+                rag         TEXT NOT NULL DEFAULT '[]',
+                modelo      TEXT NOT NULL DEFAULT '',
+                modelo_fallback INTEGER NOT NULL DEFAULT 0,
+                tokens      TEXT NOT NULL DEFAULT '{}',
+                resposta    TEXT NOT NULL DEFAULT '',
+                tempo_ms    INTEGER NOT NULL DEFAULT 0,
+                criado_em   TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS auditoria (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 usuario     TEXT NOT NULL,                     -- login
@@ -547,6 +561,40 @@ def listar_skills_db() -> list[dict]:
         ).fetchall()
     return [{"name": r[0], "description": r[1], "body": r[2], "version": r[3],
              "fonte": "banco"} for r in rows]
+
+
+# --- Tracing (rastreio detalhado de execucao do agente) ----------------------
+
+
+def salvar_trace(pergunta: str, params: dict, conectores: list,
+                 rag: list, modelo: str, modelo_fallback: bool,
+                 tokens: dict, resposta: str, tempo_ms: int) -> int:
+    """Salva o trace de uma execucao do agente. Retorna o id do trace."""
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO tracing (pergunta, params, conectores, rag, modelo,
+               modelo_fallback, tokens, resposta, tempo_ms, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (pergunta, json.dumps(params), json.dumps(conectores, default=str),
+             json.dumps(rag, default=str), modelo, 1 if modelo_fallback else 0,
+             json.dumps(tokens), resposta, tempo_ms, ts),
+        )
+        return cur.lastrowid
+
+
+def buscar_trace(tid: int) -> dict | None:
+    """Retorna um trace pelo ID."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM tracing WHERE id=?", (tid,)).fetchone()
+    if row:
+        d = dict(row)
+        d["params"] = json.loads(d.get("params", "{}"))
+        d["conectores"] = json.loads(d.get("conectores", "[]"))
+        d["rag"] = json.loads(d.get("rag", "[]"))
+        d["tokens"] = json.loads(d.get("tokens", "{}"))
+        return d
+    return None
 
 
 def _seed_conectores_demo(conn, cliente_id: int, ts: str) -> None:

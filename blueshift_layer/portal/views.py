@@ -1692,7 +1692,7 @@ def uso_tokens():
     clientes_opts = "".join(
         f'<option value="{c["id"]}">{c["nome"]}</option>' for c in db.listar_clientes())
     tabela = f"""<table><thead><tr><th>Cliente</th><th>Modelo</th><th>Origem</th><th>Total tokens</th><th>Prompt</th><th>Completion</th><th>Chamadas</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum consumo registrado ainda.</td></tr>'}</tbody></table>"""
+      <tbody>{body or '<tr><td colspan=8 class="empty">Nenhum consumo registrado ainda.</td></tr>'}</tbody></table>"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
       Consumo de tokens por chamada ao LLM (modelo cadastrado). Cobrança via contrato anual externo.
@@ -1713,6 +1713,15 @@ def uso_tokens():
 # ---------------------------------------------------------------------------
 # AUDITORIA (rastreabilidade / LGPD)
 # ---------------------------------------------------------------------------
+
+def _rastreio_link(a: dict) -> str:
+    """Retorna link Rastreio se a auditoria tiver trace_id no detalhe."""
+    d = a.get("detalhe", "")
+    if d.startswith("trace:"):
+        tid = d.split("|")[0].replace("trace:", "").strip()
+        return f'<a href="#" onclick="abrirRastreio({tid});return false" style="font-size:12px">🔍 Rastreio</a>'
+    return ""
+
 
 @bp.route("/auditoria")
 @auth.admin_required
@@ -1749,6 +1758,7 @@ def auditoria():
           <td>{a['alvo'] or '-'}</td>
           <td>{cliente}</td>
           <td class="muted">{a['ip'] or '-'}</td>
+          <td style="font-size:12px">{_rastreio_link(a)}</td>
         </tr>"""
 
     # Paginacao
@@ -1776,7 +1786,7 @@ def auditoria():
     # Lista de usuarios para o filtro
     usuarios = sorted(set(r["usuario"] for r in rows))
 
-    tabela = f"""<table><thead><tr><th>Data/Hora</th><th>Usuário</th><th>Papel</th><th>Ação</th><th>Alvo</th><th>Cliente</th><th>IP</th></tr></thead>
+    tabela = f"""<table><thead><tr><th>Data/Hora</th><th>Usuário</th><th>Papel</th><th>Ação</th><th>Alvo</th><th>Cliente</th><th>IP</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum evento registrado.</td></tr>'}</tbody></table>{pag_btns}"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
@@ -1798,8 +1808,42 @@ def auditoria():
           <a class="btn ghost" href="/portal/auditoria" style="margin-left:4px">Limpar</a></div>
       </form>
     </div>
-    {tabela}"""
+    {tabela}
+    <div class="modal-overlay" id="modal-rastreio" onclick="if(event.target===this)fecharRastreio()">
+      <div class="modal-box" style="max-width:800px">
+        <div id="rastreio-conteudo"><p class="muted">Carregando...</p></div>
+      </div>
+    </div>
+    <script>
+    function abrirRastreio(tid){
+      document.getElementById('modal-rastreio').classList.add('show');
+      document.getElementById('rastreio-conteudo').innerHTML = '<p class="muted">Carregando...</p>';
+      fetch('/portal/rastreio/'+tid).then(r=>r.json()).then(d=>{
+        if(!d.ok){document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+d.erro+'</p>';return}
+        var t=d.trace;
+        var h='<h3>Rastreio #'+t.id+'</h3><p class="muted">Pergunta: <b>'+t.pergunta+'</b></p><hr>';
+        h+='<b>1. Parametros:</b> '+JSON.stringify(t.params)+'<br>';
+        h+='<b>2. Conectores:</b> '+JSON.stringify(t.conectores.map(f=>f.conector+'.'+f.tool+'='+(f.resultado?f.resultado.length+' reg':'erro')))+'<br>';
+        h+='<b>3. RAG:</b> '+(t.rag||[]).length+' docs<br>';
+        h+='<b>4. Modelo:</b> '+t.modelo+' ('+t.tempo_ms+'ms)'+(t.modelo_fallback?' fallback':'')+'<br>';
+        h+='<hr><b>Resposta:</b><pre>'+t.resposta+'</pre>';
+        document.getElementById('rastreio-conteudo').innerHTML=h;
+      }).catch(e=>{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'});
+    }
+    function fecharRastreio(){document.getElementById('modal-rastreio').classList.remove('show');}
+    </script>
+"""
     return templates.page("Auditoria", content, active="auditoria", user=_user())
+
+
+@bp.route("/rastreio/<int:tid>")
+@auth.admin_required
+def rastreio(tid: int):
+    """Retorna os dados de trace como JSON para o modal."""
+    trace = db.buscar_trace(tid)
+    if not trace:
+        return jsonify({"ok": False, "erro": "Trace nao encontrado"}), 404
+    return jsonify({"ok": True, "trace": trace})
 
 
 # ---------------------------------------------------------------------------
