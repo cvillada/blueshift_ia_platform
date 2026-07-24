@@ -426,6 +426,13 @@ def _extrair_parametros(pergunta: str) -> dict:
         if chave not in params:
             params[chave] = valor
 
+    # --- 6. Extrator de numero: chave=123 (sem aspas) ---
+    for m in re.finditer(r"""([\w_]+)\s*=\s*(\d{2,})""", pergunta):
+        chave = m.group(1).lower()
+        valor = m.group(2)
+        if chave not in params:
+            params[chave] = valor
+
     return params
 
 
