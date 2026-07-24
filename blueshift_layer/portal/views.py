@@ -1826,37 +1826,37 @@ def auditoria():
         var t=d.trace;
         var h='<h3>Rastreio #'+t.id+'</h3><p class="muted">Pergunta: <b>'+t.pergunta+'</b></p><hr>';
         h+='<div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap">';
-        var p=t.params||{}; var pk=Object.keys(p);
+        var p=t.params||{{}}; var pk=Object.keys(p);
         var c=t.conectores||[]; var rg=t.rag||[];
         var passos=[
-          {n:1, cor:"#2563eb", rotulo:"Params", detalhe:pk.length?pk.join(", "):"(nenhum)"},
-          {n:2, cor:"#7c3aed", rotulo:"Conectores", detalhe:c.length?c.length+" exec(s)":"(nenhum)"},
-          {n:3, cor:"#059669", rotulo:"RAG", detalhe:rg.length?rg.length+" doc(s)":"(vazio)"},
-          {n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")},
+          {{n:1, cor:"#2563eb", rotulo:"Params", detalhe:pk.length?pk.join(", "):"(nenhum)"}},
+          {{n:2, cor:"#7c3aed", rotulo:"Conectores", detalhe:c.length?c.length+" exec(s)":"(nenhum)"}},
+          {{n:3, cor:"#059669", rotulo:"RAG", detalhe:rg.length?rg.length+" doc(s)":"(vazio)"}},
+          {{n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")}},
         ];
-        for(var i=0;i<passos.length;i++){var s=passos[i];
+        for(var i=0;i<passos.length;i++){{var s=passos[i];
           h+='<div style="flex:1;min-width:120px;background:#1a2744;border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
           h+='<div style="font-size:11px;color:'+s.cor+';font-weight:700">PASSO '+s.n+'</div>';
           h+='<div style="font-size:14px;font-weight:600;margin:2px 0">'+s.rotulo+'</div>';
           h+='<div style="font-size:11px;color:#8899bb">'+s.detalhe+'</div></div>';
-        }
+        }}
         h+='</div>';
         h+='<hr>';
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
-        h+=pk.length?pk.map(function(k){return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
+        h+=pk.length?pk.map(function(k){{return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
-        if(c.length){for(var i=0;i<c.length;i++){var f=c[i];
-          if(f.erro){h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}
-          else{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}
-        }}else{h+='<span class="muted">Nenhum conector executado</span>';}
+        if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
+          if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
+          else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
+        }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
-        h+=rg.length?'<span class="muted">'+rg.map(function(x){return (x.texto||'').substring(0,80)}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
+        h+=rg.length?'<span class="muted">'+rg.map(function(x){{return (x.texto||'').substring(0,80)}}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
         h+='</div>';
         h+='<div style="margin-bottom:12px;background:#0e1726;border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
