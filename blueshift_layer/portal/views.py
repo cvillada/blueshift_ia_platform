@@ -1981,16 +1981,16 @@ def observabilidade():
       <button class="btn" id="btn-processar" onclick="processarMetricas()" style="font-size:12px;padding:4px 10px">Processar metricas</button>
     </div>
     <script>
-    function processarMetricas(){
+    function processarMetricas(){{
       var b=document.getElementById("btn-processar");
       b.innerHTML="Processando...";b.disabled=true;
-      fetch("/portal/processar-metricas").then(r=>r.json()).then(d=>{
+      fetch("/portal/processar-metricas").then(r=>r.json()).then(d=>{{
         b.innerHTML="OK ("+d.inseridas+" linhas)";
-        setTimeout(function(){window.location.reload();},1000);
-      }).catch(function(e){
+        setTimeout(function(){{window.location.reload();}},1000);
+      }}).catch(function(e){{
         b.innerHTML="Erro";b.disabled=false;
-      });
-    }
+      }});
+    }}
     </script>
     <div class="kpis">
       <div class="kpi-card"><div class="label">Chamadas</div><div class="value">{total_chamadas:,}</div><div class="sub">ultimos {dias}d</div></div>
