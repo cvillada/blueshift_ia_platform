@@ -155,7 +155,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) por área | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
 | **Uso de Tokens** | Análise de consumo por cliente/modelo/origem | Admin |
-| **Auditoria** | Rastreabilidade LGPD de ações sensíveis | Admin |
+| **Auditoria** | Rastreabilidade LGPD + 🔍 Rastreio passo a passo | Admin |
 | **SSO (OIDC)** | Login federado (Azure AD, Okta, Keycloak, Google) | Admin |
 | **Atualizações** | Update Channel da plataforma | Admin |
 
