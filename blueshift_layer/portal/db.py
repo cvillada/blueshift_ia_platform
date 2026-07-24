@@ -42,7 +42,7 @@ def _verificar_senha(senha: str, armazenado: str) -> bool:
     h = hashlib.scrypt(senha.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
     return hmac.compare_digest(h.hex(), hash_hex)
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "portal.db"
 
@@ -201,6 +201,15 @@ def init_db() -> None:
                 detalhe     TEXT,
                 criado_em   TEXT NOT NULL
             );
+
+            -- Indices para performance
+            CREATE INDEX IF NOT EXISTS idx_auditoria_cliente ON auditoria(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_auditoria_criado ON auditoria(criado_em);
+            CREATE INDEX IF NOT EXISTS idx_memories_cliente ON memories(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_criado ON memories(criado_em);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_cliente ON knowledge(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_area ON knowledge(area);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_criado ON knowledge(criado_em);
 
             CREATE TABLE IF NOT EXISTS memories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -595,6 +604,17 @@ def buscar_trace(tid: int) -> dict | None:
         d["tokens"] = json.loads(d.get("tokens", "{}"))
         return d
     return None
+
+
+def limpar_auditoria_antiga(dias: int = 90) -> int:
+    """Remove registros de auditoria com mais de `dias` dias.
+
+    Retorna o numero de registros removidos.
+    """
+    ts = (datetime.utcnow() - timedelta(days=dias)).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM auditoria WHERE criado_em < ?", (ts,))
+        return cur.rowcount
 
 
 def _seed_conectores_demo(conn, cliente_id: int, ts: str) -> None:
