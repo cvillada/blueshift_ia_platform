@@ -290,10 +290,6 @@ def init_db() -> None:
                 criado_em   TEXT NOT NULL
             );
 
-            -- Migracao: adiciona colunas de preco se nao existirem
-            ALTER TABLE modelos ADD COLUMN preco_input REAL NOT NULL DEFAULT 0.0;
-            ALTER TABLE modelos ADD COLUMN preco_output REAL NOT NULL DEFAULT 0.0;
-
             CREATE TABLE IF NOT EXISTS api_keys (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
