@@ -2610,6 +2610,12 @@ def modelo_editar(mid: int):
         max_tok = request.form.get("max_tokens") or None
         if max_tok is not None:
             campos["max_tokens"] = int(max_tok)
+        preco_i = request.form.get("preco_input") or None
+        if preco_i is not None:
+            campos["preco_input"] = float(preco_i)
+        preco_o = request.form.get("preco_output") or None
+        if preco_o is not None:
+            campos["preco_output"] = float(preco_o)
         db.atualizar_modelo(mid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_modelo", alvo=request.form.get("nome", m["nome"]),
                                cliente_id=m["cliente_id"], ip=request.remote_addr)
