@@ -1810,7 +1810,7 @@ def auditoria():
     </div>
     {tabela}
     <div class="modal-overlay" id="modal-rastreio" onclick="if(event.target===this)fecharRastreio()">
-      <div class="modal-box" style="max-width:900px;width:92%">
+      <div class="modal-box" style="max-width:960px;width:94%;max-height:85vh;overflow-y:auto">
         <div id="rastreio-conteudo"><p class="muted">Carregando...</p></div>
         <div style="text-align:center;margin-top:14px">
           <button class="btn ghost" onclick="fecharRastreio()">Fechar</button>
@@ -1825,11 +1825,44 @@ def auditoria():
         if(!d.ok){{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+d.erro+'</p>';return}}
         var t=d.trace;
         var h='<h3>Rastreio #'+t.id+'</h3><p class="muted">Pergunta: <b>'+t.pergunta+'</b></p><hr>';
-        h+='<b>1. Parametros:</b> '+JSON.stringify(t.params)+'<br>';
-        h+='<b>2. Conectores:</b> '+JSON.stringify(t.conectores.map(f=>f.conector+'.'+f.tool+'='+(f.resultado?f.resultado.length+' reg':'erro')))+'<br>';
-        h+='<b>3. RAG:</b> '+(t.rag||[]).length+' docs<br>';
-        h+='<b>4. Modelo:</b> '+t.modelo+' ('+t.tempo_ms+'ms)'+(t.modelo_fallback?' fallback':'')+'<br>';
-        h+='<hr><b>Resposta:</b><pre>'+t.resposta+'</pre>';
+        h+='<div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap">';
+        var p=t.params||{}; var pk=Object.keys(p);
+        var c=t.conectores||[]; var rg=t.rag||[];
+        var passos=[
+          {n:1, cor:"#2563eb", rotulo:"Params", detalhe:pk.length?pk.join(", "):"(nenhum)"},
+          {n:2, cor:"#7c3aed", rotulo:"Conectores", detalhe:c.length?c.length+" exec(s)":"(nenhum)"},
+          {n:3, cor:"#059669", rotulo:"RAG", detalhe:rg.length?rg.length+" doc(s)":"(vazio)"},
+          {n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")},
+        ];
+        for(var i=0;i<passos.length;i++){var s=passos[i];
+          h+='<div style="flex:1;min-width:120px;background:#1a2744;border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
+          h+='<div style="font-size:11px;color:'+s.cor+';font-weight:700">PASSO '+s.n+'</div>';
+          h+='<div style="font-size:14px;font-weight:600;margin:2px 0">'+s.rotulo+'</div>';
+          h+='<div style="font-size:11px;color:#8899bb">'+s.detalhe+'</div></div>';
+        }
+        h+='</div>';
+        h+='<hr>';
+        h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
+        h+=pk.length?pk.map(function(k){return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
+        h+='</div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
+        if(c.length){for(var i=0;i<c.length;i++){var f=c[i];
+          if(f.erro){h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}
+          else{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}
+        }}else{h+='<span class="muted">Nenhum conector executado</span>';}
+        h+='</div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
+        h+=rg.length?'<span class="muted">'+rg.map(function(x){return (x.texto||'').substring(0,80)}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
+        h+='</div>';
+        h+='<div style="margin-bottom:12px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
+        h+='Modelo: <code>'+t.modelo+'</code>'+(t.modelo_fallback?' <span class="badge warn">fallback</span>':'')+' | Tokens: '+(t.tokens?t.tokens.total_tokens||0:0)+' | Tempo: '+t.tempo_ms+'ms';
+        h+='</div>';
+        h+='<hr><div><b>Resposta:</b></div><pre style="background:#0e1726;padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
         document.getElementById('rastreio-conteudo').innerHTML=h;
       }}).catch(e=>{{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'}});
     }}
