@@ -2860,6 +2860,7 @@ def api_agente(canal):
     resposta = {
         "ok": out["ok"],
         "resposta": out["content"],
+        "pergunta": pergunta,
         "agente": a["nome"],
         "modelo": out.get("model"),
         "feedback_url": out.get("feedback_url"),
