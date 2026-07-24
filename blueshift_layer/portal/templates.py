@@ -134,14 +134,33 @@ def _nav(active: str, user: dict | None) -> str:
 
     seta_aberto = "\u25be"
     seta_fechado = "\u25b8"
+    links = """<div class="sidebar-footer" style="margin-top:0;padding-bottom:6px">
+      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu"><span class="nav-icon">\u25c0</span><span class="nav-label">Recolher</span></a>
+    </div>
+    <hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
+    for key, label, href in itens:
+        links += _nl(key, label, href, " active" if key == active else "")
+
+    # Submenu Cadastros
+    seta = seta_aberto if cadastro_aberto else seta_fechado
+    display = "block" if cadastro_aberto else "none"
+    cadastro_html = "".join(
+        _nl(k, l, h, " active" if k == active else "")
+        for k, l, h in cadastro_itens
+    )
+    links += f"""
+    <div class="submenu">
+      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)" title="Cadastros">
+        <span class="nav-icon">{ICONS.get("clientes", "")}</span>
+        <span class="nav-label"><span class="arrow">{seta}</span> Cadastros</span>
+      </a>
+      <div class="sub-items" style="display:{display}">
+        {cadastro_html}
+      </div>
+    </div>"""
 
     for key, label, href in outros:
         links += _nl(key, label, href, " active" if key == active else "")
-
-    links += """
-    <div class="sidebar-footer">
-      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu"><span class="nav-icon">\u25c0</span><span class="nav-label">Recolher</span></a>
-    </div>"""
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
