@@ -35,7 +35,7 @@ Legenda: ✅ implementado e coerente · 🔧 parcial/incompleto · 🔴 gap de p
 | Acesso Interno / Externo a Modelos | §7 | `llm_client.py` (Bearer só se `api_key`) + tela Modelos IA | ✅ híbrido local/externo. |
 | **Segurança / Isolamento** | §4.3 | SQLite por `cliente_id` + memória isolada por login + scoping por `area` | ✅ Isolamento lógico via `cliente_id` + RBAC |
 | **Planos e Precificação** | §9 | Apenas licenciamento anual por contrato; sem planos na tela |
-| Observabilidade | §8-F (Fase 4) | `db.health` (latencia, tokens_hoje, erros_24h) + `monitorar` | 🔧 parcial — métricas pontuais, sem histórico de série temporal nem dashboards por período. |
+|| Observabilidade | §8-F (Fase 4) | `portal/views.py:/observabilidade` (KPI, drift, custos, feedback, alertas) | ✅ dashboard completo com 6 fases implementadas. |
 | Monitoramento | §8-F (Fase 4) | `conectores` online/offline + `health.container/modelo_local` + `monitorar` | 🔧 parcial — sem alertas ativos (email/webhook de alerta) nem healthcheck de GPU. |
 
 ## 4. Camadas 3/4 (Portal, Licença, Update, SSO, Canais)
