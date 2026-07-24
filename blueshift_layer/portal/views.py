@@ -1936,7 +1936,7 @@ def observabilidade():
     alertas = db.verificar_alertas()
     alerta_html = ''
     for a in alertas:
-        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">⚠️ {a["desc"]} ({a["modelo"]}: {a["valor"]}ms) <span style="cursor:pointer;font-size:11px;color:#8899bb" onclick="alert('Threshold: {a["threshold"]}ms. Se a latencia ultrapassar esse valor, o alerta e disparado para notificar degradacao de performance.')">ⓘ</span></div>'
+        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">⚠️ {a["desc"]} ({a["modelo"]}: {a["valor"]}ms) <span style="cursor:pointer;font-size:11px;color:#8899bb" onclick="infoAlerta()">ⓘ</span></div>'
     if not alertas:
         alerta_html = '<span class="muted">Nenhum alerta ativo — tudo ok</span>'
 
@@ -1981,6 +1981,7 @@ def observabilidade():
       <button class="btn" id="btn-processar" onclick="processarMetricas()" style="font-size:12px;padding:4px 10px">Processar metricas</button>
     </div>
     <script>
+    function infoAlerta(){{alert("Os alertas sao disparados quando as metricas ultrapassam thresholds pre-definidos. Ajuste os valores em _ALERTA_THRESHOLDS no codigo.");}}
     function processarMetricas(){{
       var b=document.getElementById("btn-processar");
       b.innerHTML="Processando...";b.disabled=true;
