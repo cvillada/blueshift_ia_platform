@@ -277,13 +277,14 @@ Resposta:
 ```json
 {
   "ok": true,
-  "resposta": "O cliente C001 possui 3 interações no CRM...",
+  "resposta": "O cliente C001 possui 3 interações...",
+  "pergunta": "Qual o histórico do cliente C001?",
   "agente": "Agente Vendas",
   "modelo": "hermes-3-llama-3.1-8b",
-  "contexto": [...],
-  "ferramentas": [...],
-  "webhook": {"enviado": true, "status": 200},
-  "feedback_url": "http://localhost:8080/portal/api/v1/feedback/123"
+  "feedback_url": "http://localhost:8080/portal/api/v1/feedback/123",
+  "erro": null,
+  "tokens": {"total_tokens": 345, "prompt_tokens": 200, "completion_tokens": 145},
+  "tempo_ms": 2340
 }
 ```
 
@@ -311,7 +312,7 @@ curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \
 {"ok": true, "feedback_id": 1}
 ```
 
-> O uso do feedback é **opcional**. A API funciona sem ele. Os dados aparecem no Dashboard de Observabilidade.
+> O campo `tipo` no banco será `"api"` (via curl) ou `"manual"` (via botões 👍/👎 na tela de Agentes → Testar). O uso é **opcional** — a API funciona sem o feedback. Os dados aparecem no Dashboard de Observabilidade.
 
 ### Agendamento da Agregação de Métricas
 
