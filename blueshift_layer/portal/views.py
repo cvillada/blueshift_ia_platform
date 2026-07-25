@@ -2953,7 +2953,7 @@ def canais():
     <div class="card muted" style="font-size:13px">
       <b>Como usar (canal real):</b><br><br>
       Faça uma requisição <code>POST</code> para o endpoint do agente usando o token do canal:<br><br>
-      <pre style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">curl -X POST http://localhost:8080/portal/api/v1/agente \u005c<br>  -H "Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;" \u005c<br>  -H "Content-Type: application/json" \u005c<br>  -d '{{"pergunta": "Qual o hist\u00f3rico do cliente C001?"}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyCurl1(this)">📋 Copiar</button>
+      <pre id="pre1" style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">curl -X POST http://localhost:8080/portal/api/v1/agente \u005c<br>  -H "Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;" \u005c<br>  -H "Content-Type: application/json" \u005c<br>  -d '{{"pergunta": "Qual o hist\u00f3rico do cliente C001?"}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(1,this)">📋 Copiar</button>
       <br>
       Substitua <code>&lt;TOKEN_DO_CANAL&gt;</code> pela chave do canal (use o botão 📋 ao lado do token para copiar).<br><br>
       <b>Resposta (JSON):</b><br><br>
@@ -2970,20 +2970,22 @@ def canais():
       <br>
       <b>Feedback (opcional):</b> a resposta inclui <code>feedback_url</code>.<br>
       POST <code>/portal/api/v1/feedback/&lt;trace_id&gt;</code> com <code>{{"util": true}}</code>.<br>
-      Exemplo: <pre style="background:#0e1726;padding:6px;border-radius:4px;font-size:12px">curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \n  -H "Authorization: Bearer &lt;TOKEN&gt;" \n  -H "Content-Type: application/json" \n  -d '{{"util": true}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyCurl2(this)">📋 Copiar</button>
+      Exemplo: <pre id="pre2" style="background:#0e1726;padding:6px;border-radius:4px;font-size:12px">curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \n  -H "Authorization: Bearer &lt;TOKEN&gt;" \n  -H "Content-Type: application/json" \n  -d '{{"util": true}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(2,this)">📋 Copiar</button>
       Retorno: <code>{{"ok": true, "feedback_id": 1}}</code>.<br>
       <b>Opcional</b> — a API funciona sem ele. Use para acompanhar qualidade no dashboard de observabilidade.<br>
       Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada na URL configurada.
-    <script>
-    function copyCurl1(){{
-      var t=event.target;
-      var txt='curl -X POST http://localhost:8080/portal/api/v1/agente \\n  -H "Authorization: Bearer <TOKEN>" \\n  -H "Content-Type: application/json" \\n  -d \'{{\"pergunta\": \"Qual o hist\u00f3rico do cliente C001?\"}}\'';
-      navigator.clipboard.writeText(txt).then(function(){{t.textContent="Copiado!";setTimeout(function(){{t.textContent="\U0001f4cb Copiar"}},2000)}}).catch(function(){{t.textContent="Erro"}});
-    }}
-    function copyCurl2(){{
-      var t=event.target;
-      var txt='curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \\n  -H "Authorization: Bearer ***" \\n  -H "Content-Type: application/json" \\n  -d \'{{\"util\": true}}\'';
-      navigator.clipboard.writeText(txt).then(function(){{t.textContent="Copiado!";setTimeout(function(){{t.textContent="\U0001f4cb Copiar"}},2000)}}).catch(function(){{t.textContent="Erro"}});
+        <script>
+    function copyPre(n,el){{
+      var pre=document.getElementById("pre"+n);
+      var r=document.createRange();
+      r.selectNodeContents(pre);
+      var s=window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      document.execCommand('copy');
+      s.removeAllRanges();
+      el.textContent='Copiado!';
+      setTimeout(function(){{el.textContent="\U0001f4cb Copiar"}},2000);
     }}
     </script>
     """
