@@ -2804,7 +2804,7 @@ def processar_metricas():
     if total == 0:
         # Tenta dias anteriores com dados de tracing
         for i in range(1, 8):
-                    d = (datetime.utcnow() - timedelta(days=i)).isoformat()[:10]
+                    d = (datetime.now() - timedelta(days=i)).isoformat()[:10]
                     total = db.agregar_metricas_diarias(d)
                     if total > 0:
                         break

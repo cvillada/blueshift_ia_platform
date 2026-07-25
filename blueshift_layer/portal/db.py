@@ -71,7 +71,7 @@ def get_conn():
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def init_db() -> None:
@@ -664,7 +664,7 @@ def limpar_auditoria_antiga(dias: int = 90) -> int:
 
     Retorna o numero de registros removidos.
     """
-    ts = (datetime.utcnow() - timedelta(days=dias)).isoformat()
+    ts = (datetime.now() - timedelta(days=dias)).isoformat()
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM auditoria WHERE criado_em < ?", (ts,))
         return cur.rowcount
@@ -698,7 +698,7 @@ def verificar_pergunta_repetida(agente_id: int, pergunta: str,
     Se encontrar, marca a resposta anterior como 'nao_util' e retorna os dados.
     Retorna None se nao houver repeticao.
     """
-    ts_limite = (datetime.utcnow() - timedelta(minutes=limite_minutos)).isoformat()
+    ts_limite = (datetime.now() - timedelta(minutes=limite_minutos)).isoformat()
     with get_conn() as conn:
         row = conn.execute(
             """SELECT id, trace_id, pergunta, resposta FROM feedback
@@ -804,7 +804,7 @@ def agregar_metricas_diarias(data: str | None = None) -> int:
 
 def listar_metricas(dias: int = 30) -> list[dict]:
     """Retorna metricas dos ultimos N dias."""
-    data_corte = (datetime.utcnow() - timedelta(days=dias)).isoformat()[:10]
+    data_corte = (datetime.now() - timedelta(days=dias)).isoformat()[:10]
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT * FROM metricas_diarias
@@ -820,7 +820,7 @@ def comparar_periodos(dias: int = 7) -> list[dict]:
     Retorna lista com modelo, chamadas, latencia_media, taxa_acerto, delta.
     delta > 0 = melhorou, delta < 0 = piorou.
     """
-    hoje = datetime.utcnow()
+    hoje = datetime.now()
     ini_atual = (hoje - timedelta(days=dias)).isoformat()[:10]
     ini_anterior = (hoje - timedelta(days=dias * 2)).isoformat()[:10]
     fim_anterior = (hoje - timedelta(days=dias)).isoformat()[:10]
@@ -870,7 +870,7 @@ def comparar_periodos(dias: int = 7) -> list[dict]:
 
 def calcular_custos(dias: int = 30) -> list[dict]:
     """Calcula custo estimado por modelo baseado nos tokens consumidos."""
-    data_corte = (datetime.utcnow() - timedelta(days=dias)).isoformat()[:10]
+    data_corte = (datetime.now() - timedelta(days=dias)).isoformat()[:10]
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT m.modelo,
@@ -904,12 +904,12 @@ def verificar_alertas() -> list[dict]:
     taxa_min = config.get("taxa_acerto_min", {}).get("valor", 70.0)
     lat_max = config.get("latencia_max", {}).get("valor", 1000)
     err_max = config.get("erros_max", {}).get("valor", 5)
-    hoje = datetime.utcnow().isoformat()[:10]
+    hoje = datetime.now().isoformat()[:10]
     alertas = []
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT modelo, SUM(feedback_util)*100.0/NULLIF(SUM(feedback_total),0) as taxa FROM metricas_diarias WHERE data >= ? GROUP BY modelo",
-            ((datetime.utcnow() - timedelta(days=7)).isoformat()[:10],),
+            ((datetime.now() - timedelta(days=7)).isoformat()[:10],),
         ).fetchall()
         for r in rows:
             if r["taxa"] is not None and r["taxa"] < taxa_min:
