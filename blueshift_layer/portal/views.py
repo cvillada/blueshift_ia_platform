@@ -2796,9 +2796,19 @@ def chat():
 @bp.route("/processar-metricas")
 @auth.admin_required
 def processar_metricas():
-    """Agrega metricas do dia no banco e retorna quantas linhas foram inseridas."""
-    inseridas = db.agregar_metricas_diarias()
-    return jsonify({"ok": True, "inseridas": inseridas})
+    """Agrega metricas do banco: tenta hoje, se vazio tenta dias anteriores."""
+    from datetime import datetime, timedelta
+    from blueshift_layer.portal.db import now_iso
+    hoje = now_iso()[:10]
+    total = db.agregar_metricas_diarias(hoje)
+    if total == 0:
+        # Tenta dias anteriores com dados de tracing
+        for i in range(1, 8):
+                    d = (datetime.utcnow() - timedelta(days=i)).isoformat()[:10]
+                    total = db.agregar_metricas_diarias(d)
+                    if total > 0:
+                        break
+    return jsonify({"ok": True, "inseridas": total})
 
 
 # --------------------------------------------------------------------------- #
