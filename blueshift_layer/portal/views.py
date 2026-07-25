@@ -2015,7 +2015,7 @@ def observabilidade():
     </table>
     <h3>Cost Intelligence — custo estimado</h3>
     <table>
-      <thead><tr><th>Modelo</th><th>Tokens</th><th>Custo ({dias}d)</th><th>Preco/M</th></tr></thead>
+      <thead><tr><th>Modelo</th><th>Tokens<span style=\"cursor:help;margin-left:4px;color:#4a9eff;font-size:13px\" onclick=\"alert('Os tokens no dashboard de observabilidade consideram apenas as respostas do agente (tabela tracing). Chamadas de teste no chat livre ou skills que n\\u00e3o passam pelo agente n\\u00e3o s\\u00e3o contabilizadas aqui. Para o total geral de tokens, consulte a p\\u00e1gina Uso de Tokens.')\">\\u24d8</span></th><th>Custo ({dias}d)</th><th>Preco/M</th></tr></thead>
       <tbody>{custo_rows}</tbody>
       <tfoot><tr><td><b>Total</b></td><td></td><td><b>R$ {custo_total:.4f}</b></td><td></td></tr></tfoot>
     </table>
