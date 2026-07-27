@@ -290,6 +290,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
         except Exception:
             pass
 
+    # --- Anonimizacao LGPD na saida (Arts. 12, 13) ---
+    if out["ok"]:
+        lgpd_cfg = db.carregar_lgpd_config()
+        if lgpd_cfg.get("anonimizar_llm") == "1":
+            from . import mask as _mask
+            out["content"] = _mask.aplicar_mascaras(out["content"], lgpd_cfg)
+
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas,
