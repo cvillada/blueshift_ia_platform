@@ -42,7 +42,10 @@ def _rate_check(key: str, max_attempts: int, window: int) -> bool:
 
 
 def rate_limit_login(f):
-    """Limita tentativas de login por IP (5/min, bloqueia 15min)."""
+    """Limita tentativas de login por IP (5/min, bloqueia 15min).
+    
+    So conta tentativas POST (GET sempre passa livre).
+    """
 
     @wraps(f)
     def _wrap(*args, **kwargs):
@@ -53,13 +56,15 @@ def rate_limit_login(f):
         if key in _RATE_LOGIN_BLOCKED:
             if time.time() - _RATE_LOGIN_BLOCKED[key] < _RATE_LOGIN_BLOCK:
                 flash("Muitas tentativas de login. Tente novamente em 15 minutos.", "bad")
-                return redirect(url_for("portal.login"))
+                # Renderiza a pagina de login sem re-aplicar o rate limit
+                return f(*args, **kwargs)
             del _RATE_LOGIN_BLOCKED[key]
 
-        if not _rate_check(key, _RATE_LOGIN_MAX, _RATE_LOGIN_WIN):
+        # So conta tentativas POST (GET e so carregar pagina)
+        if request.method == "POST" and not _rate_check(key, _RATE_LOGIN_MAX, _RATE_LOGIN_WIN):
             _RATE_LOGIN_BLOCKED[key] = time.time()
             flash("Muitas tentativas de login. Tente novamente em 15 minutos.", "bad")
-            return redirect(url_for("portal.login"))
+            return f(*args, **kwargs)
 
         return f(*args, **kwargs)
 
