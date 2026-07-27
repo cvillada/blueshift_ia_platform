@@ -205,11 +205,6 @@ def init_db() -> None:
             -- Indices para performance
             CREATE INDEX IF NOT EXISTS idx_auditoria_cliente ON auditoria(cliente_id);
             CREATE INDEX IF NOT EXISTS idx_auditoria_criado ON auditoria(criado_em);
-            CREATE INDEX IF NOT EXISTS idx_memories_cliente ON memories(cliente_id);
-            CREATE INDEX IF NOT EXISTS idx_memories_criado ON memories(criado_em);
-            CREATE INDEX IF NOT EXISTS idx_knowledge_cliente ON knowledge(cliente_id);
-            CREATE INDEX IF NOT EXISTS idx_knowledge_area ON knowledge(area);
-            CREATE INDEX IF NOT EXISTS idx_knowledge_criado ON knowledge(criado_em);
 
             CREATE TABLE IF NOT EXISTS feedback (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -271,6 +266,8 @@ def init_db() -> None:
                 vetor       TEXT,                              -- JSON do embedding (TF-IDF local)
                 criado_em   TEXT NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_memories_cliente ON memories(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_criado ON memories(criado_em);
 
             CREATE TABLE IF NOT EXISTS knowledge (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,6 +282,9 @@ def init_db() -> None:
                 ultimo_acesso TEXT,
                 criado_em   TEXT NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_knowledge_cliente ON knowledge(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_area ON knowledge(area);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_criado ON knowledge(criado_em);
 
             CREATE TABLE IF NOT EXISTS modelos (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
