@@ -2656,6 +2656,13 @@ def conhecimento_exportar_jsonl():
             assistant_msg = conteudo
 
         if user_msg and assistant_msg:
+            # Anonimizacao LGPD na exportacao (Arts. 12, 13)
+            lgpd_cfg = db.carregar_lgpd_config()
+            if lgpd_cfg.get("anonimizar_rag") == "1":
+                from . import mask as _mask
+                user_msg = _mask.aplicar_mascaras(user_msg, lgpd_cfg)
+                assistant_msg = _mask.aplicar_mascaras(assistant_msg, lgpd_cfg)
+
             # Adiciona contexto da area e fonte como metadado no assistant
             meta = f" [area: {d.get('area','') or 'geral'} | fonte: {d.get('fonte','manual')}]"
             exemplo = {
