@@ -58,8 +58,15 @@ def login():
         flash("Login ou senha inválidos.", "bad")
     if _user():
         return redirect(url_for("portal.monitorar"))
+    # Aviso de privacidade (LGPD)
+    lgpd_cfg = db.carregar_lgpd_config()
+    aviso_html = ""
+    if lgpd_cfg.get("aviso_privacidade") == "1":
+        aviso_texto = lgpd_cfg.get("aviso_texto", "").strip()
+        if aviso_texto:
+            aviso_html = f'<div class="card" style="max-width:380px;margin-bottom:12px;font-size:12px;background:#0e1726;border-color:#1e2a3a"><span class="muted">{templates.h(aviso_texto)}</span></div>'
     content = f"""
-    <div class="card" style="max-width:380px">
+    {aviso_html}<div class="card" style="max-width:380px">
       <h3 style="margin-top:0">Acesso ao Portal</h3>
       <form method="post">
         {templates.csrf_field()}<label>Login</label>
