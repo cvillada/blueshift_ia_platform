@@ -332,6 +332,27 @@ def init_db() -> None:
                 auto_criar  INTEGER NOT NULL DEFAULT 0,
                 atualizado_em TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS lgpd_config (
+                chave       TEXT PRIMARY KEY,
+                valor       TEXT NOT NULL DEFAULT ''
+            );
+            INSERT OR IGNORE INTO lgpd_config (chave, valor) VALUES
+                ('anonimizar_llm', '0'),
+                ('anonimizar_rag', '0'),
+                ('mask_cpf', '1'),
+                ('mask_email', '1'),
+                ('mask_telefone', '1'),
+                ('mask_nome', '0'),
+                ('mask_endereco', '0'),
+                ('mask_cnpj', '0'),
+                ('aviso_privacidade', '0'),
+                ('aviso_texto', 'Esta plataforma processa dados corporativos para fins de inteligencia artificial. Consulte sua politica de privacidade interna para detalhes.'),
+                ('finalidade_conector', '0'),
+                ('retencao_auto', '0'),
+                ('retencao_auditoria', '90'),
+                ('retencao_tracing', '180'),
+                ('retencao_memorias', '365');
             """
         )
     # Migração idempotente: garante colunas novas em DBs já existentes
@@ -936,6 +957,22 @@ def salvar_alerta_config(chave: str, valor: float) -> None:
     """Atualiza o valor de um alerta config."""
     with get_conn() as conn:
         conn.execute("UPDATE alertas_config SET valor=? WHERE chave=?", (valor, chave))
+
+
+# --- LGPD Config ---------------------------------------------------------------
+
+
+def carregar_lgpd_config() -> dict[str, str]:
+    """Retorna todas as configuracoes LGPD como dict chave->valor."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT chave, valor FROM lgpd_config").fetchall()
+    return {r["chave"]: r["valor"] for r in rows}
+
+
+def salvar_lgpd_config(chave: str, valor: str) -> None:
+    """Atualiza uma configuracao LGPD."""
+    with get_conn() as conn:
+        conn.execute("UPDATE lgpd_config SET valor=? WHERE chave=?", (valor, chave))
 
 
 # --- Seed / Demo ----------------------------------------------------------------

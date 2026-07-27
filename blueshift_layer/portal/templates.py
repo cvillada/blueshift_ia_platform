@@ -99,6 +99,7 @@ def _nav(active: str, user: dict | None) -> str:
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
         "observabilidade": "\U0001f4ca", "atualizacoes": "\U0001f504", "sso": "\U0001f511",
+        "lgpd": "\U0001f6e1\ufe0f",
     }
     _nl = lambda key, label, href, cls_extra="": (
         f'<a class="navlink{cls_extra}" href="{href}" title="{label}">'
@@ -119,6 +120,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("modelos", "Modelos IA", "/portal/modelos"),
         ("conectores", "Conectores", "/portal/conectores"),
         ("alertas_config", "Alertas", "/portal/alertas-config"),
+        ("lgpd", "LGPD", "/portal/lgpd"),
         ("canais", "Canais", "/portal/canais"),
     ]
     cadastro_keys = {k for k, _, _ in cadastro_itens}

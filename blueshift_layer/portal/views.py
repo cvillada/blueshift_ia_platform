@@ -2059,6 +2059,122 @@ def alertas_config():
     return templates.page("Alertas", content, active="alertas_config", user=u)
 
 
+@bp.route("/lgpd", methods=["GET", "POST"])
+@auth.admin_required
+def lgpd():
+    """Pagina de configuracao LGPD — anonimizacao, transparencia e governanca."""
+    u = _user()
+    if request.method == "POST":
+        for chave in (
+            "anonimizar_llm", "anonimizar_rag",
+            "mask_cpf", "mask_email", "mask_telefone", "mask_nome",
+            "mask_endereco", "mask_cnpj",
+            "aviso_privacidade",
+            "finalidade_conector", "retencao_auto",
+        ):
+            db.salvar_lgpd_config(chave, "1" if request.form.get(chave) else "0")
+        for chave in ("aviso_texto",):
+            val = request.form.get(chave, "").strip()
+            db.salvar_lgpd_config(chave, val)
+        for chave in ("retencao_auditoria", "retencao_tracing", "retencao_memorias"):
+            val = request.form.get(chave, "").strip()
+            if val.isdigit():
+                db.salvar_lgpd_config(chave, val)
+        flash("Configuracoes LGPD salvas.", "ok")
+        return redirect(url_for("portal.lgpd"))
+
+    cfg = db.carregar_lgpd_config()
+    ck = lambda k: 'checked' if cfg.get(k, '0') == '1' else ''
+    val = lambda k: cfg.get(k, '')
+
+    content = f"""<div class="card" style="max-width:780px">
+      <h3 style="margin-top:0">Conformidade LGPD — Saida de Dados</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:16px;padding:10px;background:#0e1726;border-radius:6px">
+        A BlueShift e uma plataforma de inteligencia sobre dados existentes.
+        O tratamento na origem (coleta, consentimento, DPO) e responsabilidade
+        do sistema conectado (ERP/CRM/Portal do cliente). A BlueShift atua na
+        <b>SAIDA</b>: controle do que vaza nas respostas e exports.
+      </div>
+
+      <form method="post">
+        {templates.csrf_field()}
+
+        <h4>1. Anonimizacao na Saida <span class="muted" style="font-weight:400;font-size:12px">Arts. 12, 13</span></h4>
+        <table style="width:100%;border:none;background:transparent">
+        <tr>
+          <td style="padding:6px 0"><label class="inline">
+            <input type="checkbox" name="anonimizar_llm" value="1" {ck('anonimizar_llm')} style="width:auto;margin:0;vertical-align:middle">
+            <b>Anonimizar resposta do LLM</b></label>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Mascara CPF, email, telefone, etc. na resposta do agente (chat, API, webhook).</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0"><label class="inline">
+            <input type="checkbox" name="anonimizar_rag" value="1" {ck('anonimizar_rag')} style="width:auto;margin:0;vertical-align:middle">
+            <b>Anonimizar exportacao RAG</b></label>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Aplica mascaras antes de gerar o arquivo JSONL em Conhecimento > Exportar.</span>
+          </td>
+        </tr>
+        </table>
+
+        <div style="margin:6px 0 12px 0;padding:10px;background:#0e1726;border-radius:6px">
+          <div style="font-weight:600;margin-bottom:6px">Campos a mascarar:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 18px">
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_cpf" value="1" {ck('mask_cpf')} style="width:auto;margin:0;vertical-align:middle"> CPF</label>
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_email" value="1" {ck('mask_email')} style="width:auto;margin:0;vertical-align:middle"> E-mail</label>
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_telefone" value="1" {ck('mask_telefone')} style="width:auto;margin:0;vertical-align:middle"> Telefone</label>
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_nome" value="1" {ck('mask_nome')} style="width:auto;margin:0;vertical-align:middle"> Nome completo</label>
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_endereco" value="1" {ck('mask_endereco')} style="width:auto;margin:0;vertical-align:middle"> Endereco</label>
+            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_cnpj" value="1" {ck('mask_cnpj')} style="width:auto;margin:0;vertical-align:middle"> CNPJ</label>
+          </div>
+        </div>
+
+        <h4>2. Transparencia <span class="muted" style="font-weight:400;font-size:12px">Arts. 9, 10</span></h4>
+        <table style="width:100%;border:none;background:transparent">
+        <tr>
+          <td style="padding:6px 0"><label class="inline">
+            <input type="checkbox" name="aviso_privacidade" value="1" {ck('aviso_privacidade')} style="width:auto;margin:0;vertical-align:middle">
+            <b>Exibir aviso de privacidade no login</b></label>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Exibe texto configurado no rodape da tela de login.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0"><label class="muted" style="font-size:12px;margin-left:24px">Texto do aviso:</label>
+            <textarea name="aviso_texto" rows="2" style="margin-left:24px;width:90%;font-size:12px">{val('aviso_texto')}</textarea>
+          </td>
+        </tr>
+        </table>
+
+        <h4>3. Governanca de Dados <span class="muted" style="font-weight:400;font-size:12px">Arts. 26, 15</span></h4>
+        <table style="width:100%;border:none;background:transparent">
+        <tr>
+          <td style="padding:6px 0"><label class="inline">
+            <input type="checkbox" name="finalidade_conector" value="1" {ck('finalidade_conector')} style="width:auto;margin:0;vertical-align:middle">
+            <b>Exigir finalidade por conector</b></label>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Art. 26 — Todo conector MCP/API/SQL exige campo "Finalidade do tratamento".</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0"><label class="inline">
+            <input type="checkbox" name="retencao_auto" value="1" {ck('retencao_auto')} style="width:auto;margin:0;vertical-align:middle">
+            <b>Retencao automatica de logs</b></label>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Art. 15 — Limpa auditoria, tracing e memorias apos periodo configurado.</span>
+          </td>
+        </tr>
+        </table>
+        <div style="display:flex;gap:12px;margin:6px 0 12px 24px">
+          <div><label class="muted" style="font-size:12px">Auditoria (dias)</label><br><input name="retencao_auditoria" type="number" value="{val('retencao_auditoria')}" style="width:90px"></div>
+          <div><label class="muted" style="font-size:12px">Tracing (dias)</label><br><input name="retencao_tracing" type="number" value="{val('retencao_tracing')}" style="width:90px"></div>
+          <div><label class="muted" style="font-size:12px">Memorias (dias)</label><br><input name="retencao_memorias" type="number" value="{val('retencao_memorias')}" style="width:90px"></div>
+        </div>
+
+        <div style="margin-top:18px"><button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/monitorar">Voltar</a></div>
+      </form>
+    </div>"""
+    return templates.page("LGPD", content, active="lgpd", user=u)
+
+
 @bp.route("/rastreio/<int:tid>")
 @auth.admin_required
 def rastreio(tid: int):
