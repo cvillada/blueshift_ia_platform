@@ -218,7 +218,7 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 - **Debug mode desligado**: sem tracebacks em produção
 - **Isolamento**: dados separados por `cliente_id` + área
 
-### 🔒 Conformidade LGPD (v0.8.0)
+### 🔒 Conformidade LGPD
 
 | Funcionalidade | Artigos | Descrição |
 |:---------------|:--------|:----------|
