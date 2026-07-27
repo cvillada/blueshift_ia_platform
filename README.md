@@ -150,10 +150,11 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Skills** | Catálogo de skills por área (SKILL.md) | Login |
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
-| **Modelos IA** | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
-| **Chat** | Teste do agente com RAG + LLM real | Login |
-| **Conectores** | Cadastro de fontes externas (API, MCP, SQL) por área | Admin |
-| **Canais** | API de integração com token + webhook de saída | Admin |
+|| **Modelos IA** | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
+|| **Chat** | Teste do agente com RAG + LLM real | Login |
+|| **Conectores** | Cadastro de fontes externas (API, MCP, SQL) por área + finalidade (Art. 26 LGPD) | Admin |
+|| **Canais** | API de integração com token + webhook de saída | Admin |
+|| **LGPD** | Conformidade na saída: anonimizar LLM/RAG, aviso de privacidade, finalidade por conector, retenção de logs | Admin |
 | **Uso de Tokens** | Análise de consumo por cliente/modelo/origem | Admin |
 | **Observabilidade** | Dashboard IA: KPI, drift, custos, feedback | Admin |
 | **Auditoria** | Rastreabilidade LGPD + 🔍 Rastreio passo a passo | Admin |
@@ -216,6 +217,18 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 - **Canais com token**: cada canal de integração tem chave própria (regenerável)
 - **Debug mode desligado**: sem tracebacks em produção
 - **Isolamento**: dados separados por `cliente_id` + área
+
+### 🔒 Conformidade LGPD (v0.8.0)
+
+| Funcionalidade | Artigos | Descrição |
+|:---------------|:--------|:----------|
+| **Anonimizar resposta do LLM** | 12, 13 | Mascara CPF, CNPJ, email, telefone, nome e endereço na resposta do agente (chat, API, webhook) |
+| **Anonimizar exportação RAG** | 12, 13 | Dados pessoais mascarados na exportação JSONL da base de conhecimento |
+| **Aviso de privacidade no login** | 9, 10 | Texto personalizável exibido no rodapé da tela de login |
+| **Finalidade do tratamento** | 26 | Campo obrigatório por conector quando ativado |
+| **Retenção automática de logs** | 15 | Limpeza periódica de auditoria (90d), tracing (180d) e memórias (365d) via thread daemon |
+
+Configuração em **Cadastros > 🛡️ LGPD**.
 
 ---
 
@@ -466,6 +479,7 @@ blueshift_layer/                    ← Código principal da plataforma
 │   ├── memory.py                   ← RAG (TF-IDF + cosseno, Python puro)
 │   ├── llm_client.py               ← Client LLM OpenAI-compatible (urllib)
 │   ├── agente.py                   ← Orquestrador do agente
+│   ├── mask.py                     ← Mascaramento LGPD (CPF, email, nome, etc.)
 │   └── sso.py                      ← Login federado OIDC
 ├── connector_pack/                 ← 🔌 Conectores externos
 │   ├── registry.py                 ← Engine API/MCP/SQL

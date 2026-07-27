@@ -208,7 +208,7 @@ O desenvolvimento do BlueShift segue o modelo **Flask standalone**:
 - **Git:** repo único no GitHub contendo toda a plataforma.
 - **Quem constrói:** o desenvolvedor, utilizando ferramentas de IA auxiliares, escreve os arquivos do BlueShift.
 
-Passo-a-passo completo: ver **`blueshift_passo_a_passo.md`** (mesmo diretório).
+Passo-a-passo completo: ver **`README.md`** (mesmo diretório).
 
 ---
 
