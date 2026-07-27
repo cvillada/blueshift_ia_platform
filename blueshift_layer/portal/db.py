@@ -389,6 +389,7 @@ def _migrar_colunas() -> None:
             ("config", "TEXT DEFAULT '{}'"),
             ("ativo", "INTEGER DEFAULT 1"),
             ("criado_em", "TEXT"),
+            ("finalidade", "TEXT DEFAULT ''"),
         ],
         "knowledge": [
             ("area", "TEXT DEFAULT ''"),
@@ -539,15 +540,15 @@ def deletar_agente(aid: int) -> None:
 _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
 
-def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online") -> int:
+def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online", finalidade="") -> int:
     """Cadastra uma nova fonte externa de dados por cliente + área."""
     ts = now_iso()
     cfg_json = json.dumps(config or {})
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO conectores (cliente_id, area, nome, tipo, config, status, ativo, ultimo_heartbeat, criado_em)
-               VALUES (?,?,?,?,?,?,1,?,?)""",
-            (cliente_id, area, nome, tipo, cfg_json, status, ts, ts),
+            """INSERT INTO conectores (cliente_id, area, nome, tipo, config, finalidade, status, ativo, ultimo_heartbeat, criado_em)
+               VALUES (?,?,?,?,?,?,?,1,?,?)""",
+            (cliente_id, area, nome, tipo, cfg_json, finalidade, status, ts, ts),
         )
         return cur.lastrowid
 

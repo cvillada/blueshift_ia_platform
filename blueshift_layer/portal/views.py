@@ -1168,8 +1168,14 @@ def conectores():
             config["query"] = request.form.get("sql_query", "").strip()
 
         config["descricao"] = request.form.get("descricao", "").strip()
+        finalidade = request.form.get("finalidade", "").strip()
+        # Se finalidade_conector estiver ativo e finalidade vazia, bloqueia
+        lgpd_cfg = db.carregar_lgpd_config()
+        if lgpd_cfg.get("finalidade_conector") == "1" and not finalidade:
+            flash("Finalidade do tratamento é obrigatória quando LGPD está ativo.", "warn")
+            return redirect(url_for("portal.conectores"))
 
-        db.criar_conector(cid, nome, tipo=tipo, area=area, config=config)
+        db.criar_conector(cid, nome, tipo=tipo, area=area, config=config, finalidade=finalidade)
         db.registrar_auditoria(_user()["login"], "admin", "criar_conector",
                                alvo=nome, cliente_id=cid, ip=request.remote_addr)
         flash(f"Conector '{nome}' criado na area {area}.", "ok")
@@ -1184,11 +1190,13 @@ def conectores():
         cfg = _parse_config(k.get("config", "{}"))
         tipo_icon = {"api": "🌐", "mcp": "🔌", "sql": "🗄️"}.get(k["tipo"], "❓")
         cfg_resumo = cfg.get("descricao") or cfg.get("url") or cfg.get("tool") or cfg.get("query", "")[:60]
+        finalidade = k.get("finalidade") or cfg.get("finalidade", "")
         body += f"""<tr>
           <td><b>{k['nome']}</b></td>
           <td>{tipo_icon} {k['tipo']}</td>
           <td>{k['area'] or '-'}</td>
           <td class="muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{cfg_resumo}</td>
+          <td style="font-size:11px;color:#8899bb">{finalidade[:40] or '-'}</td>
           <td>{templates.badge(k['status'])}</td>
           <td class="muted">{k['ultimo_heartbeat'] or '-'}</td>
           <td class="row-actions">
@@ -1259,6 +1267,10 @@ def conectores():
           <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;  (use &#123;id_cliente&#125;, &#123;email&#125;, &#123;data&#125;)"></textarea>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
+        <div id="conn-finalidade" style="margin-top:8px">
+          <label>Finalidade do tratamento <span class="muted" style="font-weight:400;font-size:11px">(Art. 26 LGPD)</span></label>
+          <input name="finalidade" placeholder="Ex: Consultar dados cadastrais do cliente para agente de vendas">
+        </div>
         <div style="margin-top:14px"><button class="btn" type="submit">Cadastrar conector</button></div>
       </form>
     </div>
@@ -1350,8 +1362,8 @@ def conectores():
         <div><label>Área</label><select name="area"><option value="">todas</option>{opts_area}</select></div>
         <div><button class="btn ghost" type="submit">Filtrar</button></div>
       </form>
-      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Área</th><th>Config</th><th>Status</th><th>Heartbeat</th><th></th></tr></thead>
-        <tbody>{body or '<tr><td colspan="7" class="muted">Nenhum conector cadastrado. Crie um acima.</td></tr>'}</tbody></table>
+      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Área</th><th>Config</th><th>Finalidade</th><th>Status</th><th>Heartbeat</th><th></th></tr></thead>
+        <tbody>{body or '<tr><td colspan="8" class="muted">Nenhum conector cadastrado. Crie um acima.</td></tr>'}</tbody></table>
     </div>"""
     return templates.page("Conectores", content, active="conectores", user=_user())
 
@@ -1479,12 +1491,13 @@ def conector_editar(cid: int):
             config["query"] = request.form.get("sql_query", "").strip()
 
         config["descricao"] = request.form.get("descricao", "").strip()
+        finalidade = request.form.get("finalidade", "").strip()
 
         if not nome:
             flash("Nome é obrigatório.", "warn")
             return redirect(url_for("portal.conector_editar", cid=cid))
 
-        db.atualizar_conector(cid, nome=nome, area=area, tipo=tipo, config=config)
+        db.atualizar_conector(cid, nome=nome, area=area, tipo=tipo, config=config, finalidade=finalidade)
         db.registrar_auditoria(_user()["login"], "admin", "editar_conector",
                                alvo=nome, ip=request.remote_addr)
         flash(f"Conector '{nome}' atualizado.", "ok")
@@ -1582,6 +1595,8 @@ def conector_editar(cid: int):
         </div>
 
         <label>Descrição</label><input name="descricao" value="{descricao}">
+        <label style="margin-top:10px">Finalidade do tratamento <span class="muted" style="font-weight:400;font-size:11px">(Art. 26 LGPD)</span></label>
+        <input name="finalidade" value="{con.get('finalidade','')}" placeholder="Ex: Consultar dados cadastrais do cliente para agente de vendas">
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/conectores">Cancelar</a>
