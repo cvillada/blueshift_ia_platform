@@ -218,11 +218,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
         blocos = []
         for f in ferramentas:
             if "erro" in f:
-                blocos.append(f"[{f.get('conector','?')}] erro: {f['erro']}")
-            else:
-                blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
-                              f"args={f.get('args')} -> {f.get('resultado')}")
-        system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+                continue  # erro vai pro trace, mas nao polui o prompt do LLM
+            blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
+                          f"args={f.get('args')} -> {f.get('resultado')}")
+        if blocos:
+            system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
     system += (
         "CONTEXTO (base de conhecimento — FONTE SECUNDARIA, pode estar desatualizado):\n"
         + ("\n".join(f"- {c['texto']}" for c in contexto) or "(vazio)")

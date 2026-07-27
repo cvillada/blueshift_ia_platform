@@ -16,7 +16,10 @@ _RE_CPF = re.compile(r"\b(\d{3})[\.\s]?(\d{3})[\.\s]?(\d{3})[-\.\s]?(\d{2})\b")
 _RE_CNPJ = re.compile(r"\b(\d{2})[\.\s]?(\d{3})[\.\s]?(\d{3})[/\s]?(\d{4})[-\.\s]?(\d{2})\b")
 _RE_EMAIL = re.compile(r"\b([\w.+-]+)@([\w-]+\.)+[\w-]{2,}\b")
 _RE_TEL = re.compile(r"\(?(\d{2})\)?\s*(\d{4,5})-?(\d{4})\b")
-_RE_NOME = re.compile(r"\b([A-ZÀ-Ú][a-zà-ú]+)\s+([A-ZÀ-Ú][a-zà-ú]+)\b")
+_RE_NOME = re.compile(
+    r"\b([A-ZÀ-Ú][a-zà-ú]+)\s+([A-ZÀ-Ú][a-zà-ú]+)\b"           # Joao Silva
+    r"|\b([A-ZÀ-Ú]{2,})\s+([A-ZÀ-Ú]{2,})\b",                    # SARAH LEWIS
+)
 # Endereço: "Rua", "Av", "Travessa" seguido de nome e número
 _RE_ENDERECO = re.compile(
     r"\b(?:Rua|Av\.?|Avenida|Travessa|Praça|Alameda|Rodovia|Estrada)"
@@ -53,10 +56,14 @@ def mascarar_telefone(texto: str) -> str:
 
 
 def mascarar_nome(texto: str) -> str:
-    """Mascara sobrenome: Joao Silva -> Joao S*****"""
-    return _RE_NOME.sub(
-        lambda m: f"{m.group(1)} {m.group(2)[0]}*****", texto
-    )
+    """Mascara sobrenome: Joao Silva -> Joao S*****, SARAH LEWIS -> SARAH L*****"""
+
+    def _mask(m):
+        if m.group(1):
+            return f"{m.group(1)} {m.group(2)[0]}*****"
+        return f"{m.group(3)} {m.group(4)[0]}*****"
+
+    return _RE_NOME.sub(_mask, texto)
 
 
 def mascarar_endereco(texto: str) -> str:

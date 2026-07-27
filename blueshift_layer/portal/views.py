@@ -2128,28 +2128,27 @@ def lgpd():
             <input type="checkbox" name="anonimizar_llm" value="1" {ck('anonimizar_llm')} style="width:auto;margin:0;vertical-align:middle">
             <b>Anonimizar resposta do LLM</b></label>
             <br><span class="muted" style="font-size:11px;margin-left:20px">Mascara CPF, email, telefone, etc. na resposta do agente (chat, API, webhook).</span>
+            <div style="margin:6px 0 4px 20px;padding:8px;background:#0e1726;border-radius:6px">
+              <div style="font-weight:600;font-size:12px;margin-bottom:4px">Campos a mascarar <span class="muted" style="font-weight:400;font-size:11px">(aplica-se tambem a exportacao RAG quando ativa)</span>:</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px 14px">
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_cpf" value="1" {ck('mask_cpf')} style="width:auto;margin:0;vertical-align:middle"> CPF</label>
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_email" value="1" {ck('mask_email')} style="width:auto;margin:0;vertical-align:middle"> E-mail</label>
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_telefone" value="1" {ck('mask_telefone')} style="width:auto;margin:0;vertical-align:middle"> Telefone</label>
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_nome" value="1" {ck('mask_nome')} style="width:auto;margin:0;vertical-align:middle"> Nome completo</label>
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_endereco" value="1" {ck('mask_endereco')} style="width:auto;margin:0;vertical-align:middle"> Endereco</label>
+                <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_cnpj" value="1" {ck('mask_cnpj')} style="width:auto;margin:0;vertical-align:middle"> CNPJ</label>
+              </div>
+            </div>
           </td>
         </tr>
         <tr>
           <td style="padding:6px 0"><label class="inline">
             <input type="checkbox" name="anonimizar_rag" value="1" {ck('anonimizar_rag')} style="width:auto;margin:0;vertical-align:middle">
             <b>Anonimizar exportacao RAG</b></label>
-            <br><span class="muted" style="font-size:11px;margin-left:20px">Aplica mascaras antes de gerar o arquivo JSONL em Conhecimento > Exportar.</span>
+            <br><span class="muted" style="font-size:11px;margin-left:20px">Aplica mascaras antes de gerar o arquivo JSONL em Conhecimento > Exportar. Usa os mesmos campos configurados acima.</span>
           </td>
         </tr>
         </table>
-
-        <div style="margin:6px 0 12px 0;padding:10px;background:#0e1726;border-radius:6px">
-          <div style="font-weight:600;margin-bottom:6px">Campos a mascarar:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px 18px">
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_cpf" value="1" {ck('mask_cpf')} style="width:auto;margin:0;vertical-align:middle"> CPF</label>
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_email" value="1" {ck('mask_email')} style="width:auto;margin:0;vertical-align:middle"> E-mail</label>
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_telefone" value="1" {ck('mask_telefone')} style="width:auto;margin:0;vertical-align:middle"> Telefone</label>
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_nome" value="1" {ck('mask_nome')} style="width:auto;margin:0;vertical-align:middle"> Nome completo</label>
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_endereco" value="1" {ck('mask_endereco')} style="width:auto;margin:0;vertical-align:middle"> Endereco</label>
-            <label class="inline" style="font-size:13px"><input type="checkbox" name="mask_cnpj" value="1" {ck('mask_cnpj')} style="width:auto;margin:0;vertical-align:middle"> CNPJ</label>
-          </div>
-        </div>
 
         <h4>2. Transparencia <span class="muted" style="font-weight:400;font-size:12px">Arts. 9, 10</span></h4>
         <table style="width:100%;border:none;background:transparent">
