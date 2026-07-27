@@ -62,6 +62,27 @@ def create_app() -> "Flask":
     db.seed_demo()
     app.register_blueprint(bp)
 
+    # ── Retencao automatica de logs (LGPD Art. 15) ──
+    import threading as _threading
+
+    def _limpeza_periodica():
+        import time as _time
+        while True:
+            try:
+                result = db.limpar_dados_antigos()
+                total = sum(result.values())
+                if total:
+                    app.logger.info(
+                        f"[lgpd] retencao: {result['auditoria']} auditoria + "
+                        f"{result['tracing']} tracing + {result['memories']} memorias removidos"
+                    )
+            except Exception:
+                pass  # falha silenciosa — best-effort
+            _time.sleep(3600)  # 1 hora
+
+    _t = _threading.Thread(target=_limpeza_periodica, daemon=True)
+    _t.start()
+
     # ── CSRF protection for portal POST routes ──
     from flask import request, session, flash, redirect, url_for
 

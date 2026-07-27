@@ -692,6 +692,37 @@ def limpar_auditoria_antiga(dias: int = 90) -> int:
         return cur.rowcount
 
 
+def limpar_dados_antigos() -> dict[str, int]:
+    """Limpa auditoria, tracing e memorias conforme configuracao LGPD.
+
+    Le a configuracao de retencao do banco e deleta registros
+    mais antigos que o periodo definido. So executa se
+    retencao_auto estiver ativo ('1').
+
+    Retorna dict com quantos registros removeu de cada tabela.
+    """
+    cfg = carregar_lgpd_config()
+    if cfg.get("retencao_auto") != "1":
+        return {"auditoria": 0, "tracing": 0, "memories": 0}
+
+    resultado = {}
+    ts_auditoria = (datetime.now() - timedelta(days=int(cfg.get("retencao_auditoria", "90")))).isoformat()
+    ts_tracing = (datetime.now() - timedelta(days=int(cfg.get("retencao_tracing", "180")))).isoformat()
+    ts_memorias = (datetime.now() - timedelta(days=int(cfg.get("retencao_memorias", "365")))).isoformat()
+
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM auditoria WHERE criado_em < ?", (ts_auditoria,))
+        resultado["auditoria"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM tracing WHERE criado_em < ?", (ts_tracing,))
+        resultado["tracing"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM memories WHERE criado_em < ?", (ts_memorias,))
+        resultado["memories"] = cur.rowcount
+
+    return resultado
+
+
 # --- Feedback (avaliacao de respostas do agente) -------------------------------
 
 
