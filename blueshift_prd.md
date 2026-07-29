@@ -216,13 +216,19 @@ Passo-a-passo completo: ver **`README.md`** (mesmo diretório).
 
 | Item | Status | Próximo passo |
 |:-----|:------|:--------------|
-| Licença | ✅ MIT OK | Incluir aviso no pacote |
+| Licença | ✅ Commercial OK | Incluir aviso no pacote |
 | Entrega | ✅ Docker + License Key | Construir installer + license server |
 | RAG | ✅ §7-A criado | Implementado (TF-IDF + cosseno, Python puro) |
 | Contexto Dinâmico | ✅ §8-C criado | Orquestrador de contexto implementado |
 | Segmentação | ✅ §8-D (áreas da empresa) | Implementado no Portal |
 | Agent Factory | ✅ §8-E criado | Implementado com fallback de modelo |
 | Observab./Rastreab./Monitor. | ✅ §8-F criado | Implementado no Portal |
+| Conformidade LGPD | ✅ v0.8.0 | Anonimizar saida LLM/RAG, aviso privacidade, finalidade conector, retenção logs |
+| Conector Oracle | ✅ v0.8.1 | Oracle via oracledb (modo thin) |
+| Teste A/B entre modelos | ✅ v0.8.1 | Reexecuta feedback com outro modelo, julgamento via modelo juiz |
+| Fine-Tuning | ✅ v0.8.1 | Página de documentação + export JSONL |
+| Menu lateral flexível | ✅ v0.8.1 | Hamburger (☰) + "By: Nei" |
+| Guardrails | ✅ v0.8.1 | Via descrição da SKILL |
 | Vertical inicial | ✅ Resolvido: SEM vertical | Templates parametrizáveis por área |
 | Cobrança | ✅ Anual por empresa | Tela de Uso de Tokens + contratos |
 | Portal do cliente | ✅ OBRIGATÓRIO (core) | Implementado e rodando |

@@ -87,7 +87,7 @@ svg{width:100%;min-width:1050px;display:block}
     A plataforma é <strong>genérica e prática em qualquer segmento de negócio</strong> — não é atrelada a um setor específico. Os agentes e skills são parametrizáveis por área da empresa (vendas, suporte, financeiro, RH, operações), e os modelos são ajustados com os dados do cliente.
   </p>
   <p>
-    Diferente de SaaS onde os dados saem da empresa, aqui <strong>tudo fica dentro do ambiente do cliente</strong>: dados, modelos, agentes, memória dos usuários, histórico. A plataforma já vem com modelos fine-tuned rodando localmente.
+    Diferente de SaaS onde os dados saem da empresa, aqui <strong>tudo fica dentro do ambiente do cliente</strong>: dados, modelos, agentes, memória dos usuários, histórico. Os modelos sao configurados pelo cliente (locais ou externos), e rodam dentro da infraestrutura contratada.
   </p>
   <p>
     <strong>Modelo híbrido:</strong> a plataforma também consegue <strong>acessar modelos externos</strong> (OpenAI, Claude, Gemini) para tarefas específicas. O controle é do cliente — dados sensíveis ficam nos modelos locais, tarefas não-críticas podem usar externo, com auditoria total.
@@ -129,7 +129,7 @@ svg{width:100%;min-width:1050px;display:block}
       <li>Subimos a plataforma num servidor do cliente (bare metal, VM, nuvem privada)</li>
       <li>Tudo em containers Docker orquestrados</li>
       <li>Zero dependência de serviços externos</li>
-      <li>SSL, domínio, proxy reverso — tudo incluso</li>
+      <li>SSL, domínio e proxy reverso sao configurados pelo cliente conforme a politica de TI</li>
       <li><b>Tempo de setup:</b> 1-2 dias</li>
     </ul>
   </div>

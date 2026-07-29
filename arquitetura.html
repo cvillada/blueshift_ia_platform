@@ -218,10 +218,10 @@ h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-grad
 <div class="dep-card">
 <span class="tag tag-connector">CONNECTOR</span>
 <h3>registry.py</h3>
-<p>Engine de execução de conectores (API/MCP/SQL com PostgreSQL, MySQL, SQL Server)</p>
+<p>Engine de execucao de conectores (API/MCP/SQL: PostgreSQL, MySQL, SQL Server, Oracle)</p>
 <div class="path">blueshift_layer/connector_pack/registry.py</div>
 <div class="deps"><strong>Depende de:</strong>
-<span>db (portal)</span><span>urllib</span><span>subprocess</span><span>psycopg (opc.)</span><span>pymysql (opc.)</span><span>pymssql (opc.)</span>
+<span>db (portal)</span><span>urllib</span><span>subprocess</span><span>psycopg (opc.)</span><span>pymysql (opc.)</span><span>pymssql (opc.)</span><span>oracledb (opc.)</span>
 </div>
 </div>
 
@@ -454,6 +454,7 @@ blueshift_layer/
 │   ├── memory.py           ← RAG (TF-IDF + cosseno)
 │   ├── llm_client.py       ← LLM OpenAI-compatible
 │   ├── agente.py           ← Orquestrador de agentes
+│   ├── mask.py             ← Mascaramento LGPD (CPF, email, nome, etc.)
 │   └── sso.py              ← OIDC (login federado)
 ├── connector_pack/         ← 🔌 Conectores externos
 │   ├── registry.py         ← Engine API/MCP/SQL
