@@ -166,6 +166,8 @@ def _nav(active: str, user: dict | None) -> str:
     for key, label, href in outros:
         links += _nl(key, label, href, " active" if key == active else "")
 
+    links += '<div class="sidebar-by">By: Nei</div>'
+
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
 
@@ -221,6 +223,7 @@ justify-content:center;font-weight:700;color:#fff}
 .sidebar.collapsed .sub-items{display:none!important}
 .sidebar.collapsed .sidebar-footer .navlink{justify-content:center}
 .sidebar-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
+.sidebar-by{padding:8px 10px;font-size:11px;color:var(--muted);text-align:center;letter-spacing:.5px}
 .navlink{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden}
 .navlink:hover{background:var(--panel2);color:var(--txt)}
 .navlink.active{background:var(--blue2);color:#fff}
