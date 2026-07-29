@@ -150,14 +150,16 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Skills** | Catálogo de skills por área (SKILL.md) | Login |
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
-|| **Modelos IA** | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
-|| **Chat** | Teste do agente com RAG + LLM real | Login |
-|| **Conectores** | Cadastro de fontes externas (API, MCP, SQL) por área + finalidade (Art. 26 LGPD) | Admin |
-|| **Canais** | API de integração com token + webhook de saída | Admin |
-|| **LGPD** | Conformidade na saída: anonimizar LLM/RAG, aviso de privacidade, finalidade por conector, retenção de logs | Admin |
+| Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
+| **Chat** | Teste do agente com RAG + LLM real | Login |
+| **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
+| **Canais** | API de integração com token + webhook de saída | Admin |
+| **LGPD** | Conformidade na saída: anonimizar LLM/RAG, aviso de privacidade, finalidade por conector, retenção de logs | Admin |
 | **Uso de Tokens** | Análise de consumo por cliente/modelo/origem | Admin |
-| **Observabilidade** | Dashboard IA: KPI, drift, custos, feedback | Admin |
+| **Observabilidade** | Dashboard IA: KPI, drift, custos, feedback, alertas | Admin |
+| **Teste A/B** | Reexecuta perguntas do feedback contra outro modelo e compara resultados com modelo juiz | Admin/Gestor |
 | **Auditoria** | Rastreabilidade LGPD + 🔍 Rastreio passo a passo | Admin |
+| **Fine-Tuning** | Documentação sobre formatos (GGUF/MLX), hardware e passo a passo | Login |
 | **SSO (OIDC)** | Login federado (Azure AD, Okta, Keycloak, Google) | Admin |
 | **Atualizações** | Update Channel da plataforma | Admin |
 
@@ -177,7 +179,7 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 |:-----|:----------|:--------|
 | 🌐 **API REST** | Chamada HTTP via `urllib` | `GET https://api.externa.com/dados` |
 | 🔌 **MCP** | Servidor MCP via stdio (JSON-RPC 2.0) | `python mcp_server.py` + tool call |
-| 🗄️ **SQL** | Consulta SQL via `psycopg` | `SELECT * FROM vw_clientes WHERE id = %s` |
+| 🗄️ **SQL** | PostgreSQL, MySQL, SQL Server, **Oracle** via `oracledb` | `SELECT * FROM vw_clientes WHERE id = %s` |
 
 Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticamente da pergunta do usuário.
 
@@ -227,8 +229,9 @@ Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticam
 | **Aviso de privacidade no login** | 9, 10 | Texto personalizável exibido no rodapé da tela de login |
 | **Finalidade do tratamento** | 26 | Campo obrigatório por conector quando ativado |
 | **Retenção automática de logs** | 15 | Limpeza periódica de auditoria (90d), tracing (180d) e memórias (365d) via thread daemon |
+| **Teste A/B entre modelos** | — | Reexecuta perguntas do feedback com outro modelo e avalia via modelo juiz |
 
-Configuração em **Cadastros > 🛡️ LGPD**.
+Configuração em **Cadastros > 🛡️ LGPD** e **Teste A/B** no menu principal.
 
 ---
 
