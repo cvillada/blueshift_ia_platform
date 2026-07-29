@@ -2596,8 +2596,20 @@ def fine_tuning():
     <li><b>Exportar GGUF (opcional):</b> Converta o adaptador + modelo base para GGUF usando <code>llama.cpp/convert.py</code> para usar em LM Studio ou Ollama</li>
   </ol>
 
+  <h4>Vantagens do modelo fine-tuned</h4>
+  <table>
+  <tr><th>Vantagem</th><th>Com RAG + prompt</th><th>Com fine-tuning</th></tr>
+  <tr><td><b>Precisao em termos tecnicos</b></td><td>Depende do contexto injetado</td><td>Modelo internaliza o vocabulario</td></tr>
+  <tr><td><b>Velocidade</b></td><td>Maior latencia (injecao de contexto)</td><td>Responde direto, sem contexto extra</td></tr>
+  <tr><td><b>Consistencia</b></td><td>Varia conforme o prompt</td><td>Padrao unificado de resposta</td></tr>
+  <tr><td><b>Regras de negocios</b></td><td>Precisa estar no prompt sempre</td><td>Modelo segue naturalmente</td></tr>
+  <tr><td><b>Processos internos</b></td><td>Pode ser ignorado se o prompt for longo</td><td>Modelo aprende o fluxo</td></tr>
+  <tr><td><b>Offline total</b></td><td>Sim</td><td>Sim — modelo funciona sem internet</td></tr>
+  <tr><td><b>Dados sensiveis</b></td><td>Contexto pode vazar no historico</td><td>Dados ficam no modelo, sem exposição</td></tr>
+  </table>
+
   <h4>Quem pode fazer</h4>
-  <p>O fine-tuning e um servico <b>realizado pela BlueShift</b> para clientes
+  <p>O fine-tuning é um servico <b>realizado pela BlueShift</b> para clientes
   corporativos. A plataforma fornece os dados de saida (JSONL), e a BlueShift
   executa o treino nos hardwares adequados, entregando o modelo ajustado
   pronto para uso no ambiente do cliente.</p>
