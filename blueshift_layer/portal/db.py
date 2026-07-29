@@ -397,6 +397,9 @@ def _migrar_colunas() -> None:
             ("acessos", "INTEGER DEFAULT 0"),
             ("ultimo_acesso", "TEXT"),
         ],
+        "tracing": [
+            ("agente_id", "INTEGER"),
+        ],
     }
     with get_conn() as conn:
         for tabela, cols in _ESPERADO.items():
@@ -652,17 +655,18 @@ def listar_skills_db() -> list[dict]:
 
 def salvar_trace(pergunta: str, params: dict, conectores: list,
                  rag: list, modelo: str, modelo_fallback: bool,
-                 tokens: dict, resposta: str, tempo_ms: int) -> int:
+                 tokens: dict, resposta: str, tempo_ms: int,
+                 agente_id: int | None = None) -> int:
     """Salva o trace de uma execucao do agente. Retorna o id do trace."""
     ts = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO tracing (pergunta, params, conectores, rag, modelo,
-               modelo_fallback, tokens, resposta, tempo_ms, criado_em)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+               modelo_fallback, tokens, resposta, tempo_ms, agente_id, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (pergunta, json.dumps(params), json.dumps(conectores, default=str),
              json.dumps(rag, default=str), modelo, 1 if modelo_fallback else 0,
-             json.dumps(tokens), resposta, tempo_ms, ts),
+             json.dumps(tokens), resposta, tempo_ms, agente_id, ts),
         )
         return cur.lastrowid
 

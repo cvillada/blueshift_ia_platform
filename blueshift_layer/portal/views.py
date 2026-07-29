@@ -2342,11 +2342,22 @@ def teste_ab():
         return templates.page("Teste A/B", content, active="teste_ab", user=u)
 
     # GET: feedbacks recentes + modelos
+    filtro = request.args.get("filtro", "todos")
     feedbacks = []
     try:
-        feedbacks = db.listar_feedback(limite=20)
+        feedbacks = db.listar_feedback(limite=30)
+        if filtro == "util":
+            feedbacks = [f for f in feedbacks if f.get("feedback") == "util"]
+        elif filtro == "nao_util":
+            feedbacks = [f for f in feedbacks if f.get("feedback") == "nao_util"]
     except Exception:
         pass
+
+    filtro_links = "".join(
+        f'<a class="btn ghost {"active" if filtro == v else ""}" '
+        f'href="?filtro={v}" style="font-size:12px;padding:4px 10px">{l}</a>'
+        for v, l in [("todos", "Todos"), ("util", "👍 Uteis"), ("nao_util", "👎 Nao uteis")]
+    )
 
     fb_opts = ""
     for fb in feedbacks:
@@ -2375,6 +2386,7 @@ def teste_ab():
       <form method="post">
         {templates.csrf_field()}
         <h4>1. Selecione os feedbacks para testar</h4>
+        <div style=\"margin-bottom:8px\">{filtro_links}</div>
         <table>
         <thead><tr><th style="width:30px"><input type="checkbox" id="sel-todos" onchange="var c=this.checked;document.querySelectorAll('[name=selecionados]').forEach(function(e){{e.checked=c}})" style="width:auto;margin:0"></th><th>Pergunta</th><th>Tipo</th><th>Resposta original</th></tr></thead>
         <tbody>{fb_opts or '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">Nenhum feedback encontrado. Faca perguntas no Chat primeiro.</td></tr>'}</tbody>
@@ -3372,7 +3384,7 @@ def api_feedback(trace_id: int):
     if not trace:
         return jsonify({"ok": False, "erro": "trace nao encontrado"}), 404
     fid = db.salvar_feedback(
-        trace_id, None, trace.get("pergunta", ""),
+        trace_id, trace.get("agente_id"), trace.get("pergunta", ""),
         trace.get("resposta", ""),
         "util" if util else "nao_util",
         tipo=tipo,

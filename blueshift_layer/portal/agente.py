@@ -262,6 +262,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
         tokens=tok,
         resposta=out.get("content", ""),
         tempo_ms=tempo_ms,
+        agente_id=agente.get("id"),
     )
 
     if out["ok"]:
