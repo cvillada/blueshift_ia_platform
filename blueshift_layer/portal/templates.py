@@ -57,8 +57,9 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
         </div>"""
     flashes = _flashes()
     js = """<script>
-function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"\u25b8":"\u25be";el.classList.toggle("open")}
-function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed")}
+function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"▸":"▾";el.classList.toggle("open")}
+function toggleSidebar(){var s=document.getElementById("sidebar"),b=document.getElementById("ham-btn");s.classList.toggle("collapsed");b.textContent=s.classList.contains("collapsed")?"☰":"⋮"}
+window.addEventListener("load",function(){var b=document.getElementById("ham-btn");if(b&&!document.getElementById("sidebar").classList.contains("collapsed"))b.textContent="⋮"})
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -71,7 +72,6 @@ function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.to
 </head>
 <body>
 <div class="topbar">
-  <button class="hamburger" onclick="toggleSidebar()" title="Menu">☰</button>
   <div class="brand">BlueShift <span>IA Platform</span></div>
   <div class="topbar-sub">Portal do Cliente</div>
   {user_box}
@@ -142,7 +142,7 @@ def _nav(active: str, user: dict | None) -> str:
 
     seta_aberto = "\u25be"
     seta_fechado = "\u25b8"
-    links = """<hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
+    links = """<div style="text-align:right;margin-bottom:4px"><button class="ham-sidebar" id="ham-btn" onclick="toggleSidebar()" title="Menu">☰</button></div><hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
     for key, label, href in itens:
         links += _nl(key, label, href, " active" if key == active else "")
 
@@ -208,6 +208,8 @@ background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
 background:linear-gradient(90deg,#0e1830,#101a33);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 .hamburger{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
 .hamburger:hover{color:#fff;background:var(--panel2)}
+.ham-sidebar{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1}
+.ham-sidebar:hover{color:#fff;background:var(--panel2)}
 .brand{font-weight:800;letter-spacing:.3px;font-size:18px;color:#fff}
 .brand span{color:var(--blue);font-weight:600}
 .topbar-sub{color:var(--muted);font-size:13px;border-left:1px solid var(--line);padding-left:16px}
@@ -244,7 +246,7 @@ justify-content:center;font-weight:700;color:#fff}
 .grid-2{grid-template-columns:repeat(2,1fr)}
 .grid-3{grid-template-columns:repeat(3,1fr)}
 .grid-4{grid-template-columns:repeat(4,1fr)}
-@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}.sidebar{display:none}}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .kpi .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
 .kpi .value{font-size:26px;font-weight:800;margin-top:6px}
