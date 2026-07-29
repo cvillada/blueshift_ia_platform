@@ -2130,47 +2130,70 @@ def teste_ab():
             )
 
             vereditos = []
+            vereditos = []
+            justificativas = []
             for r in resultados:
                 r_orig = r.get("original_resp", "")
                 r_novo = r.get("novo_resp", "")
                 pergunta = r.get("pergunta", "")
-                # Envia para o juiz
                 prompt_juiz = (
                     "Voce e um analista de qualidade de respostas de IA. "
                     "Compare as duas respostas abaixo e diga qual e a melhor.\n\n"
                     f"Pergunta: {pergunta}\n\n"
                     f"Resposta A (modelo atual): {r_orig}\n\n"
                     f"Resposta B (novo modelo): {r_novo}\n\n"
-                    "Responda APENAS com UMA palavra: 'A', 'B' ou 'EMPATE'. "
-                    "Nao explique, nao justifique. So a palavra."
+                    "Responda no formato:\n"
+                    "VOTO: A, B ou EMPATE\n"
+                    "JUSTIFICATIVA: motivo em ate 2 linhas"
                 )
                 out = llm_client.chat(modelo_juiz, [
                     {"role": "system", "content": "Voce e um juiz imparcial de respostas de IA."},
                     {"role": "user", "content": prompt_juiz},
                 ])
+                voto = "EMPATE"
+                justificativa = ""
                 if out.get("ok"):
-                    voto = (out.get("content", "") or "").strip().upper()
-                    if "EMPATE" in voto:
-                        voto = "EMPATE"
-                    elif voto.startswith("A") or "RESPOSTA A" in voto:
-                        voto = "A"
-                    elif voto.startswith("B") or "RESPOSTA B" in voto:
-                        voto = "B"
-                    else:
-                        voto = "EMPATE"
-                else:
-                    voto = "EMPATE"
+                    texto = (out.get("content", "") or "").strip()
+                    linhas = texto.split("\n")
+                    achou_voto = False
+                    for linha in linhas:
+                        ls = linha.strip().upper()
+                        if ls.startswith("VOTO:"):
+                            v = ls.replace("VOTO:", "").strip()
+                            if "EMPATE" in v or v == "":
+                                voto = "EMPATE"
+                            elif v.startswith("A"):
+                                voto = "A"
+                            elif v.startswith("B"):
+                                voto = "B"
+                            achou_voto = True
+                        elif ls.startswith("JUSTIFICATIVA:"):
+                            justificativa = linha.split(":", 1)[1].strip() if ":" in linha else ""
+                    # Se nao achou JUSTIFICATIVA mas achou VOTO, pega o resto do texto como justificativa
+                    if not justificativa and achou_voto:
+                        for linha in linhas:
+                            ls = linha.strip().upper()
+                            if ls.startswith("VOTO:"):
+                                continue
+                            if ls.startswith("JUSTIFICATIVA:"):
+                                continue
+                            if ls.strip():
+                                justificativa = (justificativa + " " + linha.strip()).strip()
                 vereditos.append(voto)
+                justificativas.append(justificativa)
 
             # Renderiza com cores
             rows = ""
             for i, r in enumerate(resultados):
                 v = vereditos[i] if i < len(vereditos) else "EMPATE"
+                just = justificativas[i] if i < len(justificativas) else ""
+                just_attr = just.replace("'", "\\'").replace('"', '&quot;') if just else ""
                 cor_a = "rgba(34,197,94,.1)" if v == "A" else ("rgba(239,68,68,.08)" if v == "B" else "")
                 cor_b = "rgba(34,197,94,.1)" if v == "B" else ("rgba(239,68,68,.08)" if v == "A" else "")
-                badge_v = {"A": '<span class="badge ok">Venceu</span>',
-                           "B": '<span class="badge ok">Venceu</span>',
-                           "EMPATE": '<span class="badge neutral">Empate</span>'}.get(v, "")
+                info_icon = f' <span class="info-icon" onclick="alert(\'{just_attr}\')" title="Clique para detalhes" style="cursor:pointer;font-size:12px;color:var(--muted)">ⓘ</span>' if just else ""
+                badge_v = {"A": f'<span class="badge ok">Venceu{info_icon}</span>',
+                           "B": f'<span class="badge ok">Venceu{info_icon}</span>',
+                           "EMPATE": f'<span class="badge neutral">Empate{info_icon}</span>'}.get(v, "")
                 vencedor = "Original" if v == "A" else ("Novo" if v == "B" else "Empate")
                 rows += f"""<tr>
                   <td style="vertical-align:top;font-size:12px">{i+1}</td>
@@ -2226,11 +2249,46 @@ def teste_ab():
                 trace = db.buscar_trace(fb["trace_id"])
                 if trace and trace.get("modelo"):
                     modelo_orig = trace["modelo"]
-            out = llm_client.chat(modelo_alvo, [
-                {"role": "system", "content": "Voce e um assistente corporativo. Responda de forma objetiva e direta com base nos dados disponiveis."},
-                {"role": "user", "content": pergunta},
-            ])
-            nova_resp = out.get("content", "") if out.get("ok") else f"(erro: {out.get('error', 'falha na requisicao')})"
+            # Executa via pipeline completo do agente (conectores + RAG + LLM)
+            from . import agente as _agente
+            agente_orig = db.buscar_agente(fb.get("agente_id") or 0) if fb.get("agente_id") else None
+            if agente_orig:
+                agente_test = dict(agente_orig)
+                agente_test["modelo_id"] = modelo_alvo["id"]
+                agente_test["modelo_secundario_id"] = None
+                out = _agente.responder(agente_test, pergunta, "teste_ab", "")
+                nova_resp = out.get("content", "") if out.get("ok") else f"(erro pipeline: {out.get('error', 'falha')})"
+            elif fb.get("trace_id"):
+                # Reusa dados do trace original (conectores + RAG) com novo modelo
+                trace = db.buscar_trace(fb["trace_id"])
+                if trace:
+                    conectores_trace = trace.get("conectores", []) or []
+                    rag_trace = trace.get("rag", []) or []
+                    # Monta prompt igual ao agente original (sem skills - nao temos)
+                    system = "Voce e um assistente corporativo da BlueShift.\n\n"
+                    blocos = []
+                    for f in conectores_trace:
+                        if "erro" in f:
+                            continue
+                        blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
+                                      f"args={f.get('args')} -> {f.get('resultado')}")
+                    if blocos:
+                        system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+                    system += "CONTEXTO (base de conhecimento — FONTE SECUNDARIA):\n"
+                    system += "\n".join(f"- {c.get('texto','')}" for c in rag_trace) or "(vazio)"
+                    out = llm_client.chat(modelo_alvo, [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": pergunta},
+                    ])
+                    nova_resp = out.get("content", "") if out.get("ok") else f"(erro: {out.get('error', 'falha na requisicao')})"
+                else:
+                    nova_resp = "(erro: trace nao encontrado)"
+            else:
+                out = llm_client.chat(modelo_alvo, [
+                    {"role": "system", "content": "Voce e um assistente corporativo. Responda de forma objetiva e direta com base nos dados disponiveis."},
+                    {"role": "user", "content": pergunta},
+                ])
+                nova_resp = out.get("content", "") if out.get("ok") else f"(erro: {out.get('error', 'falha na requisicao')})"
             resultados.append({
                 "pergunta": pergunta,
                 "original_resp": original,
