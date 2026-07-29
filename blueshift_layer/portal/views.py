@@ -1243,10 +1243,11 @@ def conectores():
             <option value="postgresql">PostgreSQL</option>
             <option value="mysql">MySQL</option>
             <option value="sqlserver">SQL Server</option>
+            <option value="oracle">Oracle</option>
           </select>
           <div class="form-row">
             <div><label>Host</label><input name="sql_host" placeholder="host.docker.internal"></div>
-            <div><label>Porta</label><input name="sql_port" placeholder="5432 (PG) / 3306 (MySQL) / 1433 (SQL Server)"></div>
+            <div><label>Porta</label><input name="sql_port" placeholder="5432 (PG) / 3306 (MySQL) / 1433 (SQL Server) / 1521 (Oracle)"></div>
           </div>
           <div class="form-row">
             <div><label>Banco</label><input name="sql_db" placeholder="nome_do_banco"></div>
@@ -1530,7 +1531,7 @@ def conector_editar(cid: int):
     api_sel = {"api": "", "mcp": "", "sql": ""}
     api_sel[tipo] = 'selected'
     sql_drv_opts = "".join(f'<option value="{d}" {"selected" if sql_driver==d else ""}>{d.upper()}</option>'
-                           for d in ["postgresql", "mysql", "sqlserver"])
+                           for d in ["postgresql", "mysql", "sqlserver", "oracle"])
 
     content = f"""
     <div class="card" style="max-width:720px">
@@ -2194,6 +2195,99 @@ def lgpd():
       </form>
     </div>"""
     return templates.page("LGPD", content, active="lgpd", user=u)
+
+
+@bp.route("/fine-tuning")
+@auth.login_required
+def fine_tuning():
+    """Pagina de documentacao sobre Fine-Tuning de modelos de IA."""
+    u = _user()
+    content = """<div class="card" style="max-width:860px">
+  <h3 style="margin-top:0">Fine-Tuning de Modelos de IA</h3>
+
+  <p class="muted">O <b>fine-tuning</b> (ou ajuste fino) e o processo de
+  treinar um modelo de linguagem pre-existente com dados especificos do seu
+  negocio para melhorar a precisao nas respostas. Em vez de usar um modelo
+  generico, o fine-tuning ensina ao modelo a linguagem, os termos tecnicos e
+  os padroes de resposta da sua empresa.</p>
+
+  <h4>Quando fazer fine-tuning?</h4>
+  <table>
+  <tr><th>Cenario</th><th>Recomendacao</th></tr>
+  <tr><td>Modelo erra termos tecnicos do seu setor</td><td> Fazer FT</td></tr>
+  <tr><td>Respostas genericas demais para o seu contexto</td><td> Fazer FT</td></tr>
+  <tr><td>Precisa de um tom/padrao de resposta especifico</td><td> Fazer FT</td></tr>
+  <tr><td>Modelo ja responde bem com RAG + prompt</td><td> RAG pode ser suficiente</td></tr>
+  <tr><td>Poucos dados de treino (< 50 exemplos)</td><td> RAG e melhor caminho</td></tr>
+  </table>
+
+  <h4>Formatos de modelo</h4>
+  <table>
+  <tr><th>Formato</th><th>Framework</th><th>Uso</th></tr>
+  <tr><td><b>GGUF</b></td><td>llama.cpp, LM Studio, Ollama</td><td>Inferencia em CPU — mais popular para deploy local</td></tr>
+  <tr><td><b>MLX</b></td><td>mlx-lm (Apple)</td><td>Fine-tuning e inferencia em Macs Apple Silicon (M1/M2/M3/M4)</td></tr>
+  <tr><td><b>SafeTensors</b></td><td>HuggingFace Transformers, TRL</td><td>Treino em GPU (NVIDIA) — padrao da industria</td></tr>
+  <tr><td><b>AWQ/GPTQ</b></td><td>AutoAWQ, GPTQ-for-LLaMa</td><td>Modelos quantizados para GPU com pouco VRAM</td></tr>
+  </table>
+
+  <h4>Tipos de fine-tuning</h4>
+  <table>
+  <tr><th>Tipo</th><th>O que faz</th><th>Custo</th></tr>
+  <tr><td><b>Full fine-tuning</b></td><td>Atualiza todos os pesos do modelo</td><td>Alto (GPU necessaria)</td></tr>
+  <tr><td><b>LoRA</b></td><td>Adiciona pesos adaptadores pequenos (1-2% do original)</td><td>Baixo (CPU ou GPU modesta)</td></tr>
+  <tr><td><b>QLoRA</b></td><td>LoRA + modelo quantizado (4-bit)</td><td>Muito baixo (ate 8GB RAM)</td></tr>
+  </table>
+
+  <h4>Requisitos de hardware</h4>
+  <table>
+  <tr><th>Metodo</th><th>Modelo ate</th><th>RAM minima</th><th>GPU</th><th>Exemplo</th></tr>
+  <tr><td>QLoRA (MLX)</td><td>8B params</td><td>16 GB</td><td>Nao precisa</td><td>Mac M2/M3 com 16GB unified</td></tr>
+  <tr><td>QLoRA (GPU)</td><td>8B params</td><td>16 GB</td><td>RTX 3060 12GB+</td><td>Servidor Linux + RTX 4060</td></tr>
+  <tr><td>LoRA (GPU)</td><td>8B params</td><td>24 GB</td><td>RTX 4090 24GB</td><td>Workstation dedicada</td></tr>
+  <tr><td>Full FT (GPU)</td><td>3B params</td><td>32 GB</td><td>A4000 16GB+</td><td>Servidor enterprise</td></tr>
+  </table>
+
+  <h4>Dados para fine-tuning</h4>
+  <p>A BlueShift ja exporta a Base de Conhecimento no formato JSONL compativel
+  com MLX, HuggingFace TRL, Unsloth e OpenAI. Acesse <b>Conhecimento > Exportar
+  JSONL</b> para gerar o arquivo.</p>
+
+  <p><b>Formato esperado (messages):</b></p>
+  <pre style="font-size:12px;background:#0e1726;padding:12px;border-radius:6px;overflow-x:auto">
+{"messages":[{"role":"user","content":"Qual o saldo do cliente C001?"},{"role":"assistant","content":"O saldo do cliente C001 e R$ 15.230,00."}]}
+{"messages":[{"role":"user","content":"Listar pedidos pendentes"},{"role":"assistant","content":"Ha 3 pedidos pendentes: PED-01, PED-02 e PED-03."}]}</pre>
+
+  <h5>Recomendacoes para os dados</h5>
+  <table>
+  <tr><th>Criterio</th><th>Recomendacao</th></tr>
+  <tr><td>Quantidade minima</td><td>50 exemplos (ideal: 200-1000)</td></tr>
+  <tr><td>Qualidade</td><td>Revisar cada exemplo — dados ruins geram modelo pior</td></tr>
+  <tr><td>Cobertura</td><td>Variar perguntas, nao repetir o mesmo padrao</td></tr>
+  <tr><td>Limpeza</td><td>Remover dados pessoais (anonimizacao LGPD ja aplicada na exportacao)</td></tr>
+  <tr><td>Teste</td><td>Separar 10-20% dos dados para validacao</td></tr>
+  </table>
+
+  <h4>Passo a passo (MLX — Mac Silicon)</h4>
+  <ol style="font-size:13px">
+    <li><b>Exportar dados:</b> No portal BlueShift, va em Conhecimento > Exportar JSONL</li>
+    <li><b>Preparar ambiente:</b> No Mac, instale mlx-lm: <code>pip install mlx-lm</code></li>
+    <li><b>Treinar:</b> <code>mlx_lm.lora --model meta-llama/Llama-3.2-3B --data ./dados.jsonl --lora-layers 16 --iters 200</code></li>
+    <li><b>Testar:</b> <code>mlx_lm.generate --model meta-llama/Llama-3.2-3B --adapter-path ./adapters</code></li>
+    <li><b>Exportar GGUF (opcional):</b> Converta o adaptador + modelo base para GGUF usando <code>llama.cpp/convert.py</code> para usar em LM Studio ou Ollama</li>
+  </ol>
+
+  <h4>Quem pode fazer</h4>
+  <p>O fine-tuning e um servico <b>realizado pela BlueShift</b> para clientes
+  corporativos. A plataforma fornece os dados de saida (JSONL), e a BlueShift
+  executa o treino nos hardwares adequados, entregando o modelo ajustado
+  pronto para uso no ambiente do cliente.</p>
+
+  <p>Para contratar o servico de fine-tuning, entre em contato com seu
+  representante BlueShift.</p>
+
+  <hr style="border-color:#1e2a3a;margin:20px 0">
+</div>"""
+    return templates.page("Fine-Tuning", content, active="fine_tuning", user=u)
 
 
 @bp.route("/rastreio/<int:tid>")

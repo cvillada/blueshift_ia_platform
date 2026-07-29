@@ -98,7 +98,8 @@ def _nav(active: str, user: dict | None) -> str:
         "canais": "\U0001f4e1", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
-        "observabilidade": "\U0001f4ca", "atualizacoes": "\U0001f504", "sso": "\U0001f511",
+        'observabilidade': '\U0001f4ca', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
+        'fine_tuning': '\U0001f9e9',
         "lgpd": "\U0001f6e1\ufe0f",
     }
     _nl = lambda key, label, href, cls_extra="": (
@@ -133,6 +134,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("auditoria", "Auditoria", "/portal/auditoria"),
         ("observabilidade", "Observabilidade", "/portal/observabilidade"),
         ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
+        ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
         ("sso", "SSO (OIDC)", "/portal/sso/config"),
     ]
 
@@ -166,7 +168,7 @@ def _nav(active: str, user: dict | None) -> str:
     for key, label, href in outros:
         links += _nl(key, label, href, " active" if key == active else "")
 
-    links += '<div class="sidebar-by">By: Nei</div>'
+    links += '<hr style="border-color:#1e2a3a;margin:8px 0 4px"><div class="sidebar-by">By: Nei</div>'
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 

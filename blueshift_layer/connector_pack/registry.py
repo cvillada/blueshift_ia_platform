@@ -265,11 +265,32 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
             finally:
                 conn.close()
 
+        elif driver == "oracle":
+            import oracledb
+            oracledb.defaults.fetchmany = 50
+            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
+            port = config.get("sql_port", "1521")
+            conn = oracledb.connect(
+                host=host, port=port,
+                service_name=config.get("sql_db", ""),
+                user=config.get("sql_user", ""),
+                password=config.get("sql_pass", ""),
+            )
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    cols = [desc[0] for desc in cur.description] if cur.description else []
+                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
+                conn.commit()
+                return {"tool": "sql:query", "args": query, "resultado": rows}
+            finally:
+                conn.close()
+
         else:
             return {"erro": f"Driver SQL desconhecido: {driver}"}
 
     except ImportError as e:
-        nome_driver = {"postgresql": "psycopg[binary]", "mysql": "pymysql", "sqlserver": "pymssql"}
+        nome_driver = {"postgresql": "psycopg[binary]", "mysql": "pymysql", "sqlserver": "pymssql", "oracle": "oracledb"}
         return {"erro": f"Driver {driver} nao instalado. Instale: pip install {nome_driver.get(driver, driver)}"}
     except Exception as e:
         return {"erro": f"Erro SQL ({driver}): {e}"}
