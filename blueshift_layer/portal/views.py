@@ -1006,7 +1006,7 @@ def skill_novo():
             db.registrar_auditoria(_user()["login"], "admin", "criar_skill", alvo=nome)
             flash(f"Skill '{nome}' criada.", "ok")
             return redirect(url_for("portal.skills"))
-    content = """
+    content = f"""
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Nova skill</h3>
       <form method="post">
@@ -1019,7 +1019,7 @@ def skill_novo():
           Conteúdo (SKILL.md body — instruções do agente)
           <button type="button" class="btn-ia" onclick="abrirModalIA()" style="margin-left:8px">✨ Gerar com IA</button>
         </label>
-        <textarea name="body" id="skill-body" rows="10" placeholder="# Comportamento&#10;1. Ao perguntarem status, consulte o ERP&#10;2. Nunca invente dados"></textarea>
+        <textarea name="body" id="skill-body" rows="10" placeholder="# Comportamento&#10;1. Ao perguntarem status, consulte o ERP&#10;2. Nunca invente dados&#10;3. Coloque aqui os Guardrails"></textarea>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Criar skill</button>
           <a class="btn ghost" href="/portal/skills">Cancelar</a>
@@ -2080,6 +2080,251 @@ def alertas_config():
       </form>
     </div>"""
     return templates.page("Alertas", content, active="alertas_config", user=u)
+
+
+@bp.route("/teste-ab", methods=["GET", "POST"])
+@auth.login_required
+def teste_ab():
+    """Teste A/B entre modelos: reexecuta perguntas do feedback com outro modelo."""
+    u = _user()
+    papel = (u or {}).get("papel", "")
+    if papel not in ("admin", "gestor"):
+        flash("Acesso restrito a administradores e gestores.", "bad")
+        return redirect(url_for("portal.monitorar"))
+
+    from . import llm_client
+    import json as _json
+
+    # Carrega modelos
+    clientes = db.listar_clientes()
+    modelos = []
+    if clientes:
+        modelos = db.listar_modelos(clientes[0]["id"])
+
+    if request.method == "POST":
+        acao = request.form.get("acao", "executar")
+
+        # ── PASSO 2: Analisar respostas ──
+        if acao == "analisar":
+            raw = request.form.get("resultados_json", "[]")
+            try:
+                resultados = _json.loads(raw)
+            except Exception:
+                resultados = []
+            juiz_id = request.form.get("modelo_juiz", "").strip()
+            modelo_juiz = next((m for m in modelos if str(m["id"]) == juiz_id), None)
+            if not modelo_juiz or not resultados:
+                flash("Dados invalidos para analise.", "bad")
+                return redirect(url_for("portal.teste_ab"))
+
+            # Auditoria do julgamento
+            db.registrar_auditoria(
+                u["login"], u["papel"], "teste_ab_julgamento",
+                alvo=f"{len(resultados)} respostas, juiz: {modelo_juiz['modelo']}",
+                ip=request.remote_addr or "",
+            )
+
+            vereditos = []
+            for r in resultados:
+                r_orig = r.get("original_resp", "")
+                r_novo = r.get("novo_resp", "")
+                pergunta = r.get("pergunta", "")
+                # Envia para o juiz
+                prompt_juiz = (
+                    "Voce e um analista de qualidade de respostas de IA. "
+                    "Compare as duas respostas abaixo e diga qual e a melhor.\n\n"
+                    f"Pergunta: {pergunta}\n\n"
+                    f"Resposta A (modelo atual): {r_orig}\n\n"
+                    f"Resposta B (novo modelo): {r_novo}\n\n"
+                    "Responda APENAS com UMA palavra: 'A', 'B' ou 'EMPATE'. "
+                    "Nao explique, nao justifique. So a palavra."
+                )
+                out = llm_client.chat(modelo_juiz, [
+                    {"role": "system", "content": "Voce e um juiz imparcial de respostas de IA."},
+                    {"role": "user", "content": prompt_juiz},
+                ])
+                if out.get("ok"):
+                    voto = (out.get("content", "") or "").strip().upper()
+                    if "EMPATE" in voto:
+                        voto = "EMPATE"
+                    elif voto.startswith("A") or "RESPOSTA A" in voto:
+                        voto = "A"
+                    elif voto.startswith("B") or "RESPOSTA B" in voto:
+                        voto = "B"
+                    else:
+                        voto = "EMPATE"
+                else:
+                    voto = "EMPATE"
+                vereditos.append(voto)
+
+            # Renderiza com cores
+            rows = ""
+            for i, r in enumerate(resultados):
+                v = vereditos[i] if i < len(vereditos) else "EMPATE"
+                cor_a = "rgba(34,197,94,.1)" if v == "A" else ("rgba(239,68,68,.08)" if v == "B" else "")
+                cor_b = "rgba(34,197,94,.1)" if v == "B" else ("rgba(239,68,68,.08)" if v == "A" else "")
+                badge_v = {"A": '<span class="badge ok">Venceu</span>',
+                           "B": '<span class="badge ok">Venceu</span>',
+                           "EMPATE": '<span class="badge neutral">Empate</span>'}.get(v, "")
+                vencedor = "Original" if v == "A" else ("Novo" if v == "B" else "Empate")
+                rows += f"""<tr>
+                  <td style="vertical-align:top;font-size:12px">{i+1}</td>
+                  <td style="vertical-align:top;font-size:12px;max-width:200px">{templates.h(r.get('pergunta','')[:200])}</td>
+                  <td style="vertical-align:top;font-size:12px;max-width:220px;background:{cor_a}">
+                    <span class="muted" style="font-size:11px">({r.get('modelo_orig','?')})</span><br>{templates.h(r.get('original_resp','')[:350])}
+                  </td>
+                  <td style="vertical-align:top;font-size:12px;max-width:220px;background:{cor_b}">
+                    <span class="muted" style="font-size:11px">({r.get('modelo_novo','?')})</span><br>{templates.h(r.get('novo_resp','')[:350])}
+                  </td>
+                  <td style="vertical-align:top;font-size:12px;text-align:center">{badge_v}<br><span class="muted" style="font-size:10px">{vencedor}</span></td>
+                </tr>"""
+            content = f"""<div class="card" style="max-width:100%">
+  <h3 style="margin-top:0">Resultado da Analise</h3>
+  <p class="muted">Julgamento por <b>{modelo_juiz['modelo']}</b> — {len(resultados)} resposta(s).</p>
+  <table style="font-size:12px">
+  <thead><tr><th>#</th><th>Pergunta</th><th>Resposta Original</th><th>Resposta Novo Modelo</th><th>Veredito</th></tr></thead>
+  <tbody>{rows}</tbody>
+  </table>
+  <div style="margin-top:14px"><a class="btn ghost" href="/portal/teste-ab">Novo teste</a></div>
+</div>"""
+            return templates.page("Teste A/B", content, active="teste_ab", user=u)
+
+        # ── PASSO 1: Executar teste ──
+        selecionados = request.form.getlist("selecionados")
+        alvo = request.form.get("modelo_alvo", "").strip()
+        if not selecionados:
+            flash("Selecione ao menos um feedback para testar.", "warn")
+            return redirect(url_for("portal.teste_ab"))
+        if not alvo or not alvo.isdigit():
+            flash("Selecione um modelo alvo para o teste.", "warn")
+            return redirect(url_for("portal.teste_ab"))
+        modelo_alvo = next((m for m in modelos if str(m["id"]) == alvo), None)
+        if not modelo_alvo:
+            flash("Modelo alvo nao encontrado.", "bad")
+            return redirect(url_for("portal.teste_ab"))
+        if not modelo_alvo.get("base_url", "").strip() or modelo_alvo["base_url"].strip() == "-":
+            flash(f"O modelo '{modelo_alvo['nome']}' nao tem endpoint configurado. Va em Modelos IA e configure a URL base.", "bad")
+            return redirect(url_for("portal.teste_ab"))
+
+        fb_list = []
+        for fid in selecionados:
+            fb = db.buscar_feedback(int(fid))
+            if fb:
+                fb_list.append(fb)
+
+        resultados = []
+        for fb in fb_list:
+            pergunta = fb["pergunta"]
+            original = fb["resposta"]
+            modelo_orig = "desconhecido"
+            if fb.get("trace_id"):
+                trace = db.buscar_trace(fb["trace_id"])
+                if trace and trace.get("modelo"):
+                    modelo_orig = trace["modelo"]
+            out = llm_client.chat(modelo_alvo, [
+                {"role": "system", "content": "Voce e um assistente corporativo. Responda de forma objetiva e direta com base nos dados disponiveis."},
+                {"role": "user", "content": pergunta},
+            ])
+            nova_resp = out.get("content", "") if out.get("ok") else f"(erro: {out.get('error', 'falha na requisicao')})"
+            resultados.append({
+                "pergunta": pergunta,
+                "original_resp": original,
+                "novo_resp": nova_resp,
+                "modelo_orig": modelo_orig,
+                "modelo_novo": modelo_alvo["modelo"],
+            })
+
+        db.registrar_auditoria(
+            u["login"], u["papel"], "teste_ab",
+            alvo=f"{len(resultados)} perguntas, modelo alvo: {modelo_alvo['modelo']}",
+            ip=request.remote_addr or "",
+        )
+
+        # Renderiza resultados + formulario de julgamento
+        rows = ""
+        for i, r in enumerate(resultados, 1):
+            rows += f"""<tr>
+              <td style="vertical-align:top;font-size:12px">{i}</td>
+              <td style="vertical-align:top;font-size:12px;max-width:250px">{templates.h(r['pergunta'][:200])}</td>
+              <td style="vertical-align:top;font-size:12px;max-width:250px;background:rgba(34,197,94,.05)">
+                <span class="muted" style="font-size:11px">({r['modelo_orig']})</span><br>{templates.h(r['original_resp'][:400])}
+              </td>
+              <td style="vertical-align:top;font-size:12px;max-width:250px;background:rgba(59,130,246,.05)">
+                <span class="muted" style="font-size:11px">({r['modelo_novo']})</span><br>{templates.h(r['novo_resp'][:400])}
+              </td>
+            </tr>"""
+        resultados_json = templates.h(_json.dumps(resultados, ensure_ascii=False))
+        juiz_opts = "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
+        content = f"""<div class="card" style="max-width:100%">
+  <h3 style="margin-top:0">Resultado do Teste A/B</h3>
+  <p class="muted">Comparacao entre o modelo original e <b>{modelo_alvo['modelo']}</b> para {len(resultados)} pergunta(s).</p>
+  <table style="font-size:12px">
+  <thead><tr><th>#</th><th>Pergunta</th><th>Resposta Original</th><th>Resposta Novo Modelo</th></tr></thead>
+  <tbody>{rows}</tbody>
+  </table>
+  <form method="post" style="margin-top:16px;padding:14px;background:var(--panel2);border-radius:8px">
+    {templates.csrf_field()}
+    <input type="hidden" name="acao" value="analisar">
+    <input type="hidden" name="resultados_json" value='{resultados_json}'>
+    <h4 style="margin:0 0 8px">📊 Analisar respostas</h4>
+    <p class="muted" style="font-size:12px">Escolha um modelo para julgar qual resposta foi melhor (Original vs Novo).</p>
+    <select name="modelo_juiz" style="max-width:400px">
+      <option value="">-- selecione o modelo juiz --</option>
+      {juiz_opts}
+    </select>
+    <div style="margin-top:10px"><button class="btn btn-spin" type="submit" onclick="this.classList.add('loading');this.innerHTML='⏳ Analisando...'">📊 Analisar respostas</button>
+    <a class="btn ghost" href="/portal/teste-ab">Novo teste</a></div>
+  </form>
+</div>"""
+        return templates.page("Teste A/B", content, active="teste_ab", user=u)
+
+    # GET: feedbacks recentes + modelos
+    feedbacks = []
+    try:
+        feedbacks = db.listar_feedback(limite=20)
+    except Exception:
+        pass
+
+    fb_opts = ""
+    for fb in feedbacks:
+        tid = fb.get("trace_id", "")
+        pergunta_curta = (fb.get("pergunta", "") or "")[:80]
+        fb_opts += f"""<tr>
+          <td><input type="checkbox" name="selecionados" value="{fb['id']}" style="width:auto;margin:0"></td>
+          <td style="font-size:12px">{templates.h(pergunta_curta)}</td>
+          <td style="font-size:11px;color:var(--muted)">{fb.get('tipo','')}</td>
+          <td style="font-size:11px">{templates.h((fb.get('resposta','') or '')[:80])}...</td>
+        </tr>"""
+
+    modelos_opts = "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
+
+    if len(modelos) < 2:
+        aviso = """<div class="flash warn">Teste A/B requer ao menos <b>2 modelos</b> cadastrados.
+        Cadastre um segundo modelo em <a href="/portal/modelos">Modelos IA</a> antes de realizar o teste.</div>"""
+    else:
+        aviso = ""
+
+    content = f"""
+    <div class="card" style="max-width:100%">
+      <h3 style="margin-top:0">Teste A/B entre Modelos</h3>
+      <p class="muted">Reexecute ate 10 perguntas do feedback contra um modelo diferente para comparar a qualidade das respostas.</p>
+      {aviso}
+      <form method="post">
+        {templates.csrf_field()}
+        <h4>1. Selecione os feedbacks para testar</h4>
+        <table>
+        <thead><tr><th style="width:30px"><input type="checkbox" id="sel-todos" onchange="var c=this.checked;document.querySelectorAll('[name=selecionados]').forEach(function(e){{e.checked=c}})" style="width:auto;margin:0"></th><th>Pergunta</th><th>Tipo</th><th>Resposta original</th></tr></thead>
+        <tbody>{fb_opts or '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">Nenhum feedback encontrado. Faca perguntas no Chat primeiro.</td></tr>'}</tbody>
+        </table>
+        <h4 style="margin-top:18px">2. Modelo alvo para o teste</h4>
+        <select name="modelo_alvo" style="max-width:400px">
+          <option value="">-- selecione --</option>
+          {modelos_opts}
+        </select>
+        <div style="margin-top:18px"><button class="btn btn-spin" type="submit" {"disabled" if len(modelos) < 2 else ""} onclick="this.classList.add('loading');this.innerHTML='⏳ Executando...'">Executar Teste A/B</button></div>
+      </form>
+    </div>"""
+    return templates.page("Teste A/B", content, active="teste_ab", user=u)
 
 
 @bp.route("/lgpd", methods=["GET", "POST"])

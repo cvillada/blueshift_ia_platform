@@ -58,7 +58,7 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
     flashes = _flashes()
     js = """<script>
 function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"\u25b8":"\u25be";el.classList.toggle("open")}
-function toggleSidebar(){var s=document.getElementById("sidebar"),c=s.classList.toggle("collapsed"),i=s.querySelector(".toggle-sidebar .nav-icon");i.textContent=c?"\u25b6":"\u25c0";var b=s.querySelector(".toggle-sidebar .nav-label");b.textContent=c?"":"Recolher"}
+function toggleSidebar(){var s=document.getElementById("sidebar");s.classList.toggle("collapsed")}
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -71,6 +71,7 @@ function toggleSidebar(){var s=document.getElementById("sidebar"),c=s.classList.
 </head>
 <body>
 <div class="topbar">
+  <button class="hamburger" onclick="toggleSidebar()" title="Menu">☰</button>
   <div class="brand">BlueShift <span>IA Platform</span></div>
   <div class="topbar-sub">Portal do Cliente</div>
   {user_box}
@@ -98,7 +99,7 @@ def _nav(active: str, user: dict | None) -> str:
         "canais": "\U0001f4e1", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
-        'observabilidade': '\U0001f4ca', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
+        'observabilidade': '\U0001f4ca', 'teste_ab': '\U0001f91d', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
         'fine_tuning': '\U0001f9e9',
         "lgpd": "\U0001f6e1\ufe0f",
     }
@@ -133,6 +134,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
         ("auditoria", "Auditoria", "/portal/auditoria"),
         ("observabilidade", "Observabilidade", "/portal/observabilidade"),
+        ("teste_ab", "Teste A/B", "/portal/teste-ab"),
         ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
         ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
         ("sso", "SSO (OIDC)", "/portal/sso/config"),
@@ -140,10 +142,7 @@ def _nav(active: str, user: dict | None) -> str:
 
     seta_aberto = "\u25be"
     seta_fechado = "\u25b8"
-    links = """<div class="sidebar-footer" style="margin-top:0;padding-bottom:6px">
-      <a class="navlink toggle-sidebar" onclick="toggleSidebar()" title="Recolher menu"><span class="nav-icon">\u25c0</span><span class="nav-label">Recolher</span></a>
-    </div>
-    <hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
+    links = """<hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
     for key, label, href in itens:
         links += _nl(key, label, href, " active" if key == active else "")
 
@@ -207,6 +206,8 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Hel
 background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
 .topbar{height:56px;display:flex;align-items:center;gap:16px;padding:0 20px;
 background:linear-gradient(90deg,#0e1830,#101a33);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+.hamburger{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
+.hamburger:hover{color:#fff;background:var(--panel2)}
 .brand{font-weight:800;letter-spacing:.3px;font-size:18px;color:#fff}
 .brand span{color:var(--blue);font-weight:600}
 .topbar-sub{color:var(--muted);font-size:13px;border-left:1px solid var(--line);padding-left:16px}

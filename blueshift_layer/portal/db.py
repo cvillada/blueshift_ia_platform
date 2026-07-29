@@ -744,6 +744,13 @@ def salvar_feedback(trace_id: int | None, agente_id: int | None,
         return cur.lastrowid
 
 
+def buscar_feedback(fid: int) -> dict | None:
+    """Retorna um feedback pelo ID."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
+    return dict(row) if row else None
+
+
 def verificar_pergunta_repetida(agente_id: int, pergunta: str,
                                 limite_minutos: int = 5) -> dict | None:
     """Detecta se a mesma pergunta foi feita recentemente (feedback implicito).
