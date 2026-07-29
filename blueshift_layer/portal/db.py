@@ -827,13 +827,13 @@ def agregar_metricas_diarias(data: str | None = None) -> int:
         # Busca feedback do dia agrupado por agente
         from datetime import datetime as _dt
         fb_rows = conn.execute(
-            """SELECT agente_id, modelo,
+            """SELECT f.agente_id, t.modelo,
                COUNT(*) as total,
                SUM(CASE WHEN feedback='util' THEN 1 ELSE 0 END) as util
                FROM feedback f
                LEFT JOIN tracing t ON f.trace_id = t.id
                WHERE f.criado_em BETWEEN ? AND ?
-               GROUP BY agente_id, modelo""",
+               GROUP BY f.agente_id, t.modelo""",
             (ts_inicio, ts_fim),
         ).fetchall()
 
