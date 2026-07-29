@@ -1980,11 +1980,16 @@ def observabilidade():
 
     spark_html = ""
     if metricas:
-        rev = list(reversed(metricas))
-        max_c = max(m["chamadas"] for m in metricas) or 1
-        for m in rev[-30:]:
-            h = int(m["chamadas"] / max_c * 40)
-            spark_html += f'<div class="bar" style="height:{h}px" title="{m["data"]}: {m["chamadas"]} chamadas"></div>'
+        # Agrega por data: soma chamadas do mesmo dia
+        from collections import defaultdict as _dd
+        dia = _dd(int)
+        for m in metricas:
+            dia[m["data"]] += m["chamadas"]
+        items = sorted(dia.items())  # (data, chamadas)
+        max_c = max(c for _, c in items) or 1
+        for data, chamadas in items[-30:]:
+            h = int(chamadas / max_c * 40)
+            spark_html += f'<div class="bar" style="height:{h}px" title="{data}: {chamadas} chamadas"></div>'
 
     content = f"""
     <style>
