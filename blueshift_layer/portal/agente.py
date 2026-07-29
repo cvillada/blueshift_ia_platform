@@ -146,7 +146,8 @@ def _skills_text(skills_csv: str) -> str:
     return "\n".join(partes)
 
 
-def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -> dict:
+def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
+              anonimizar: bool = True) -> dict:
     """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
 
     Hierarquia de execução:
@@ -292,7 +293,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "") -
             pass
 
     # --- Anonimizacao LGPD na saida (Arts. 12, 13) ---
-    if out["ok"]:
+    if out["ok"] and anonimizar:
         lgpd_cfg = db.carregar_lgpd_config()
         if lgpd_cfg.get("anonimizar_llm") == "1":
             from . import mask as _mask

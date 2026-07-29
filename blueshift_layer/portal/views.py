@@ -2256,7 +2256,8 @@ def teste_ab():
                 agente_test = dict(agente_orig)
                 agente_test["modelo_id"] = modelo_alvo["id"]
                 agente_test["modelo_secundario_id"] = None
-                out = _agente.responder(agente_test, pergunta, "teste_ab", "")
+                out = _agente.responder(agente_test, pergunta, "teste_ab", "",
+                                        anonimizar=False)
                 nova_resp = out.get("content", "") if out.get("ok") else f"(erro pipeline: {out.get('error', 'falha')})"
             elif fb.get("trace_id"):
                 # Reusa dados do trace original (conectores + RAG) com novo modelo
