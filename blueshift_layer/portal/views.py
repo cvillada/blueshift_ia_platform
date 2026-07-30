@@ -670,6 +670,7 @@ def agente_testar(aid: int):
     conn_count = len(db.listar_conectores(cliente_id=a["cliente_id"], area=area)) if area else 0
     conn_info = f"{conn_count} conector(es) da área" if conn_count else "sem conectores configurados para esta área"
     badge_fallback = ' <span class=\"badge warn\">⚡ fallback de modelo</span>' if fallback_usado else ""
+    badge_lgpd = ' <span class=\"badge info\">🔒 Anonimizado</span>' if a.get("lgpd_ativado", 1) else ' <span class=\"badge neutral\">🔓 Sem anonimizacao</span>'
     # Feedback script (evita f-string dentro de f-string)
     fb_script = ""
     if trace_id:
@@ -707,7 +708,7 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span></div></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span></div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>"""
@@ -743,7 +744,8 @@ def agente_novo():
                 modelo_sec_id = None
             db.criar_agente(cid, nome, request.form.get("area", ""), modelo_nome,
                             skills, modelo_id=modelo_id,
-                            modelo_secundario_id=modelo_sec_id)
+                            modelo_secundario_id=modelo_sec_id,
+                            lgpd_ativado=1 if request.form.get("lgpd_ativado") else 0)
             u = _user()
             db.registrar_auditoria(u["login"], u["papel"], "criar_agente", alvo=nome,
                                    cliente_id=cid, ip=request.remote_addr)
@@ -784,6 +786,10 @@ def agente_novo():
           Vá em <a href="/portal/conectores">Conectores</a> para cadastrar APIs, servidores MCP ou consultas SQL
           como fonte de dados para os agentes da área.
         </div>
+        <label style="margin-top:12px;display:block;font-size:13px;padding-left:2px">
+          <input type="checkbox" name="lgpd_ativado" value="1" checked style="width:auto;margin:0;vertical-align:middle">
+          🔒 Aplicar LGPD (anonimizar resposta do agente)
+        </label>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Montar agente</button>
           <a class="btn ghost" href="/portal/agentes">Cancelar</a>
@@ -823,6 +829,7 @@ def agente_editar(aid: int):
             mid2 = None
         campos["modelo_secundario_id"] = mid2
         campos["skills"] = ",".join(request.form.getlist("skills"))
+        campos["lgpd_ativado"] = 1 if request.form.get("lgpd_ativado") else 0
         db.atualizar_agente(aid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_agente", alvo=request.form.get("nome", a["nome"]),
                                cliente_id=a["cliente_id"], ip=request.remote_addr)
@@ -862,6 +869,10 @@ def agente_editar(aid: int):
           Vá em <a href="/portal/conectores">Conectores</a> para cadastrar APIs, servidores MCP ou consultas SQL
           como fonte de dados para os agentes da área.
         </div>
+        <label style="margin-top:12px;display:block;font-size:13px;padding-left:2px">
+          <input type="checkbox" name="lgpd_ativado" value="1" style="width:auto;margin:0;vertical-align:middle" {"checked" if a.get("lgpd_ativado", 1) else ""}>
+          🔒 Aplicar LGPD (anonimizar resposta do agente)
+        </label>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/agentes">Cancelar</a>
@@ -944,12 +955,12 @@ def skills_indexar_rag():
     return redirect(url_for("portal.skills"))
 
 
-_MODAL_HTML = """
-<div class="modal-overlay" id="modal-ia" onclick="if(event.target===this)fecharModalIA()">
+_MODAL_HTML = """<div class="modal-overlay" id="modal-ia" onclick="if(event.target===this)fecharModalIA()">
   <div class="modal-box">
     <h3>✨ Gerar skill com IA</h3>
-    <p class="muted" style="font-size:13px">Descreva o que a skill deve fazer. A IA usara o primeiro modelo cadastrado em Modelos IA para gerar o conteudo.</p>
-    <textarea id="ia-prompt" rows="4" placeholder="Ex: Agente de suporte que consulta a base de conhecimento..."></textarea>
+    <label style="font-size:13px;color:var(--muted)">Modelo de IA:</label>
+    {modelos_opts}
+    <textarea id="ia-prompt" rows="4" placeholder="Ex: Agente de suporte que consulta a base de conhecimento..." style="margin-top:8px"></textarea>
     <div class="modal-actions">
       <button class="btn btn-spin" id="btn-gerar" onclick="gerarSkillIA()">\U0001f680 Gerar</button>
       <button class="btn ghost" onclick="copiarSkillIA()" id="btn-copiar" style="display:none">\U0001f4cb Copiar para o campo</button>
@@ -968,9 +979,10 @@ function fecharModalIA(){document.getElementById("modal-ia").classList.remove("s
 function gerarSkillIA(){
   var p=document.getElementById("ia-prompt").value.trim();
   if(!p){alert("Descreva a skill primeiro.");return}
+  var m=document.getElementById("ia-modelo").value;
   var b=document.getElementById("btn-gerar");b.classList.add("loading");b.disabled=true;b.innerHTML="\u23f3 Gerando...";
   document.getElementById("ia-erro").style.display="none";
-  fetch("/portal/skills/gerar-ia",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p})})
+  fetch("/portal/skills/gerar-ia",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p,modelo_id:m})})
     .then(function(r){return r.json()})
     .then(function(d){
       b.classList.remove("loading");b.disabled=false;b.innerHTML="\u2728 Gerar de novo";
@@ -1026,7 +1038,9 @@ def skill_novo():
         </div>
       </form>
     </div>"""
-    content += _MODAL_HTML
+    _mdls = db.listar_modelos()
+    _mopts = '<select id="ia-modelo">' + "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in _mdls) + '</select>' if _mdls else '<select id="ia-modelo"><option value="">-- nenhum --</option></select>'
+    content += _MODAL_HTML.replace("{modelos_opts}", _mopts)
     return templates.page("Nova skill", content, active="skills", user=_user())
 
 
@@ -1066,7 +1080,9 @@ def skill_editar(nome: str):
         </div>
       </form>
     </div>"""
-    content += _MODAL_HTML
+    _mdls_e = db.listar_modelos()
+    _mopts_e = '<select id="ia-modelo">' + "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in _mdls_e) + '</select>' if _mdls_e else '<select id="ia-modelo"><option value="">-- nenhum --</option></select>'
+    content += _MODAL_HTML.replace("{modelos_opts}", _mopts_e)
     return templates.page(f"Editar {skill['name']}", content, active="skills", user=_user())
 
 
@@ -1097,7 +1113,12 @@ def skill_gerar_ia():
     if not modelos:
         return jsonify({"ok": False, "erro": "Nenhum modelo de IA cadastrado. Cadastre um em Modelos IA primeiro."}), 400
 
-    modelo = modelos[0]
+    mid = request.json.get("modelo_id", "") if request.is_json else ""
+    if mid and str(mid).isdigit():
+        mid = int(mid)
+        modelo = next((m for m in modelos if m["id"] == mid), modelos[0])
+    else:
+        modelo = modelos[0]
     system = (
         "Você é um especialista em criar skills para agentes de IA corporativos. "
         "Gere o conteúdo de um arquivo SKILL.md baseado na descrição fornecida pelo usuário.\n\n"
@@ -1287,11 +1308,13 @@ def conectores():
         <div style="margin-top:14px"><button class="btn" type="submit">Cadastrar conector</button></div>
       </form>
     </div>
+    <select id="modelos-store" style="display:none">{"".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in db.listar_modelos())}</select>
     <div class="modal-overlay" id="modal-query-ia" onclick="if(event.target===this)fecharModalQueryIA()">
       <div class="modal-box">
         <h3>🤖 Gerar Query SQL com IA</h3>
-        <p class="muted" style="font-size:13px">Descreva o que a query deve fazer. A IA usara o primeiro modelo cadastrado para gerar o SQL.</p>
-        <textarea id="ia-query-desc" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000, ordenados por nome"></textarea>
+        <label style="font-size:13px;color:var(--muted)">Modelo de IA:</label>
+        <select id="ia-query-modelo"></select>
+        <textarea id="ia-query-desc" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000" style="margin-top:8px"></textarea>
         <div class="modal-actions">
           <button class="btn btn-spin" id="btn-gerar-query" onclick="gerarQueryIA()">🚀 Gerar</button>
           <button class="btn ghost" onclick="copiarQueryIA()" id="btn-copiar-query" style="display:none">📋 Copiar para o campo</button>
@@ -1346,7 +1369,7 @@ def conectores():
           r.innerHTML = '<span style="color:var(--bad)">❌ Erro: ' + e.message + '</span>';
         }});
     }}
-    function abrirModalQueryIA(){{document.getElementById('modal-query-ia').classList.add('show')}}
+    function abrirModalQueryIA(){{var s=document.getElementById('ia-query-modelo'),st=document.getElementById('modelos-store');if(st&&s){{s.innerHTML=st.innerHTML}}document.getElementById('modal-query-ia').classList.add('show')}}
     function fecharModalQueryIA(){{document.getElementById('modal-query-ia').classList.remove('show')}}
     function gerarQueryIA(){{
       var desc=document.getElementById('ia-query-desc').value.trim();
@@ -1448,12 +1471,16 @@ def conector_gerar_query_ia():
     modelos = db.listar_modelos(clientes[0]["id"])
     if not modelos:
         return jsonify({"ok": False, "erro": "Nenhum modelo de IA cadastrado."}), 400
-
-    modelo = modelos[0]
-    dialetos = {"postgresql": "PostgreSQL", "mysql": "MySQL", "sqlserver": "SQL Server"}
+    dialetos = {"postgresql": "PostgreSQL", "mysql": "MySQL", "sqlserver": "SQL Server", "oracle": "Oracle"}
+    mid_q = request.json.get("modelo_id", "") if request.is_json else ""
+    if mid_q and str(mid_q).isdigit():
+        mid_q = int(mid_q)
+        modelo = next((m for m in modelos if m["id"] == mid_q), modelos[0])
+    else:
+        modelo = modelos[0]
     dialeto = dialetos.get(driver, "SQL")
     system = (
-        f"Voce e um especialista em SQL para {dialeto}. "
+        f"Voce e um especialista em SQL para {dialeto}."
         f"Gere apenas a query SQL, sem explicacoes, comentarios ou marcacao. "
         f"Use a sintaxe correta para {dialeto}. "
         f"Retorne somente o SQL puro."
@@ -1635,11 +1662,13 @@ def conector_editar(cid: int):
         </div>
       </form>
     </div>
+    <select id="modelos-store-edit" style="display:none">{"".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in db.listar_modelos())}</select>
     <div class="modal-overlay" id="modal-query-ia-edit" onclick="if(event.target===this)fecharModalQueryIAEdit()">
       <div class="modal-box">
         <h3>🤖 Gerar Query SQL com IA</h3>
-        <p class="muted" style="font-size:13px">Descreva o que a query deve fazer. A IA usara o primeiro modelo cadastrado para gerar o SQL.</p>
-        <textarea id="ia-query-desc-edit" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000"></textarea>
+        <label style="font-size:13px;color:var(--muted)">Modelo de IA:</label>
+        <select id="ia-query-modelo-edit"></select>
+        <textarea id="ia-query-desc-edit" rows="4" placeholder="Ex: Listar todos os clientes ativos com saldo acima de 1000" style="margin-top:8px"></textarea>
         <div class="modal-actions">
           <button class="btn btn-spin" id="btn-gerar-query-edit" onclick="gerarQueryIAEdit()">🚀 Gerar</button>
           <button class="btn ghost" onclick="copiarQueryIAEdit()" id="btn-copiar-query-edit" style="display:none">📋 Copiar para o campo</button>
@@ -1693,7 +1722,7 @@ def conector_editar(cid: int):
           r.innerHTML = '<span style="color:var(--bad)">❌ Erro: ' + e.message + '</span>';
         }});
     }}
-    function abrirModalQueryIAEdit(){{document.getElementById('modal-query-ia-edit').classList.add('show')}}
+    function abrirModalQueryIAEdit(){{var s=document.getElementById('ia-query-modelo-edit'),st=document.getElementById('modelos-store-edit');if(st&&s){{s.innerHTML=st.innerHTML}}document.getElementById('modal-query-ia-edit').classList.add('show')}}
     function fecharModalQueryIAEdit(){{document.getElementById('modal-query-ia-edit').classList.remove('show')}}
     function gerarQueryIAEdit(){{
       var desc=document.getElementById('ia-query-desc-edit').value.trim();

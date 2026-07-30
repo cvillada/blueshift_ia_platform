@@ -293,7 +293,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             pass
 
     # --- Anonimizacao LGPD na saida (Arts. 12, 13) ---
-    if out["ok"] and anonimizar:
+    if out["ok"] and anonimizar and agente.get("lgpd_ativado", 1):
         lgpd_cfg = db.carregar_lgpd_config()
         if lgpd_cfg.get("anonimizar_llm") == "1":
             from . import mask as _mask

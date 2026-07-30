@@ -380,6 +380,7 @@ def _migrar_colunas() -> None:
         "agentes": [
             ("modelo_id", "INTEGER"),
             ("modelo_secundario_id", "INTEGER"),
+            ("lgpd_ativado", "INTEGER DEFAULT 1"),
         ],
         "modelos": [
             ("max_tokens", "INTEGER"),
@@ -515,12 +516,13 @@ def buscar_agente(aid: int) -> dict | None:
 
 
 def criar_agente(cliente_id, nome, area="", modelo="bonsai-8b", skills="", conectores="",
-                 modelo_id=None, modelo_secundario_id=None) -> int:
+                 modelo_id=None, modelo_secundario_id=None,
+                 lgpd_ativado: int = 1) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, status, criado_em)
-               VALUES (?,?,?,?,?,?,?,?, 'ativo', ?)""",
-            (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, now_iso()),
+            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, lgpd_ativado, status, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?, 'ativo', ?)""",
+            (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, lgpd_ativado, now_iso()),
         )
         return cur.lastrowid
 

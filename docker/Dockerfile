@@ -7,6 +7,9 @@ WORKDIR /opt/blueshift
 COPY . /opt/blueshift
 RUN pip install --no-cache-dir -e .
 
+# Node.js para servidores MCP via stdio (ex: airbnb mcp-server)
+RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+
 # Entrypoint sobe o License Server mock junto com o comando principal
 COPY docker/entrypoint.sh /opt/blueshift/docker/entrypoint.sh
 RUN chmod +x /opt/blueshift/docker/entrypoint.sh
