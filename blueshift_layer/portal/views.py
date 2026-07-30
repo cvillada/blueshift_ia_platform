@@ -518,9 +518,13 @@ def usuarios():
           <td>{u['area'] or '-'}</td>
           <td>{clientes.get(u['cliente_id'], '?')}</td>
           <td>{templates.badge('ativo' if u['ativo'] else 'suspenso')}</td>
+          <td style="white-space:nowrap">
+            <a class="btn ghost" href="/portal/usuarios/{u['id']}/editar" style="font-size:11px;padding:3px 8px">✏️</a>
+            <a class="btn ghost" href="/portal/usuarios/{u['id']}/suspender" style="font-size:11px;padding:3px 8px" onclick="return confirm('Confirmar?')">{'🔒' if u['ativo'] else '✅'}</a>
+          </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Área</th><th>Cliente</th><th>Status</th></tr></thead>
-      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhum usuário.</td></tr>'}</tbody></table>"""
+    tabela = f"""<table><thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Área</th><th>Cliente</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum usuário.</td></tr>'}</tbody></table>"""
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="muted">Usuários com acesso à plataforma (papéis: admin, gestor, usuário, sistema).</div>
@@ -578,6 +582,68 @@ def usuario_novo():
       </form>
     </div>"""
     return templates.page("Cadastrar usuário", content, active="usuarios", user=_user())
+
+
+@bp.route("/usuarios/<int:uid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def usuario_editar(uid: int):
+    u = db.buscar_usuario(uid)
+    if not u:
+        flash("Usuário não encontrado.", "bad")
+        return redirect(url_for("portal.usuarios"))
+    if request.method == "POST":
+        campos = {}
+        for k in ("nome", "login", "papel"):
+            v = request.form.get(k, "").strip()
+            if v: campos[k] = v
+        area = request.form.get("area", "").strip()
+        if area is not None: campos["area"] = area
+        senha = request.form.get("senha", "").strip()
+        if senha: campos["senha"] = db._hash_senha(senha)
+        if campos: db.atualizar_usuario(uid, **campos)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_usuario", alvo=u["nome"], ip=request.remote_addr)
+        flash("Usuário atualizado.", "ok")
+        return redirect(url_for("portal.usuarios"))
+    areas_opts = "".join(f'<option value="{a}" {"selected" if a==u.get("area","") else ""}>{a}</option>' for a in listar_areas())
+    papel_opts = "".join(f'<option value="{p}" {"selected" if p==u["papel"] else ""}>{p.title()}</option>' for p in ["admin","gestor","usuario","sistema"])
+    content = f"""
+    <div class="card" style="max-width:600px">
+      <h3 style="margin-top:0">Editar usuário: {u['nome']}</h3>
+      <form method="post">
+        {templates.csrf_field()}<div class="form-row">
+          <div><label>Nome</label><input name="nome" value="{u['nome']}"></div>
+          <div><label>Login</label><input name="login" value="{u['login']}"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Nova senha</label><input name="senha" type="password" placeholder="Deixar em branco p/ manter"></div>
+          <div><label>Área</label><select name="area"><option value="">--</option>{areas_opts}</select></div>
+        </div>
+        <label>Papel</label>
+        <select name="papel">{papel_opts}</select>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/usuarios">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page(f"Editar {u['nome']}", content, active="usuarios", user=_user())
+
+
+@bp.route("/usuarios/<int:uid>/suspender")
+@auth.admin_required
+def usuario_suspender(uid: int):
+    u = db.buscar_usuario(uid)
+    if not u:
+        flash("Usuário não encontrado.", "bad")
+        return redirect(url_for("portal.usuarios"))
+    novo_status = 0 if u["ativo"] else 1
+    db.atualizar_usuario(uid, ativo=novo_status)
+    db.registrar_auditoria(_user()["login"], "admin",
+                           "ativar_usuario" if novo_status else "suspender_usuario",
+                           alvo=u["nome"], ip=request.remote_addr)
+    flash(f"Usuário {'ativado' if novo_status else 'suspenso'}.", "ok")
+    return redirect(url_for("portal.usuarios"))
+
 
 
 # ---------------------------------------------------------------------------

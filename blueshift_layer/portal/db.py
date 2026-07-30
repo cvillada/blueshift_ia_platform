@@ -486,6 +486,18 @@ def criar_usuario(cliente_id, nome, login, senha, papel="usuario", area="") -> i
         return cur.lastrowid
 
 
+def buscar_usuario(uid: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
+        return dict(r) if r else None
+
+
+def atualizar_usuario(uid: int, **campos) -> None:
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE usuarios SET {cols} WHERE id=?", (*campos.values(), uid))
+
+
 def autenticar(login: str, senha: str) -> dict | None:
     with get_conn() as conn:
         r = _row(conn, "SELECT * FROM usuarios WHERE login=? AND ativo=1", (login,))
