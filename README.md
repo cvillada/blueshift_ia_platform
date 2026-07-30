@@ -178,7 +178,7 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 | Tipo | Descrição | Exemplo |
 |:-----|:----------|:--------|
 | 🌐 **API REST** | Chamada HTTP via `urllib` | `GET https://api.externa.com/dados` |
-| 🔌 **MCP** | Servidor MCP via stdio (JSON-RPC 2.0) | `python mcp_server.py` + tool call |
+| 🔌 **MCP** | Servidor MCP via stdio (local) ou SSE (remoto, JSON-RPC 2.0) | `python mcp_server.py` / URL SSE + tool call |
 | 🗄️ **SQL** | PostgreSQL, MySQL, SQL Server, **Oracle** via `oracledb` | `SELECT * FROM vw_clientes WHERE id = %s` |
 
 Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticamente da pergunta do usuário.
@@ -435,6 +435,10 @@ cp .env.example .env          # ajuste BLUESHIFT_LICENSE
 Acesse `http://localhost:8080/portal` (login: `admin` / `admin123`).
 
 > **Modelos de IA não vêm embutidos.** Após subir a plataforma, cadastre os modelos na tela **Modelos IA** — local (vLLM/LM Studio/Ollama) ou externo (DeepSeek/OpenRouter/OpenAI).
+>
+> **Áreas personalizadas:** edite a variável `BLUESHIFT_AREAS` no `docker-compose.yml` para customizar as áreas da empresa. Padrão: `vendas,suporte,financeiro,rh,operacoes`.
+>
+> **MCP com Node.js:** para servidores MCP locais que dependem de Node.js (npm/npx), o container já inclui Node 20 e npm.
 
 ### Manual
 

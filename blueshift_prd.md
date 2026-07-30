@@ -229,6 +229,12 @@ Passo-a-passo completo: ver **`README.md`** (mesmo diretório).
 | Fine-Tuning | ✅ v0.8.1 | Página de documentação + export JSONL |
 | Menu lateral flexível | ✅ v0.8.1 | Hamburger (☰) + "By: Nei" |
 | Guardrails | ✅ v0.8.1 | Via descrição da SKILL |
+| MCP remoto (SSE) | ✅ pós-v0.8.1 | Conector MCP via SSE (remoto) + stdio (local) |
+| LGPD por agente | ✅ pós-v0.8.1 | Checkbox por agente para ativar/desativar anonimização |
+| Áreas customizáveis | ✅ pós-v0.8.1 | Via env BLUESHIFT_AREAS |
+| Editar/Suspender usuários | ✅ pós-v0.8.1 | CRUD completo de usuários |
+| Rastreio no teste | ✅ pós-v0.8.1 | Link 🔍 Rastreio na resposta do agente |
+| Model selector IA | ✅ pós-v0.8.1 | Combobox nos popups Gerar skill e Gerar query SQL |
 | Vertical inicial | ✅ Resolvido: SEM vertical | Templates parametrizáveis por área |
 | Cobrança | ✅ Anual por empresa | Tela de Uso de Tokens + contratos |
 | Portal do cliente | ✅ OBRIGATÓRIO (core) | Implementado e rodando |
