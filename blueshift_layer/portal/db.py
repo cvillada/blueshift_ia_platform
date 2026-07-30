@@ -545,6 +545,14 @@ def deletar_agente(aid: int) -> None:
 _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
 
+def listar_areas() -> list[str]:
+    """Retorna lista de areas configuradas via env BLUESHIFT_AREAS ou padrao."""
+    raw = os.environ.get("BLUESHIFT_AREAS", "").strip()
+    if raw:
+        return [a.strip() for a in raw.split(",") if a.strip()]
+    return list(_AREAS)
+
+
 def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online", finalidade="") -> int:
     """Cadastra uma nova fonte externa de dados por cliente + área."""
     ts = now_iso()

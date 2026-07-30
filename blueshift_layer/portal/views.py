@@ -19,6 +19,7 @@ from flask import (
 import json
 import urllib.parse
 from . import db, auth, templates, sso
+from .db import listar_areas
 from . import memory
 from . import agente as agente_mod
 
@@ -245,9 +246,7 @@ def monitorar():
 
 # --------------------------------------------------------------------------- #
 # WORKSPACE POR DEPARTAMENTO (PRD §8-D: segmentação por área da empresa)
-# --------------------------------------------------------------------------- #
-
-_AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
+# AREAS — via db.listar_areas() (env BLUESHIFT_AREAS)
 
 
 @bp.route("/workspace")
@@ -280,7 +279,7 @@ def workspace():
     if papel == "admin":
         opts = "".join(
             f'<option value="{a}"{" selected" if a == area_sel else ""}>{a}</option>'
-            for a in _AREAS
+            for a in listar_areas()
         )
         sel = f'<form method="get" style="margin-bottom:14px"><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">todas</option>{opts}</select></form>'
 
@@ -1203,7 +1202,6 @@ def skill_gerar_ia():
 @auth.admin_required
 def conectores():
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
     if request.method == "POST":
         cid = int(request.form.get("cliente_id") or 1)
@@ -1282,7 +1280,7 @@ def conectores():
             <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')">excluir</a>
           </td></tr>"""
 
-    opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in _AREAS)
+    opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in listar_areas())
     opts_cliente = "".join(f'<option value="{i}" {"selected" if i == cid_sel else ""}>{n}</option>' for i, n in clientes.items())
     content = f"""
     <div class="card" style="max-width:720px">
@@ -1558,7 +1556,6 @@ def conector_editar(cid: int):
         flash("Conector não encontrado.", "bad")
         return redirect(url_for("portal.conectores"))
     cfg = _parse_config(con.get("config", "{}"))
-    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
     if request.method == "POST":
         nome = (request.form.get("nome") or con["nome"]).strip()
@@ -1605,7 +1602,7 @@ def conector_editar(cid: int):
         flash(f"Conector '{nome}' atualizado.", "ok")
         return redirect(url_for("portal.conectores"))
 
-    opts_area = "".join(f'<option value="{a}" {"selected" if a == con["area"] else ""}>{a}</option>' for a in _AREAS)
+    opts_area = "".join(f'<option value="{a}" {"selected" if a == con["area"] else ""}>{a}</option>' for a in listar_areas())
     opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==con["cliente_id"] else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
     cfg = _parse_config(con.get("config", "{}"))
     tipo = con["tipo"]
@@ -2859,7 +2856,6 @@ def memoria():
 @auth.login_required
 def conhecimento():
     u = _user()
-    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
     # --- CSV Import ---
     if request.method == "POST" and request.form.get("_action") == "csv_import":
@@ -3013,7 +3009,7 @@ def conhecimento():
     stats = db.contar_documentos(cliente_id=cid_sel)
 
     opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==cid_sel else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
-    opts_area = "".join(f'<option value="{a}" {"selected" if a==area_sel else ""}>{a}</option>' for a in _AREAS)
+    opts_area = "".join(f'<option value="{a}" {"selected" if a==area_sel else ""}>{a}</option>' for a in listar_areas())
 
     stats_html = f"""
     <div class="grid grid-4" style="margin-bottom:14px">
@@ -3115,7 +3111,6 @@ def conhecimento_editar(did: int):
     if not doc:
         flash("Documento não encontrado.", "bad")
         return redirect(url_for("portal.conhecimento"))
-    _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
     if request.method == "POST":
         cid = int(request.form.get("cliente_id") or doc["cliente_id"])
         titulo = (request.form.get("titulo") or doc["titulo"]).strip()
@@ -3130,7 +3125,7 @@ def conhecimento_editar(did: int):
                                cliente_id=doc["cliente_id"], ip=request.remote_addr)
         flash("Documento atualizado.", "ok")
         return redirect(url_for("portal.conhecimento"))
-    opts_area = "".join(f'<option value="{a}" {"selected" if a==doc.get("area","") else ""}>{a}</option>' for a in _AREAS)
+    opts_area = "".join(f'<option value="{a}" {"selected" if a==doc.get("area","") else ""}>{a}</option>' for a in listar_areas())
     opts_cliente = "".join(f'<option value="{c["id"]}" {"selected" if c["id"]==doc["cliente_id"] else ""}>{c["nome"]}</option>' for c in db.listar_clientes())
     content = f"""
     <div class="card" style="max-width:700px">
