@@ -1149,6 +1149,8 @@ def conectores():
             config["headers"] = request.form.get("api_headers", "{}").strip()
             config["body"] = request.form.get("api_body", "").strip()
         elif tipo == "mcp":
+            config["transport"] = request.form.get("mcp_transport", "stdio").strip()
+            config["url"] = request.form.get("mcp_url", "").strip()
             config["command"] = request.form.get("mcp_command", "").strip()
             config["tool"] = request.form.get("mcp_tool", "").strip()
             args_raw = request.form.get("mcp_args", "{}").strip()
@@ -1233,7 +1235,17 @@ def conectores():
           <label>Body (JSON, só POST)</label><input name="api_body" placeholder='{{"id": "{{id_cliente}}"}}'>
         </div>
         <div id="conn-fields-mcp" style="display:none">
-          <label>Comando</label><input name="mcp_command" placeholder="python /opt/blueshift/mcp_server.py">
+          <label>Transporte</label>
+          <select name="mcp_transport" onchange="toggleMCPTransport()">
+            <option value="stdio">stdio (local)</option>
+            <option value="sse">SSE (remoto)</option>
+          </select>
+          <div id="mcp-stdio-fields">
+            <label>Comando</label><input name="mcp_command" placeholder="python /opt/blueshift/mcp_server.py">
+          </div>
+          <div id="mcp-sse-fields" style="display:none">
+            <label>URL</label><input name="mcp_url" placeholder="http://servidor:8000/mcp">
+          </div>
           <label>Ferramenta (tool)</label><input name="mcp_tool" placeholder="erp_buscar_cliente">
           <label>Argumentos (JSON)</label><input name="mcp_args" placeholder='{{"id_cliente": "{{id_cliente}}"}}'>
         </div>
@@ -1298,6 +1310,11 @@ def conectores():
       document.getElementById('conn-fields-api').style.display = t === 'api' ? '' : 'none';
       document.getElementById('conn-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('conn-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    function toggleMCPTransport() {{
+      var t = document.querySelector('[name=mcp_transport]').value;
+      document.getElementById('mcp-stdio-fields').style.display = t === 'stdio' ? '' : 'none';
+      document.getElementById('mcp-sse-fields').style.display = t === 'sse' ? '' : 'none';
     }}
     function testarConexaoSQL() {{
       var b = document.getElementById('btn-testar-conexao');
@@ -1473,6 +1490,8 @@ def conector_editar(cid: int):
             config["headers"] = request.form.get("api_headers", "{}").strip()
             config["body"] = request.form.get("api_body", "").strip()
         elif tipo == "mcp":
+            config["transport"] = request.form.get("mcp_transport", "stdio").strip()
+            config["url"] = request.form.get("mcp_url", "").strip()
             config["command"] = request.form.get("mcp_command", "").strip()
             config["tool"] = request.form.get("mcp_tool", "").strip()
             args_raw = request.form.get("mcp_args", "{}").strip()
@@ -1516,6 +1535,8 @@ def conector_editar(cid: int):
     api_body = cfg.get("body", "")
     mcp_cmd = cfg.get("command", "")
     mcp_tool = cfg.get("tool", "")
+    mcp_transport = cfg.get("transport", "stdio")
+    mcp_url = cfg.get("url", "")
     mcp_args = json.dumps(cfg.get("args", {}), ensure_ascii=False)
     sql_driver = cfg.get("sql_driver", "postgresql")
     sql_host = cfg.get("sql_host", "")
@@ -1561,7 +1582,17 @@ def conector_editar(cid: int):
         </div>
 
         <div id="edit-fields-mcp" style="display:{'block' if tipo=='mcp' else 'none'}">
-          <label>Comando</label><input name="mcp_command" value="{mcp_cmd}" placeholder="python /opt/blueshift/mcp_server.py">
+          <label>Transporte</label>
+          <select name="mcp_transport" onchange="toggleEditMCPTransport()">
+            <option value="stdio" {"selected" if mcp_transport=='stdio' else ""}>stdio (local)</option>
+            <option value="sse" {"selected" if mcp_transport=='sse' else ""}>SSE (remoto)</option>
+          </select>
+          <div id="edit-mcp-stdio-fields" style="display:{'block' if mcp_transport!='sse' else 'none'}">
+            <label>Comando</label><input name="mcp_command" value="{mcp_cmd}" placeholder="python /opt/blueshift/mcp_server.py">
+          </div>
+          <div id="edit-mcp-sse-fields" style="display:{'block' if mcp_transport=='sse' else 'none'}">
+            <label>URL</label><input name="mcp_url" value="{mcp_url}" placeholder="http://servidor:8000/mcp">
+          </div>
           <label>Ferramenta (tool)</label><input name="mcp_tool" value="{mcp_tool}" placeholder="erp_buscar_cliente">
           <label>Argumentos (JSON)</label><input name="mcp_args" value='{mcp_args}' placeholder='{{"id_cliente": "{{id_cliente}}"}}'>
         </div>
@@ -1627,6 +1658,11 @@ def conector_editar(cid: int):
       document.getElementById('edit-fields-api').style.display = t === 'api' ? '' : 'none';
       document.getElementById('edit-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('edit-fields-sql').style.display = t === 'sql' ? '' : 'none';
+    }}
+    function toggleEditMCPTransport() {{
+      var t = document.querySelector('[name=mcp_transport]').value;
+      document.getElementById('edit-mcp-stdio-fields').style.display = t === 'stdio' ? '' : 'none';
+      document.getElementById('edit-mcp-sse-fields').style.display = t === 'sse' ? '' : 'none';
     }}
     function testarConexaoEdit() {{
       var b = document.getElementById('btn-testar-conexao');

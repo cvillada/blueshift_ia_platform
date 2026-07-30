@@ -127,11 +127,17 @@ def _executar_api(nome: str, config: dict, params: dict, pergunta: str) -> dict:
 # --------------------------------------------------------------------------- #
 
 def _executar_mcp(nome: str, config: dict, params: dict, pergunta: str) -> dict:
-    """Chama uma ferramenta MCP via stdio (subprocesso)."""
-    command = config.get("command", "")
+    """Chama uma ferramenta MCP via stdio ou SSE."""
+    transport = config.get("transport", "stdio")
     tool = config.get("tool", "")
-    if not command or not tool:
-        return {"erro": "Conector MCP sem command e/ou tool configurados"}
+    if not tool:
+        return {"erro": "Conector MCP sem tool configurada"}
+    if transport == "sse":
+        return _executar_mcp_sse(nome, config, params, pergunta)
+    # stdio (padrao)
+    command = config.get("command", "")
+    if not command:
+        return {"erro": "Conector MCP stdio sem command configurado"}
 
     args_tool = config.get("args", {})
     # Substitui placeholders nos args
@@ -175,6 +181,39 @@ def _executar_mcp(nome: str, config: dict, params: dict, pergunta: str) -> dict:
         return {"erro": f"Comando MCP nao encontrado: {command}"}
     except json.JSONDecodeError as e:
         return {"erro": f"Resposta MCP invalida: {e}"}
+
+
+# --------------------------------------------------------------------------- #
+# Executor: MCP (SSE remoto)                                                  #
+# --------------------------------------------------------------------------- #
+
+def _executar_mcp_sse(nome: str, config: dict, params: dict, pergunta: str) -> dict:
+    """Chama uma ferramenta MCP via SSE (servidor remoto HTTP)."""
+    url = config.get("url", "")
+    tool = config.get("tool", "")
+    args_tool = dict(config.get("args", {}))
+    if not url:
+        return {"erro": "Conector MCP SSE sem URL configurada"}
+    # Substitui placeholders nos args
+    for k, v in args_tool.items():
+        if isinstance(v, str):
+            args_tool[k] = _aplicar_params(v, params)
+    try:
+        import asyncio
+        from mcp.client.sse import sse_client
+        from mcp import ClientSession
+        async def _call():
+            async with sse_client(url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(tool, args_tool)
+                    return result
+        r = asyncio.run(_call())
+        if hasattr(r, "content"):
+            return {"tool": f"mcp:{tool}", "args": args_tool, "resultado": r.content}
+        return {"tool": f"mcp:{tool}", "args": args_tool, "resultado": str(r)}
+    except Exception as e:
+        return {"erro": f"Erro MCP SSE: {e}"}
 
 
 # --------------------------------------------------------------------------- #
