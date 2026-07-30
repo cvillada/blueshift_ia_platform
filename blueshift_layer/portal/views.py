@@ -1228,7 +1228,7 @@ def conectores():
           <label>URL</label><input name="api_url" placeholder="https://api.exemplo.com/v1/dados">
           <div class="form-row">
             <div><label>Método</label><select name="api_method"><option value="GET">GET</option><option value="POST">POST</option></select></div>
-            <div><label>Headers (JSON)</label><input name="api_headers" placeholder='{{"Authorization":"Bearer xxx"}}'></div>
+            <div><label>Headers (JSON) ⓘ</label><input name="api_headers" placeholder='{{"User-Agent": "Mozilla/5.0"}}' title='Exemplo: {{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}'></div>
           </div>
           <label>Body (JSON, só POST)</label><input name="api_body" placeholder='{{"id": "{{id_cliente}}"}}'>
         </div>
@@ -1556,8 +1556,8 @@ def conector_editar(cid: int):
             <div><label>URL</label><input name="api_url" value="{api_url}" placeholder="https://api.externa.com/dados"></div>
             <div><label>Método</label><select name="api_method"><option value="GET" {"selected" if api_method=='GET' else ''}>GET</option><option value="POST" {"selected" if api_method=='POST' else ''}>POST</option></select></div>
           </div>
-          <label>Headers (JSON)</label><input name="api_headers" value='{api_headers}' placeholder='{{"Authorization": "Bearer ..."}}'>
-          <label>Body (JSON, só POST)</label><input name="api_body" value="{api_body}" placeholder='{{"id": "{{id_cliente}}"}}'>
+          <label>Headers (JSON) <span class="info-tip" title='{{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}' style="cursor:help;color:var(--muted);font-size:13px">ⓘ</span></label><input name="api_headers" value='{templates.h(api_headers)}' placeholder='{{"User-Agent": "Mozilla/5.0"}}'>
+          <label>Body (JSON, só POST)</label><input name="api_body" value='{templates.h(api_body)}' placeholder='{{"id": "{{id_cliente}}"}}'>
         </div>
 
         <div id="edit-fields-mcp" style="display:{'block' if tipo=='mcp' else 'none'}">
