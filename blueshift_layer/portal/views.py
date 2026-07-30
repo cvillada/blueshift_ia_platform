@@ -671,6 +671,7 @@ def agente_testar(aid: int):
     conn_info = f"{conn_count} conector(es) da área" if conn_count else "sem conectores configurados para esta área"
     badge_fallback = ' <span class=\"badge warn\">⚡ fallback de modelo</span>' if fallback_usado else ""
     badge_lgpd = ' <span class=\"badge info\">🔒 Anonimizado</span>' if a.get("lgpd_ativado", 1) else ' <span class=\"badge neutral\">🔓 Sem anonimizacao</span>'
+    badge_rastreio = f' <a href=\"#\" onclick=\"abrirRastreio({trace_id});return false\" style=\"font-size:12px;margin-left:8px\">🔍 Rastreio</a>' if trace_id else ''
     # Feedback script (evita f-string dentro de f-string)
     fb_script = ""
     if trace_id:
@@ -708,10 +709,64 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span></div></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
-    <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>"""
+    <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>
+    <div class="modal-overlay" id="modal-rastreio" onclick="if(event.target===this)fecharRastreio()">
+      <div class="modal-box" style="max-width:960px;width:94%;max-height:85vh;overflow-y:auto">
+        <div id="rastreio-conteudo"><p class="muted">Carregando...</p></div>
+        <div style="text-align:center;margin-top:14px">
+          <button class="btn ghost" onclick="fecharRastreio()">Fechar</button>
+        </div>
+      </div>
+    </div>
+    <script>
+    function abrirRastreio(tid){{
+      document.getElementById('modal-rastreio').classList.add('show');
+      document.getElementById('rastreio-conteudo').innerHTML = '<p class="muted">Carregando...</p>';
+      fetch('/portal/rastreio/'+tid).then(r=>r.json()).then(d=>{{
+        if(!d.ok){{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+d.erro+'</p>';return}}
+        var t=d.trace;
+        var h='<h3>Rastreio #'+t.id+'</h3><p class="muted">Pergunta: <b>'+t.pergunta+'</b></p><hr>';
+        h+='<div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap">';
+        var p=t.params||{{}}; var pk=Object.keys(p);
+        var c=t.conectores||[]; var rg=t.rag||[];
+        var passos=[
+          {{n:1, cor:"#2563eb", rotulo:"Params", detalhe:pk.length?pk.join(", "):"(nenhum)"}},
+          {{n:2, cor:"#7c3aed", rotulo:"Conectores", detalhe:c.length?c.length+" exec(s)":"(nenhum)"}},
+          {{n:3, cor:"#059669", rotulo:"RAG", detalhe:rg.length?rg.length+" doc(s)":"(vazio)"}},
+          {{n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")}},
+        ];
+        for(var i=0;i<passos.length;i++){{var s=passos[i];
+          h+='<div style="flex:1;min-width:120px;background:#1a2744;border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
+          h+='<div style="font-size:11px;color:'+s.cor+';font-weight:700">PASSO '+s.n+'</div>';
+          h+='<div style="font-size:14px;font-weight:600;margin:2px 0">'+s.rotulo+'</div>';
+          h+='<div style="font-size:11px;color:#8899bb">'+s.detalhe+'</div></div>';
+        }}
+        h+='</div><hr>';
+        h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
+        h+=pk.length?pk.map(function(k){{return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
+        h+='</div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
+        if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
+          if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
+          else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
+        }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
+        h+='</div>';
+        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
+        h+=rg.length?'<span class="muted">'+rg.map(function(x){{return (x.texto||'').substring(0,80)}}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
+        h+='</div>';
+        h+='<div style="margin-bottom:12px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
+        h+='Modelo: <code>'+t.modelo+'</code>'+(t.modelo_fallback?' <span class="badge warn">fallback</span>':'')+' | Tokens: '+(t.tokens?t.tokens.total_tokens||0:0)+' | Tempo: '+t.tempo_ms+'ms';
+        h+='</div>';
+        h+='<hr><div><b>Resposta:</b></div><pre style="background:#0e1726;padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
+        document.getElementById('rastreio-conteudo').innerHTML=h;
+      }}).catch(e=>{{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'}});
+    }}
+    function fecharRastreio(){{document.getElementById('modal-rastreio').classList.remove('show');}}
+    </script>"""
     return templates.page(f"Testar {a['nome']}", content, active="agentes", user=u)
 
 
