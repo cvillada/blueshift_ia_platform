@@ -82,9 +82,11 @@ class VectorStore:
                 "id": r["id"], "dono": r.get("usuario") or r.get("titulo"),
                 "texto": r["conteudo"], "vetor": vec, "fonte": r.get("_fonte", "doc"),
                 "meta": r.get("_meta", ""),
+                "area": r.get("area", "") or "",
             })
 
-    def search(self, query: str, dono: str | None = None, top_k: int = 5) -> list[dict]:
+    def search(self, query: str, dono: str | None = None, top_k: int = 5,
+               area: str | None = None) -> list[dict]:
         qvec = _tfidf_vector(_tokenize(query), self._idf)
         scored = []
         for d in self._docs:
@@ -92,6 +94,11 @@ class VectorStore:
             # sao do cliente inteiro e sempre participam da busca
             if dono and d["fonte"] == "memoria" and d["dono"] != dono:
                 continue
+            # isolamento por area: doc com area definida so entra na area igual.
+            # docs sem area (dados antigos) continuam entrando (compatibilidade).
+            if area and d.get("area"):
+                if d["area"] != area:
+                    continue
             score = _cosine(qvec, d["vetor"])
             if score > 0:
                 scored.append((score, d))
@@ -134,7 +141,8 @@ def construir_store(cliente_id: int | None = None) -> VectorStore:
 
 
 def buscar_contexto(query: str, cliente_id: int, usuario: str | None = None,
-                    top_k: int = 5, registrar_acesso: bool = True) -> list[dict]:
+                    top_k: int = 5, registrar_acesso: bool = True,
+                    area: str | None = None) -> list[dict]:
     """Busca hibrida: memoria de longo prazo do usuario + base de conhecimento.
 
     Documentos (RAG) sempre entram (sao do cliente inteiro). Memorias sao
@@ -145,7 +153,7 @@ def buscar_contexto(query: str, cliente_id: int, usuario: str | None = None,
                           Passar False quando a busca for para dedup interno (evita poluir metricas).
     """
     store = construir_store(cliente_id)
-    resultados = store.search(query, dono=usuario, top_k=top_k)
+    resultados = store.search(query, dono=usuario, top_k=top_k, area=area)
     if registrar_acesso:
         for r in resultados:
             if r.get("fonte") == "base_conhecimento" and r.get("id"):

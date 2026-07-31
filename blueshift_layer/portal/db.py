@@ -392,6 +392,9 @@ def _migrar_colunas() -> None:
             ("criado_em", "TEXT"),
             ("finalidade", "TEXT DEFAULT ''"),
         ],
+        "memories": [
+            ("area", "TEXT DEFAULT ''"),
+        ],
         "knowledge": [
             ("area", "TEXT DEFAULT ''"),
             ("fonte", "TEXT DEFAULT 'manual'"),
@@ -1166,12 +1169,12 @@ def buscar_contrato(cliente_id: int) -> dict | None:
 
 # --- Memoria por usuario + RAG (banco vetorial local) ----------------------
 
-def criar_memoria(cliente_id, usuario, conteudo, tipo="conversa") -> int:
+def criar_memoria(cliente_id, usuario, conteudo, tipo="conversa", area="") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO memories (cliente_id, usuario, tipo, conteudo, vetor, criado_em)
-               VALUES (?,?,?,?, '[]', ?)""",
-            (cliente_id, usuario, tipo, conteudo, now_iso()),
+            """INSERT INTO memories (cliente_id, usuario, tipo, conteudo, vetor, area, criado_em)
+               VALUES (?,?,?,?, '[]', ?, ?)""",
+            (cliente_id, usuario, tipo, conteudo, area, now_iso()),
         )
         return cur.lastrowid
 

@@ -189,7 +189,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         f.get("resultado") for f in ferramentas
     )
     top_k = 2 if tem_dados_vivos else 4
-    contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
+    contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k, area=area)
 
     # Filtra contexto RAG: remove documentos com id_cliente diferente do extraido
     id_filtro = params.get("id_cliente", "") if "params" in dir() else ""
@@ -197,7 +197,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         contexto = [c for c in contexto if id_filtro not in c.get("texto", "")]
         # Se filtrou tudo e tem dados vivos, ok. Senao busca sem filtro.
         if not contexto and not tem_dados_vivos:
-            contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k)
+            contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k, area=area)
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
@@ -268,7 +268,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
 
     if out["ok"]:
         db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {out['content']}",
-                         tipo="conversa")
+                         tipo="conversa", area=area)
         detalhe = f"trace:{trace_id} | {pergunta[:60]}" + (f" | fallback->{modelo_usado}" if usou_fallback else "")
         db.registrar_uso_token(
             cliente_id=cliente_id, modelo=modelo_usado,
@@ -337,7 +337,7 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
 
     # Verifica se ja existe algo similar (evita duplicar a cada pergunta identica)
     from . import memory as memory_mod
-    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1, registrar_acesso=False)
+    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1, registrar_acesso=False, area=area)
     for e in existing:
         if e.get("score", 0) > 0.95 and pergunta[:50] in e.get("texto", ""):
             return  # ja tem no RAG, nao duplica
