@@ -44,6 +44,8 @@ services:
       - blueshift-data:/opt/blueshift/data
       # Modelos fine-tuned / locais do cliente (se usar vLLM interno montado)
       - blueshift-models:/opt/blueshift/models
+      # DOCUMENTACAO_PB.md editavel sem rebuild (dev): edita no host, vale no proximo F5
+      - ./DOCUMENTACAO_PB.md:/opt/blueshift/DOCUMENTACAO_PB.md
 
 volumes:
   blueshift-data:

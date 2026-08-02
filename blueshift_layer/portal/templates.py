@@ -60,6 +60,13 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
 function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"▸":"▾";el.classList.toggle("open")}
 function toggleSidebar(){var s=document.getElementById("sidebar"),b=document.getElementById("ham-btn");s.classList.toggle("collapsed");b.textContent=s.classList.contains("collapsed")?"☰":"⋮"}
 window.addEventListener("load",function(){var b=document.getElementById("ham-btn");if(b&&!document.getElementById("sidebar").classList.contains("collapsed"))b.textContent="⋮"})
+var AJUDA_MODELOS=[];
+function abrirAjuda(){var p=document.getElementById("ajuda-popup");if(!p)return;p.style.display="flex";if(!AJUDA_MODELOS.length)carregarModelosAjuda()}
+function fecharAjuda(){var p=document.getElementById("ajuda-popup");if(p)p.style.display="none"}
+function carregarModelosAjuda(){fetch("/portal/api/ajuda/modelos").then(function(r){return r.json()}).then(function(d){AJUDA_MODELOS=d.modelos||[];var s=document.getElementById("ajuda-modelo");if(!s)return;if(!AJUDA_MODELOS.length){s.innerHTML='<option value="">-- nenhum modelo cadastrado --</option>'}else{s.innerHTML=AJUDA_MODELOS.map(function(m){return '<option value="'+m.id+'">'+m.nome+' ('+m.modelo+')</option>'}).join('')}})}
+function escAjuda(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function enviarAjuda(){var p=document.getElementById("ajuda-pergunta").value.trim();var box=document.getElementById("ajuda-resposta");if(!p){box.innerHTML='<div class="badge warn">Digite uma pergunta.</div>';return}var mid=document.getElementById("ajuda-modelo").value;box.innerHTML='<div class="badge neutral">⏳ Consultando a documentação...</div>';fetch("/portal/api/ajuda",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pergunta:p,modelo_id:mid?parseInt(mid,10):null})}).then(function(r){return r.json()}).then(function(d){if(d.ok){box.innerHTML='<div class="muted" style="font-size:11px;margin-bottom:6px">Resposta ('+escAjuda(d.modelo)+')</div><div class="ajuda-resposta">'+escAjuda(d.resposta)+'</div>'}else if(d.motivo==="sem_modelo"){var h='<div class="badge warn">⚠️ Nenhum modelo de IA cadastrado.</div><p style="font-size:12px;margin:8px 0">'+escAjuda(d.dica||"")+'</p>';if(d.orientacao){h+='<div style="background:var(--code-bg);padding:10px;border-radius:8px;font-size:12px;max-height:200px;overflow-y:auto;white-space:pre-wrap">'+escAjuda(d.orientacao)+'</div>'}box.innerHTML=h}else{box.innerHTML='<div class="badge bad">'+escAjuda(d.erro||"Erro ao consultar.")+'</div>'}}).catch(function(e){box.innerHTML='<div class="badge bad">Erro: '+escAjuda(e.message)+'</div>'})}
+(function(){function init(){var pop=document.getElementById("ajuda-popup"),hdr=document.getElementById("ajuda-header");if(!pop||!hdr)return;var drag=false,ox=0,oy=0,px=0,py=0;hdr.addEventListener("mousedown",function(e){if(e.target.tagName==="BUTTON")return;drag=true;ox=e.clientX;oy=e.clientY;px=pop.offsetLeft;py=pop.offsetTop;e.preventDefault()});document.addEventListener("mousemove",function(e){if(!drag)return;pop.style.left=(px+e.clientX-ox)+"px";pop.style.top=(py+e.clientY-oy)+"px";pop.style.right="auto"});document.addEventListener("mouseup",function(){drag=false})}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",init)}else{init()}})();
 function temaIcone(t){return t==="light"?"☀️":(t==="dark"?"🌙":"💻")}
 function aplicarTema(t){if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.setAttribute("data-theme",t)}
 function setTema(t){try{localStorage.setItem("bs_theme",t)}catch(e){}aplicarTema(t);var i=document.getElementById("theme-icon");if(i)i.textContent=temaIcone(t);var m=document.getElementById("theme-menu");if(m)m.classList.remove("show")}
@@ -90,6 +97,7 @@ if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEven
       <a onclick="setTema('system')">💻 Sistema</a>
     </div>
   </div>
+  <button class="theme-btn" onclick="abrirAjuda()" title="Ajuda (documentação)">❓</button>
   {user_box}
 </div>
 <div class="layout">
@@ -99,6 +107,21 @@ if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEven
     {flashes}
     {content}
   </main>
+</div>
+<div class="ajuda-popup" id="ajuda-popup" style="display:none">
+  <div class="ajuda-header" id="ajuda-header">
+    <span>💡 Ajuda BlueShift</span>
+    <button class="ajuda-fechar" onclick="fecharAjuda()" title="Fechar">✕</button>
+  </div>
+  <div class="ajuda-body">
+    <label style="margin-top:0">Modelo de IA</label>
+    <select id="ajuda-modelo"><option value="">-- carregando --</option></select>
+    <label>Pergunta</label>
+    <textarea id="ajuda-pergunta" rows="3" placeholder="Ex: como preencho o campo Host de um conector SQL?"></textarea>
+    <div style="margin-top:10px"><button class="btn" onclick="enviarAjuda()">Perguntar</button></div>
+    <div id="ajuda-resposta" style="margin-top:12px"></div>
+    <div class="muted" style="font-size:10px;margin-top:10px">Respostas baseadas no DOCUMENTACAO_PB.md — edite o arquivo para atualizar a ajuda.</div>
+  </div>
 </div>
 </body>
 </html>"""
@@ -133,6 +156,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("monitorar", "Monitorar", "/portal/monitorar"),
         ("workspace", "Workspace", "/portal/workspace"),
     ]
+    ICONS["ajuda"] = "\U0001f4a1"
 
     # Submenus: (rotulo, icone_grupo, [(key, label, href), ...])
     submenus = [
@@ -192,7 +216,12 @@ def _nav(active: str, user: dict | None) -> str:
       </div>
     </div>"""
 
-    links += '<hr style="border-color:var(--line-soft);margin:8px 0 4px"><div class="sidebar-by">By: Nei</div>'
+    links += ('<hr style="border-color:var(--line-soft);margin:8px 0 4px">'
+              '<a class="navlink" href="#" onclick="abrirAjuda();return false" title="Ajuda (documentação)">'
+              f'<span class="nav-icon">{ICONS.get("ajuda", chr(0x2753))}</span>'
+              '<span class="nav-label">Ajuda</span></a>'
+              '<hr style="border-color:var(--line-soft);margin:4px 0 8px">'
+              '<div class="sidebar-by">By: Nei</div>')
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
@@ -346,6 +375,12 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .theme-menu.show{display:block}
 .theme-menu a{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:8px;color:var(--txt);text-decoration:none;font-size:13px;cursor:pointer;white-space:nowrap}
 .theme-menu a:hover{background:var(--panel2)}
+.ajuda-popup{position:fixed;right:24px;bottom:24px;width:440px;max-width:calc(100vw - 40px);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:200;flex-direction:column;max-height:70vh}
+.ajuda-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:move;user-select:none;font-weight:700;font-size:13px}
+.ajuda-body{padding:12px 14px;overflow-y:auto}
+.ajuda-body .ajuda-resposta{font-size:13px;line-height:1.6;white-space:pre-wrap}
+.ajuda-fechar{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:2px 6px;border-radius:6px;line-height:1}
+.ajuda-fechar:hover{color:var(--txt);background:var(--panel2)}
 
 """
 

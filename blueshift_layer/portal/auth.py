@@ -84,6 +84,25 @@ def rate_limit_api(f):
     return _wrap
 
 
+def rate_limit_por_ip(max_attempts: int = 60, window: int = 60):
+    """Limita requisicoes por IP (para rotas publicas sem token, ex: Ajuda).
+
+    Retorna JSON 429 quando estoura. NAO usa sessao nem token.
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def _wrap(*args, **kwargs):
+            ip = request.remote_addr or "desconhecido"
+            if not _rate_check(f"ip:{ip}", max_attempts, window):
+                return {"erro": f"limite de requisicoes excedido ({max_attempts}/{window}s)"}, 429
+            return f(*args, **kwargs)
+
+        return _wrap
+
+    return decorator
+
+
 def login_required(f):
     @wraps(f)
     def _wrap(*args, **kwargs):

@@ -4079,3 +4079,145 @@ def atualizacoes():
     {card_licenca}
     """
     return templates.page("Atualizações", content, active="atualizacoes", user=_user())
+
+
+# --------------------------------------------------------------------------- #
+# Ajuda (popup publico — le DOCUMENTACAO_PB.md direto do disco, sem RAG)      #
+# --------------------------------------------------------------------------- #
+
+def _caminho_doc() -> str:
+    """Localiza o DOCUMENTACAO_PB.md (repo local ou /opt/blueshift no Docker)."""
+    from pathlib import Path
+    candidatos = [
+        Path(__file__).resolve().parent.parent.parent / "DOCUMENTACAO_PB.md",  # repo local
+        Path("/opt/blueshift/DOCUMENTACAO_PB.md"),                            # container
+    ]
+    for c in candidatos:
+        if c.exists():
+            return str(c)
+    return ""
+
+
+def _secoes_doc() -> list:
+    """Le o arquivo e separa em (titulo, texto) pelas secoes ## e ###."""
+    import re as _re
+    caminho = _caminho_doc()
+    if not caminho:
+        return []
+    try:
+        texto = open(caminho, encoding="utf-8").read()
+    except OSError:
+        return []
+    partes = _re.split(r"\n(?=#{2,3} )", texto)
+    secoes = []
+    for p in partes:
+        m = _re.match(r"#{2,3} (.+)", p.strip())
+        if m:
+            secoes.append((m.group(1).strip(), p.strip()))
+    return secoes
+
+
+def _secoes_relevantes(pergunta: str, secoes: list, limite_chars: int = 6000) -> list:
+    """Seleciona secoes cujo texto contem palavras-chave da pergunta (>=4 chars)."""
+    import re as _re
+    stop = {
+        "como", "para", "qual", "quais", "onde", "quando", "porque", "com",
+        "uma", "um", "que", "tem", "ser", "pode", "precisa", "fazer", "tela",
+        "sistema", "portal", "campo", "campos", "preencher", "resposta",
+        "sobre", "etc", "via", "pelo", "pela", "nos", "na", "no", "da", "do",
+        "de", "em", "e", "os", "as", "ao", "aos", "nas", "dos", "das", "se",
+        "mais", "menos", "outra", "outro", "outros", "entre", "apos", "ate",
+        "voce", "vc", "quero", "saber", "existe", "existir", "posso",
+    }
+    termos = [t for t in _re.findall(r"[a-zà-ú0-9]{4,}", pergunta.lower()) if t not in stop]
+    if not termos:
+        return []
+    pontuados = []
+    for titulo, texto in secoes:
+        alvo = (titulo + " " + texto).lower()
+        score = sum(1 for t in termos if t in alvo)
+        if score > 0:
+            pontuados.append((score, titulo, texto))
+    pontuados.sort(key=lambda x: -x[0])
+    out = []
+    total = 0
+    for _score, titulo, texto in pontuados[:5]:
+        total += len(texto)
+        out.append(f"## {titulo}\n{texto}")
+        if total >= limite_chars:
+            break
+    return out
+
+
+@bp.route("/api/ajuda/modelos", methods=["GET"])
+@auth.rate_limit_por_ip(60, 60)
+def api_ajuda_modelos():
+    """Lista publica de modelos para o seletor do popup (sem segredos)."""
+    modelos = db.listar_modelos()
+    return jsonify({
+        "ok": True,
+        "modelos": [{"id": m["id"], "nome": m["nome"], "modelo": m["modelo"], "tipo": m["tipo"]}
+                    for m in modelos],
+    })
+
+
+@bp.route("/api/ajuda", methods=["POST"])
+@auth.rate_limit_por_ip(30, 60)
+def api_ajuda():
+    """Responde a pergunta usando as secoes relevantes do DOCUMENTACAO_PB.md.
+
+    Sem modelo cadastrado: retorna orientacao documental (secao Modelos IA
+    da propria doc) — nunca falha em branco.
+    """
+    data = request.get_json(silent=True) or {}
+    pergunta = (data.get("pergunta") or "").strip()
+    if not pergunta:
+        return jsonify({"ok": False, "erro": "campo 'pergunta' obrigatorio"}), 400
+
+    secoes = _secoes_doc()
+    modelos = db.listar_modelos()
+
+    # ── Sem nenhum modelo cadastrado: orientacao vem da propria doc ──
+    if not modelos:
+        orient = next((t for tit, t in secoes if "Modelos IA" in tit), "")
+        return jsonify({
+            "ok": False,
+            "motivo": "sem_modelo",
+            "orientacao": orient,
+            "dica": "Cadastre um modelo em Cadastros > Modelos IA para usar a ajuda.",
+        })
+
+    mid = data.get("modelo_id")
+    modelo = next((m for m in modelos if m["id"] == mid), modelos[0]) if mid else modelos[0]
+    if not (modelo.get("base_url") or "").strip() or modelo["base_url"] == "-":
+        return jsonify({"ok": False, "erro": "modelo selecionado sem endpoint configurado"}), 400
+
+    relevantes = _secoes_relevantes(pergunta, secoes)
+    if not relevantes:
+        return jsonify({
+            "ok": False,
+            "erro": "Nao encontrei na documentacao. Tente reformular a pergunta ou contate o suporte.",
+        })
+
+    from . import llm_client
+    doc_bloco = "\n\n".join(relevantes)
+    system = (
+        "Voce e o assistente de ajuda da plataforma BlueShift. "
+        "Responda com base APENAS na documentacao fornecida abaixo. "
+        "Se a resposta nao estiver na documentacao, diga claramente que nao "
+        "encontrou e sugira contatar o suporte. "
+        "Seja objetivo, direto e em portugues."
+    )
+    mensagens = [
+        {"role": "system", "content": system + "\n\nDOCUMENTACAO:\n" + doc_bloco},
+        {"role": "user", "content": pergunta},
+    ]
+    out = llm_client.chat(modelo, mensagens)
+    if out["ok"]:
+        return jsonify({
+            "ok": True,
+            "resposta": out["content"],
+            "modelo": out["model"],
+            "secoes_usadas": [t.splitlines()[0].replace("## ", "") for t in relevantes],
+        })
+    return jsonify({"ok": False, "erro": out["error"]}), 502
