@@ -3673,6 +3673,9 @@ def canais():
         ag = next((a["nome"] for a in agentes if a["id"] == c["agente_id"]), "(sem agente)")
         wh = c.get("webhook_url") or "-"
         st = "ativo" if c["ativo"] else "revogado"
+        _nome_js = c["nome"].replace("\\", "\\\\").replace("'", "\\'")
+        _testar_link = (f'<a href="#" onclick="abrirTestarCanal({c["id"]},\'{c["token"]}\',\'{_nome_js}\');return false" title="Testar API do canal">testar</a> '
+                        if c["ativo"] else "")
         body += f"""<tr>
           <td><b>{c['nome']}</b></td>
           <td>{c['tipo']}</td>
@@ -3683,7 +3686,7 @@ def canais():
           <td>{templates.badge(st)}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis"><code>{wh}</code></td>
           <td class="row-actions">
-            <a href="{url_for('portal.canal_editar', canal_id=c['id'])}">editar</a>
+            {_testar_link}<a href="{url_for('portal.canal_editar', canal_id=c['id'])}">editar</a>
             <a href="{url_for('portal.canal_regenerar_token', canal_id=c['id'])}">nova chave</a>
             <a href="{url_for('portal.canal_alternar', canal_id=c['id'])}">{'revogar' if c['ativo'] else 'reativar'}</a>
           </td></tr>"""
@@ -3694,6 +3697,96 @@ def canais():
       gerar outra (a anterior para de funcionar imediatamente). Para desabilitar um canal sem deletar,
       use <b>"revogar"</b>.
     </div>"""
+    testar_modal = """
+    <div class="modal-overlay" id="modal-testar" onclick="if(event.target===this)fecharTestar()">
+      <div class="modal-box" style="max-width:640px">
+        <h3 id="tester-titulo" style="margin-top:0">Testar canal</h3>
+        <div style="display:flex;gap:6px;margin-bottom:12px">
+          <button class="btn" id="tab1" onclick="testerAba(1)" style="font-size:12px;padding:5px 12px">1. Agente</button>
+          <button class="btn ghost" id="tab2" onclick="testerAba(2)" style="font-size:12px;padding:5px 12px">2. Feedback</button>
+        </div>
+        <div id="tester-agente">
+          <label>Pergunta</label>
+          <textarea id="tester-pergunta" placeholder="Ex: Qual o historico do cliente C001?" style="min-height:60px"></textarea>
+          <div style="margin-top:10px"><button class="btn" onclick="testarAgente()">Enviar</button></div>
+          <div id="tester-msg-agente" style="margin-top:12px"></div>
+        </div>
+        <div id="tester-feedback" style="display:none">
+          <label>Trace ID (preenchido automaticamente apos testar o agente)</label>
+          <input id="tester-trace" placeholder="ex: 123">
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn" onclick="testarFeedback(true)" style="font-size:12px">👍 Util</button>
+            <button class="btn ghost" onclick="testarFeedback(false)" style="font-size:12px;color:var(--bad);border-color:var(--bad)">👎 Nao util</button>
+          </div>
+          <div id="tester-msg-feedback" style="margin-top:12px"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" onclick="fecharTestar()">Fechar</button>
+        </div>
+      </div>
+    </div>"""
+    testar_script = """<script>
+var TESTER={token:"",canal:"",traceId:""};
+function abrirTestarCanal(id,token,nome){
+  TESTER.token=token;TESTER.canal=nome;TESTER.traceId="";
+  document.getElementById("tester-titulo").textContent="Testar canal: "+nome;
+  document.getElementById("tester-pergunta").value="";
+  document.getElementById("tester-msg-agente").innerHTML="";
+  document.getElementById("tester-msg-feedback").innerHTML="";
+  document.getElementById("tester-trace").value="";
+  testerAba(1);
+  document.getElementById("modal-testar").classList.add("show");
+}
+function fecharTestar(){document.getElementById("modal-testar").classList.remove("show")}
+function testerAba(n){
+  document.getElementById("tester-agente").style.display=n===1?"block":"none";
+  document.getElementById("tester-feedback").style.display=n===2?"block":"none";
+  var a1=document.getElementById("tab1"),a2=document.getElementById("tab2");
+  a1.style.background=n===1?"var(--blue2)":"transparent";a1.style.color=n===1?"#fff":"var(--txt)";
+  a2.style.background=n===2?"var(--blue2)":"transparent";a2.style.color=n===2?"#fff":"var(--txt)";
+}
+function escHTML(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function testarAgente(){
+  var p=document.getElementById("tester-pergunta").value.trim();
+  var box=document.getElementById("tester-msg-agente");
+  if(!p){box.innerHTML='<div class="badge warn">Digite uma pergunta.</div>';return}
+  box.innerHTML='<div class="badge neutral">⏳ Processando... (pode levar ate 3 min)</div>';
+  fetch("/portal/api/v1/agente",{method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+TESTER.token},
+    body:JSON.stringify({pergunta:p})})
+  .then(function(r){return r.json().catch(function(){return {ok:false,erro:"resposta nao-JSON (HTTP "+r.status+")"}})})
+  .then(function(d){
+    if(d.feedback_url){var m=d.feedback_url.match(/feedback\\/(\\d+)/);if(m)TESTER.traceId=m[1]}
+    var h="";
+    if(d.ok){
+      h+='<div style="margin-bottom:6px"><b>Resposta:</b></div><pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:0 0 10px">'+escHTML(d.resposta)+'</pre>';
+      h+='<div style="font-size:12px">Modelo: <b>'+escHTML(d.modelo||"-")+'</b> | Tempo: <b>'+(d.tempo_ms||0)+'ms</b> | Tokens: <b>'+((d.tokens&&d.tokens.total_tokens)||0)+'</b></div>';
+      if(d.webhook)h+='<div style="font-size:12px;margin-top:4px">Webhook: <b>'+escHTML(d.webhook.enviado===true?"enviado (HTTP "+d.webhook.status+")":(d.webhook.motivo||d.webhook.erro||"falhou"))+'</b></div>';
+      if(d.feedback_url)h+='<div style="font-size:12px;margin-top:4px">Feedback URL: <code>'+escHTML(d.feedback_url)+'</code></div>';
+    }else{
+      h+='<div class="badge bad">Erro: '+escHTML(d.erro||"falha na chamada")+'</div>';
+    }
+    box.innerHTML=h;
+    if(TESTER.traceId){document.getElementById("tester-trace").value=TESTER.traceId}
+  });
+}
+function testarFeedback(util){
+  var t=document.getElementById("tester-trace").value.trim();
+  var box=document.getElementById("tester-msg-feedback");
+  if(!t){box.innerHTML='<div class="badge warn">Sem trace_id — teste o agente primeiro.</div>';return}
+  box.innerHTML='<div class="badge neutral">⏳ Enviando feedback...</div>';
+  fetch("/portal/api/v1/feedback/"+t,{method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+TESTER.token},
+    body:JSON.stringify({util:util,tipo:"manual"})})
+  .then(function(r){return r.json().catch(function(){return {ok:false,erro:"HTTP "+r.status}})})
+  .then(function(d){
+    box.innerHTML=d.ok
+      ?'<div class="badge ok">✓ Feedback salvo (id '+(d.feedback_id||"?")+')</div>'
+      :'<div class="badge bad">Erro: '+escHTML(d.erro||"falha")+'</div>';
+  });
+}
+document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharTestar()});
+</script>"""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Criar canal de integração</h3>
@@ -3750,6 +3843,8 @@ def canais():
       setTimeout(function(){{el.textContent="\U0001f4cb Copiar"}},2000);
     }}
     </script>
+    {testar_modal}
+    {testar_script}
     """
     return templates.page("Canais", content, active="canais", user=_user())
 
