@@ -65,7 +65,7 @@ def login():
     if lgpd_cfg.get("aviso_privacidade") == "1":
         aviso_texto = lgpd_cfg.get("aviso_texto", "").strip()
         if aviso_texto:
-            aviso_html = f'<div class="card" style="max-width:380px;margin-bottom:12px;font-size:12px;background:#0e1726;border-color:#1e2a3a"><span class="muted">{templates.h(aviso_texto)}</span></div>'
+            aviso_html = f'<div class="card" style="max-width:380px;margin-bottom:12px;font-size:12px;background:var(--code-bg);border-color:var(--line-soft)"><span class="muted">{templates.h(aviso_texto)}</span></div>'
     content = f"""
     {aviso_html}<div class="card" style="max-width:380px">
       <h3 style="margin-top:0">Acesso ao Portal</h3>
@@ -80,7 +80,7 @@ def login():
       </form>
       <p class="muted" style="margin-top:14px;font-size:12px">
         &nbsp;</p>
-      <hr style="margin:18px 0;border-color:#1e2a3a">
+      <hr style="margin:18px 0;border-color:var(--line-soft)">
       <a class="btn btn-sso" href="/portal/sso/login">Entrar com SSO (OIDC)</a>
       <p class="muted" style="margin-top:10px;font-size:11px">Login federado via provedor OIDC (Azure AD, Okta, Keycloak, Google).</p>
     </div>"""
@@ -518,9 +518,9 @@ def usuarios():
           <td>{u['area'] or '-'}</td>
           <td>{clientes.get(u['cliente_id'], '?')}</td>
           <td>{templates.badge('ativo' if u['ativo'] else 'suspenso')}</td>
-          <td style="white-space:nowrap">
-            <a class="btn ghost" href="/portal/usuarios/{u['id']}/editar" style="font-size:11px;padding:3px 8px">✏️</a>
-            <a class="btn ghost" href="/portal/usuarios/{u['id']}/suspender" style="font-size:11px;padding:3px 8px" onclick="return confirm('Confirmar?')">{'🔒' if u['ativo'] else '✅'}</a>
+          <td class="row-actions">
+            <a href="/portal/usuarios/{u['id']}/editar">editar</a>
+            <a href="/portal/usuarios/{u['id']}/suspender" onclick="return confirm('Confirmar?')">{'suspender' if u['ativo'] else 'reativar'}</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Área</th><th>Cliente</th><th>Status</th><th>Ações</th></tr></thead>
@@ -774,7 +774,7 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>
@@ -804,29 +804,29 @@ def agente_testar(aid: int):
           {{n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")}},
         ];
         for(var i=0;i<passos.length;i++){{var s=passos[i];
-          h+='<div style="flex:1;min-width:120px;background:#1a2744;border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
+          h+='<div style="flex:1;min-width:120px;background:var(--panel-soft);border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
           h+='<div style="font-size:11px;color:'+s.cor+';font-weight:700">PASSO '+s.n+'</div>';
           h+='<div style="font-size:14px;font-weight:600;margin:2px 0">'+s.rotulo+'</div>';
-          h+='<div style="font-size:11px;color:#8899bb">'+s.detalhe+'</div></div>';
+          h+='<div style="font-size:11px;color:var(--muted-soft)">'+s.detalhe+'</div></div>';
         }}
         h+='</div><hr>';
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
-        h+=pk.length?pk.map(function(k){{return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
+        h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
         h+='</div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
         if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
           if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
           else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
         }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
         h+='</div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
         h+=rg.length?'<span class="muted">'+rg.map(function(x){{return (x.texto||'').substring(0,80)}}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
         h+='</div>';
-        h+='<div style="margin-bottom:12px;background:#0e1726;border-radius:6px;padding:8px"><div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
+        h+='<div style="margin-bottom:12px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
         h+='Modelo: <code>'+t.modelo+'</code>'+(t.modelo_fallback?' <span class="badge warn">fallback</span>':'')+' | Tokens: '+(t.tokens?t.tokens.total_tokens||0:0)+' | Tempo: '+t.tempo_ms+'ms';
         h+='</div>';
-        h+='<hr><div><b>Resposta:</b></div><pre style="background:#0e1726;padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
+        h+='<hr><div><b>Resposta:</b></div><pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
         document.getElementById('rastreio-conteudo').innerHTML=h;
       }}).catch(e=>{{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'}});
     }}
@@ -1338,12 +1338,12 @@ def conectores():
           <td>{tipo_icon} {k['tipo']}</td>
           <td>{k['area'] or '-'}</td>
           <td class="muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{cfg_resumo}</td>
-          <td style="font-size:11px;color:#8899bb">{finalidade[:40] or '-'}</td>
+          <td style="font-size:11px;color:var(--muted-soft)">{finalidade[:40] or '-'}</td>
           <td>{templates.badge(k['status'])}</td>
           <td class="muted">{k['ultimo_heartbeat'] or '-'}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conector_editar', cid=k['id'])}">editar</a>
-            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')">excluir</a>
+            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
 
     opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in listar_areas())
@@ -2061,34 +2061,34 @@ def auditoria():
           {{n:4, cor:"#d97706", rotulo:"Modelo", detalhe:t.modelo+" ("+t.tempo_ms+"ms)"+(t.modelo_fallback?" fallback":"")}},
         ];
         for(var i=0;i<passos.length;i++){{var s=passos[i];
-          h+='<div style="flex:1;min-width:120px;background:#1a2744;border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
+          h+='<div style="flex:1;min-width:120px;background:var(--panel-soft);border-radius:8px;padding:10px;border-left:3px solid '+s.cor+'">';
           h+='<div style="font-size:11px;color:'+s.cor+';font-weight:700">PASSO '+s.n+'</div>';
           h+='<div style="font-size:14px;font-weight:600;margin:2px 0">'+s.rotulo+'</div>';
-          h+='<div style="font-size:11px;color:#8899bb">'+s.detalhe+'</div></div>';
+          h+='<div style="font-size:11px;color:var(--muted-soft)">'+s.detalhe+'</div></div>';
         }}
         h+='</div>';
         h+='<hr>';
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
-        h+=pk.length?pk.map(function(k){{return '<code style="background:#1a2744;padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
+        h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
         h+='</div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
         if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
           if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
           else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
         }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
         h+='</div>';
-        h+='<div style="margin-bottom:8px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
         h+=rg.length?'<span class="muted">'+rg.map(function(x){{return (x.texto||'').substring(0,80)}}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
         h+='</div>';
-        h+='<div style="margin-bottom:12px;background:#0e1726;border-radius:6px;padding:8px">';
+        h+='<div style="margin-bottom:12px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#d97706">4. Modelo de IA</div>';
         h+='Modelo: <code>'+t.modelo+'</code>'+(t.modelo_fallback?' <span class="badge warn">fallback</span>':'')+' | Tokens: '+(t.tokens?t.tokens.total_tokens||0:0)+' | Tempo: '+t.tempo_ms+'ms';
         h+='</div>';
-        h+='<hr><div><b>Resposta:</b></div><pre style="background:#0e1726;padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
+        h+='<hr><div><b>Resposta:</b></div><pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:6px 0 0">'+t.resposta+'</pre>';
         document.getElementById('rastreio-conteudo').innerHTML=h;
       }}).catch(e=>{{document.getElementById('rastreio-conteudo').innerHTML='<p class="badge bad">Erro: '+e.message+'</p>'}});
     }}
@@ -2142,7 +2142,7 @@ def observabilidade():
     alertas = db.verificar_alertas()
     alerta_html = ''
     for a in alertas:
-        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">⚠️ {a["desc"]} ({a["modelo"]}: {a["valor"]}ms) <span style="cursor:pointer;font-size:11px;color:#8899bb" onclick="infoAlerta()">ⓘ</span></div>'
+        alerta_html += f'<div class="badge warn" style="margin:4px;display:inline-block">⚠️ {a["desc"]} ({a["modelo"]}: {a["valor"]}ms) <span style="cursor:pointer;font-size:11px;color:var(--muted-soft)" onclick="infoAlerta()">ⓘ</span></div>'
     if not alertas:
         alerta_html = '<span class="muted">Nenhum alerta ativo — tudo ok</span>'
 
@@ -2177,10 +2177,10 @@ def observabilidade():
     content = f"""
     <style>
     .kpis{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;max-width:100%}}
-    .kpi-card{{flex:1 1 130px;min-width:120px;max-width:220px;background:#1a2744;border-radius:10px;padding:14px}}
-    .kpi-card .label{{font-size:11px;color:#8899bb;text-transform:uppercase;letter-spacing:.5px}}
+    .kpi-card{{flex:1 1 130px;min-width:120px;max-width:220px;background:var(--panel-soft);border-radius:10px;padding:14px}}
+    .kpi-card .label{{font-size:11px;color:var(--muted-soft);text-transform:uppercase;letter-spacing:.5px}}
     .kpi-card .value{{font-size:28px;font-weight:700;margin:4px 0}}
-    .kpi-card .sub{{font-size:11px;color:#5a7a9a}}
+    .kpi-card .sub{{font-size:11px;color:var(--muted-soft)}}
     .sparkline{{display:flex;align-items:flex-end;gap:1px;height:40px;margin:8px 0}}
     .sparkline .bar{{flex:1;min-width:2px;background:linear-gradient(to top,#2563eb,#60a5fa);border-radius:1px 1px 0 0}}
     .delta-ok{{color:var(--ok);font-weight:700}}
@@ -2206,7 +2206,7 @@ def observabilidade():
     </script>
     <div class="kpis">
       <div class="kpi-card"><div class="label">Chamadas</div><div class="value">{total_chamadas:,}</div><div class="sub">ultimos {dias}d</div></div>
-      <div class="kpi-card"><div class="label">Taxa de Acerto</div><div class="value" style="color:{'var(--ok)' if taxa_acerto!='--' else '#8899bb'}">{taxa_acerto}</div><div class="sub">{total_util}/{total_fb} uteis</div></div>
+      <div class="kpi-card"><div class="label">Taxa de Acerto</div><div class="value" style="color:{'var(--ok)' if taxa_acerto!='--' else 'var(--muted-soft)'}">{taxa_acerto}</div><div class="sub">{total_util}/{total_fb} uteis</div></div>
       <div class="kpi-card"><div class="label">Latencia Media</div><div class="value">{lat_media}ms</div><div class="sub">ultimos {dias}d</div></div>
       <div class="kpi-card"><div class="label">Tokens</div><div class="value">{total_tokens:,}</div><div class="sub">{total_chamadas} chamadas</div></div>
       <div class="kpi-card"><div class="label">Erros</div><div class="value" style="color:{'var(--bad)' if total_erros else 'var(--ok)'}">{total_erros}</div><div class="sub">{'sem erros' if not total_erros else f'{total_erros} falhas'}</div></div>
@@ -2616,7 +2616,7 @@ def lgpd():
 
     content = f"""<div class="card" style="max-width:780px">
       <h3 style="margin-top:0">Conformidade LGPD — Saida de Dados</h3>
-      <div class="muted" style="font-size:12px;margin-bottom:16px;padding:10px;background:#0e1726;border-radius:6px">
+      <div class="muted" style="font-size:12px;margin-bottom:16px;padding:10px;background:var(--code-bg);border-radius:6px">
         A BlueShift e uma plataforma de inteligencia sobre dados existentes.
         O tratamento na origem (coleta, consentimento, DPO) e responsabilidade
         do sistema conectado (ERP/CRM/Portal do cliente). A BlueShift atua na
@@ -2633,7 +2633,7 @@ def lgpd():
             <input type="checkbox" name="anonimizar_llm" value="1" {ck('anonimizar_llm')} style="width:auto;margin:0;vertical-align:middle">
             <b>Anonimizar resposta do LLM</b></label>
             <br><span class="muted" style="font-size:11px;margin-left:20px">Mascara CPF, email, telefone, etc. na resposta do agente (chat, API, webhook).</span>
-            <div style="margin:6px 0 4px 20px;padding:8px;background:#0e1726;border-radius:6px">
+            <div style="margin:6px 0 4px 20px;padding:8px;background:var(--code-bg);border-radius:6px">
               <div style="font-weight:600;font-size:12px;margin-bottom:4px">Campos a mascarar <span class="muted" style="font-weight:400;font-size:11px">(aplica-se tambem a exportacao RAG quando ativa)</span>:</div>
               <div style="display:flex;flex-wrap:wrap;gap:4px 14px">
                 <label class="inline" style="font-size:12px"><input type="checkbox" name="mask_cpf" value="1" {ck('mask_cpf')} style="width:auto;margin:0;vertical-align:middle"> CPF</label>
@@ -2757,7 +2757,7 @@ def fine_tuning():
   JSONL</b> para gerar o arquivo.</p>
 
   <p><b>Formato esperado (messages):</b></p>
-  <pre style="font-size:12px;background:#0e1726;padding:12px;border-radius:6px;overflow-x:auto">
+  <pre style="font-size:12px;background:var(--code-bg);padding:12px;border-radius:6px;overflow-x:auto">
 {"messages":[{"role":"user","content":"Qual o saldo do cliente C001?"},{"role":"assistant","content":"O saldo do cliente C001 e R$ 15.230,00."}]}
 {"messages":[{"role":"user","content":"Listar pedidos pendentes"},{"role":"assistant","content":"Ha 3 pedidos pendentes: PED-01, PED-02 e PED-03."}]}</pre>
 
@@ -2801,7 +2801,7 @@ def fine_tuning():
   <p>Para contratar o servico de fine-tuning, entre em contato com seu
   representante BlueShift.</p>
 
-  <hr style="border-color:#1e2a3a;margin:20px 0">
+  <hr style="border-color:var(--line-soft);margin:20px 0">
 </div>"""
     return templates.page("Fine-Tuning", content, active="fine_tuning", user=u)
 
@@ -3535,7 +3535,7 @@ def chat():
       </form>
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:#0c2230"><b>🤖 {modelo_usado or "IA"}:</b><p style="margin:8px 0 0">{resposta}</p></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {modelo_usado or "IA"}:</b><p style="margin:8px 0 0">{resposta}</p></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>"""
     return templates.page("Chat de Teste", content, active="chat", user=u)
@@ -3715,11 +3715,11 @@ def canais():
     <div class="card muted" style="font-size:13px">
       <b>Como usar (canal real):</b><br><br>
       Faça uma requisição <code>POST</code> para o endpoint do agente usando o token do canal:<br><br>
-      <pre id="pre1" style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">curl -X POST http://localhost:8080/portal/api/v1/agente \u005c<br>  -H "Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;" \u005c<br>  -H "Content-Type: application/json" \u005c<br>  -d '{{"pergunta": "Qual o hist\u00f3rico do cliente C001?"}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(1,this)">📋 Copiar</button>
+      <pre id="pre1" style="background:var(--code-bg);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">curl -X POST http://localhost:8080/portal/api/v1/agente \u005c<br>  -H "Authorization: Bearer &lt;TOKEN_DO_CANAL&gt;" \u005c<br>  -H "Content-Type: application/json" \u005c<br>  -d '{{"pergunta": "Qual o hist\u00f3rico do cliente C001?"}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(1,this)">📋 Copiar</button>
       <br>
       Substitua <code>&lt;TOKEN_DO_CANAL&gt;</code> pela chave do canal (use o botão 📋 ao lado do token para copiar).<br><br>
       <b>Resposta (JSON):</b><br><br>
-      <pre style="background:#0e1726;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">{{
+      <pre style="background:var(--code-bg);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6">{{
   "ok": true,
   "resposta": "...",
   "agente": "Agente Vendas",
@@ -3732,7 +3732,7 @@ def canais():
       <br>
       <b>Feedback (opcional):</b> a resposta inclui <code>feedback_url</code>.<br>
       POST <code>/portal/api/v1/feedback/&lt;trace_id&gt;</code> com <code>{{"util": true}}</code>.<br>
-      Exemplo: <pre id="pre2" style="background:#0e1726;padding:6px;border-radius:4px;font-size:12px">curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \n  -H "Authorization: Bearer &lt;TOKEN&gt;" \n  -H "Content-Type: application/json" \n  -d '{{"util": true}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(2,this)">📋 Copiar</button>
+      Exemplo: <pre id="pre2" style="background:var(--code-bg);padding:6px;border-radius:4px;font-size:12px">curl -X POST http://localhost:8080/portal/api/v1/feedback/123 \n  -H "Authorization: Bearer &lt;TOKEN&gt;" \n  -H "Content-Type: application/json" \n  -d '{{"util": true}}'</pre> <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="copyPre(2,this)">📋 Copiar</button>
       Retorno: <code>{{"ok": true, "feedback_id": 1}}</code>.<br>
       <b>Opcional</b> — a API funciona sem ele. Use para acompanhar qualidade no dashboard de observabilidade.<br>
       Se o canal tiver um <b>Webhook de saída</b>, a resposta também é POSTada na URL configurada.
@@ -3871,7 +3871,7 @@ def atualizacoes():
       <h3 style="margin-top:0">Update Channel (canal aprovado)</h3>
       <p class="muted">Versão instalada da camada BlueShift: <b>{__version__}</b></p>
       <p>Canal: <code>{update_client.UPDATE_URL}</code></p>
-      <hr style="border-color:#16344a">
+      <hr style="border-color:var(--line-soft)">
       {'<p class="muted">Nenhuma atualização disponível no canal.</p>' if not info.get('disponivel') else ''}
       {'<div class="badge ok">Nova versão disponível: ' + str(info.get('disponivel_version')) + '</div>' if info.get('disponivel') else ''}
       {f'<p><b>Notas:</b> {info.get("notes","")}</p>' if info.get('notes') else ''}

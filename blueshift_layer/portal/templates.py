@@ -60,6 +60,13 @@ def page(title: str, content: str, active: str = "", user: dict | None = None,
 function toggleSubmenu(el){var i=el.nextElementSibling,o=i.style.display==="block";i.style.display=o?"none":"block";el.querySelector(".arrow").textContent=o?"▸":"▾";el.classList.toggle("open")}
 function toggleSidebar(){var s=document.getElementById("sidebar"),b=document.getElementById("ham-btn");s.classList.toggle("collapsed");b.textContent=s.classList.contains("collapsed")?"☰":"⋮"}
 window.addEventListener("load",function(){var b=document.getElementById("ham-btn");if(b&&!document.getElementById("sidebar").classList.contains("collapsed"))b.textContent="⋮"})
+function temaIcone(t){return t==="light"?"☀️":(t==="dark"?"🌙":"💻")}
+function aplicarTema(t){if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.setAttribute("data-theme",t)}
+function setTema(t){try{localStorage.setItem("bs_theme",t)}catch(e){}aplicarTema(t);var i=document.getElementById("theme-icon");if(i)i.textContent=temaIcone(t);var m=document.getElementById("theme-menu");if(m)m.classList.remove("show")}
+function toggleTemaMenu(e){e.stopPropagation();var m=document.getElementById("theme-menu");if(m)m.classList.toggle("show")}
+document.addEventListener("click",function(e){var m=document.getElementById("theme-menu");if(m&&!e.target.closest(".theme-wrap"))m.classList.remove("show")})
+window.addEventListener("load",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}aplicarTema(t);var i=document.getElementById("theme-icon");if(i)i.textContent=temaIcone(t)})
+if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEventListener("change",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}if(t==="system")aplicarTema("system")})}
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -67,6 +74,7 @@ window.addEventListener("load",function(){var b=document.getElementById("ham-btn
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} · BlueShift</title>
+<script>try{{var t=localStorage.getItem("bs_theme")||"dark";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.setAttribute("data-theme",t)}}catch(e){{}}</script>
 <style>{CSS}</style>
 {js}
 </head>
@@ -74,6 +82,14 @@ window.addEventListener("load",function(){var b=document.getElementById("ham-btn
 <div class="topbar">
   <div class="brand">BlueShift <span>IA Platform</span></div>
   <div class="topbar-sub">Portal do Cliente</div>
+  <div class="theme-wrap">
+    <button class="theme-btn" id="theme-btn" onclick="toggleTemaMenu(event)" title="Tema (claro/escuro/sistema)"><span id="theme-icon">🌙</span></button>
+    <div class="theme-menu" id="theme-menu">
+      <a onclick="setTema('light')">☀️ Claro</a>
+      <a onclick="setTema('dark')">🌙 Escuro</a>
+      <a onclick="setTema('system')">💻 Sistema</a>
+    </div>
+  </div>
   {user_box}
 </div>
 <div class="layout">
@@ -102,6 +118,9 @@ def _nav(active: str, user: dict | None) -> str:
         'observabilidade': '\U0001f4ca', 'teste_ab': '\U0001f91d', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
         'fine_tuning': '\U0001f9e9',
         "lgpd": "\U0001f6e1\ufe0f",
+        # Icones dos grupos (submenus)
+        "grupo_cadastros": "\U0001f465", "grupo_inteligencia": "\U0001f4a1",
+        "grupo_operacao": "\U0001f4c8", "grupo_config": "\U0001f527",
     }
     _nl = lambda key, label, href, cls_extra="": (
         f'<a class="navlink{cls_extra}" href="{href}" title="{label}">'
@@ -109,65 +128,71 @@ def _nav(active: str, user: dict | None) -> str:
         f'<span class="nav-label">{label}</span></a>'
     )
 
-    # Itens principais
+    # Itens principais (sempre visiveis)
     itens = [
         ("monitorar", "Monitorar", "/portal/monitorar"),
         ("workspace", "Workspace", "/portal/workspace"),
     ]
-    cadastro_itens = [
-        ("clientes", "Clientes", "/portal/clientes"),
-        ("usuarios", "Usuários", "/portal/usuarios"),
-        ("agentes", "Agentes", "/portal/agentes"),
-        ("skills", "Skills", "/portal/skills"),
-        ("modelos", "Modelos IA", "/portal/modelos"),
-        ("conectores", "Conectores", "/portal/conectores"),
-        ("alertas_config", "Alertas", "/portal/alertas-config"),
-        ("lgpd", "LGPD", "/portal/lgpd"),
-        ("canais", "Canais", "/portal/canais"),
-    ]
-    cadastro_keys = {k for k, _, _ in cadastro_itens}
-    cadastro_aberto = active in cadastro_keys
-    outros = [
-        ("memoria", "Memória", "/portal/memoria"),
-        ("conhecimento", "Conhecimento", "/portal/conhecimento"),
-        ("chat", "Chat", "/portal/chat"),
-        ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
-        ("auditoria", "Auditoria", "/portal/auditoria"),
-        ("observabilidade", "Observabilidade", "/portal/observabilidade"),
-        ("teste_ab", "Teste A/B", "/portal/teste-ab"),
-        ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
-        ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
-        ("sso", "SSO (OIDC)", "/portal/sso/config"),
+
+    # Submenus: (rotulo, icone_grupo, [(key, label, href), ...])
+    submenus = [
+        ("Cadastros", "grupo_cadastros", [
+            ("clientes", "Clientes", "/portal/clientes"),
+            ("usuarios", "Usuários", "/portal/usuarios"),
+            ("agentes", "Agentes", "/portal/agentes"),
+            ("skills", "Skills", "/portal/skills"),
+            ("modelos", "Modelos IA", "/portal/modelos"),
+            ("conectores", "Conectores", "/portal/conectores"),
+            ("canais", "Canais", "/portal/canais"),
+        ]),
+        ("Inteligência", "grupo_inteligencia", [
+            ("memoria", "Memória", "/portal/memoria"),
+            ("conhecimento", "Conhecimento", "/portal/conhecimento"),
+            ("chat", "Chat", "/portal/chat"),
+            ("teste_ab", "Teste A/B", "/portal/teste-ab"),
+            ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
+        ]),
+        ("Operação", "grupo_operacao", [
+            ("observabilidade", "Observabilidade", "/portal/observabilidade"),
+            ("auditoria", "Auditoria", "/portal/auditoria"),
+            ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
+        ]),
+        ("Configurações", "grupo_config", [
+            ("alertas_config", "Alertas", "/portal/alertas-config"),
+            ("lgpd", "LGPD", "/portal/lgpd"),
+            ("sso", "SSO (OIDC)", "/portal/sso/config"),
+            ("atualizacoes", "Atualizações", "/portal/atualizacoes"),
+        ]),
     ]
 
     seta_aberto = "\u25be"
     seta_fechado = "\u25b8"
-    links = """<div style="text-align:right;margin-bottom:4px"><button class="ham-sidebar" id="ham-btn" onclick="toggleSidebar()" title="Menu">☰</button></div><hr style="border-color:#1e2a3a;margin:4px 0 8px">"""
+    links = """<div style="text-align:right;margin-bottom:4px"><button class="ham-sidebar" id="ham-btn" onclick="toggleSidebar()" title="Menu">☰</button></div><hr style="border-color:var(--line-soft);margin:4px 0 8px">"""
     for key, label, href in itens:
         links += _nl(key, label, href, " active" if key == active else "")
 
-    # Submenu Cadastros
-    seta = seta_aberto if cadastro_aberto else seta_fechado
-    display = "block" if cadastro_aberto else "none"
-    cadastro_html = "".join(
-        _nl(k, l, h, " active" if k == active else "")
-        for k, l, h in cadastro_itens
-    )
-    links += f"""
+    # Submenus (Cadastros, Inteligencia, Operacao, Configuracoes)
+    for rotulo, icone_grupo, itens_sub in submenus:
+        keys_sub = {k for k, _, _ in itens_sub}
+        aberto = active in keys_sub
+        seta = seta_aberto if aberto else seta_fechado
+        display = "block" if aberto else "none"
+        sub_html = "".join(
+            _nl(k, l, h, " active" if k == active else "")
+            for k, l, h in itens_sub
+        )
+        links += f"""
     <div class="submenu">
-      <a class="navlink sub-toggle{" open" if cadastro_aberto else ""}" onclick="toggleSubmenu(this)" title="Cadastros">
-        <span class="nav-icon">{ICONS.get("clientes", "")}</span>
-        <span class="nav-label"><span class="arrow">{seta}</span> Cadastros</span>
+      <a class="navlink sub-toggle{" open" if aberto else ""}" onclick="toggleSubmenu(this)" title="{rotulo}">
+        <span class="nav-icon">{ICONS.get(icone_grupo, "")}</span>
+        <span class="nav-label"><span class="arrow">{seta}</span> {rotulo}</span>
       </a>
       <div class="sub-items" style="display:{display}">
-        {cadastro_html}
+        {sub_html}
       </div>
     </div>"""
 
-    for key, label, href in outros:
-        links += _nl(key, label, href, " active" if key == active else "")
-
-    links += '<hr style="border-color:#1e2a3a;margin:8px 0 4px"><div class="sidebar-by">By: Nei</div>'
+    links += '<hr style="border-color:var(--line-soft);margin:8px 0 4px"><div class="sidebar-by">By: Nei</div>'
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
@@ -200,20 +225,29 @@ def badge(status: str) -> str:
 CSS = """
 :root{--bg:#0b1020;--panel:#141b2e;--panel2:#1b2438;--line:#26304a;
 --txt:#e7ecf5;--muted:#93a0bd;--blue:#3b82f6;--blue2:#2563eb;
---ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;}
+--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;
+--input-bg:#0e1726;--code-bg:#0e1726;--panel-soft:#1a2744;--deep:#0c2230;
+--line-soft:#1e2a3a;--muted-soft:#8899bb;--neutral:#222c44;
+--brand-txt:#ffffff;--topbar-a:#0e1830;--topbar-b:#101a33;}
+[data-theme="light"]{--bg:#eef1f7;--panel:#ffffff;--panel2:#e9edf5;--line:#d5dcea;
+--txt:#1a2338;--muted:#5b6b8c;--blue:#2563eb;--blue2:#1d4ed8;
+--ok:#15803d;--warn:#b45309;--bad:#b91c1c;
+--input-bg:#ffffff;--code-bg:#f1f4fa;--panel-soft:#e8edf6;--deep:#e6edf8;
+--line-soft:#dfe5f0;--muted-soft:#64748b;--neutral:#e5e9f3;
+--brand-txt:#0e1830;--topbar-a:#ffffff;--topbar-b:#e9edf5;}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
 background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
 .topbar{height:56px;display:flex;align-items:center;gap:16px;padding:0 20px;
-background:linear-gradient(90deg,#0e1830,#101a33);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+background:linear-gradient(90deg,var(--topbar-a),var(--topbar-b));border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 .hamburger{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
 .hamburger:hover{color:#fff;background:var(--panel2)}
 .ham-sidebar{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1}
 .ham-sidebar:hover{color:#fff;background:var(--panel2)}
-.brand{font-weight:800;letter-spacing:.3px;font-size:18px;color:#fff}
+.brand{font-weight:800;letter-spacing:.3px;font-size:18px;color:var(--brand-txt)}
 .brand span{color:var(--blue);font-weight:600}
 .topbar-sub{color:var(--muted);font-size:13px;border-left:1px solid var(--line);padding-left:16px}
-.userbox{margin-left:auto;display:flex;align-items:center;gap:10px}
+.userbox{display:flex;align-items:center;gap:10px}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--blue2);display:flex;align-items:center;
 justify-content:center;font-weight:700;color:#fff}
 .uname{font-weight:600}
@@ -259,7 +293,7 @@ tr:last-child td{border-bottom:none}
 .badge.ok{background:rgba(34,197,94,.15);color:var(--ok)}
 .badge.warn{background:rgba(245,158,11,.15);color:var(--warn)}
 .badge.bad{background:rgba(239,68,68,.15);color:var(--bad)}
-.badge.neutral{background:#222c44;color:var(--muted)}
+.badge.neutral{background:var(--neutral);color:var(--muted)}
 .btn{display:inline-block;padding:9px 14px;border-radius:8px;border:1px solid var(--blue2);
 background:var(--blue2);color:#fff;font-weight:600;text-decoration:none;cursor:pointer;font-size:13px}
 .btn:hover{background:var(--blue)}
@@ -272,7 +306,7 @@ background:linear-gradient(90deg,#1e3a8a,#2563eb);color:#fff;font-weight:600;tex
 cursor:pointer;font-size:13px;width:100%;text-align:center}
 .btn-sso:hover{background:linear-gradient(90deg,#2563eb,#3b82f6)}
 input,select,textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line);
-background:#0e1726;color:var(--txt);font-size:13px;margin-top:4px}
+background:var(--input-bg);color:var(--txt);font-size:13px;margin-top:4px}
 label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:700px){.form-row{grid-template-columns:1fr}}
@@ -287,7 +321,7 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .muted{color:var(--muted)}
 .row-actions a{margin-right:8px;color:var(--blue);text-decoration:none;font-weight:600;font-size:13px}
 .empty{padding:30px;text-align:center;color:var(--muted)}
-.bar{height:8px;border-radius:999px;background:#222c44;overflow:hidden}
+.bar{height:8px;border-radius:999px;background:var(--neutral);overflow:hidden}
 .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#22d3ee)}
 .health-card .value{font-size:30px}
 .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center}
@@ -305,6 +339,13 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 @keyframes spin{to{transform:rotate(360deg)}}
 .btn-ia{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;cursor:pointer;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600}
 .btn-ia:hover{filter:brightness(1.2)}
+.theme-wrap{position:relative;margin-left:auto;display:flex;align-items:center}
+.theme-btn{background:none;border:1px solid var(--line);border-radius:8px;color:var(--txt);font-size:16px;cursor:pointer;padding:6px 9px;line-height:1}
+.theme-btn:hover{background:var(--panel2)}
+.theme-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.4);z-index:60;min-width:150px}
+.theme-menu.show{display:block}
+.theme-menu a{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:8px;color:var(--txt);text-decoration:none;font-size:13px;cursor:pointer;white-space:nowrap}
+.theme-menu a:hover{background:var(--panel2)}
 
 """
 
