@@ -220,7 +220,14 @@ def mapear_usuario(claims: Dict[str, Any]) -> Dict[str, Any]:
     # 3) auto_criar?
     if cfg.get("auto_criar"):
         # cria usuario comum (sem senha — so entra via SSO)
-        cid = 1  # cliente demo
+        # usa o PRIMEIRO cliente cadastrado (nunca hardcoded — cliente final
+        # cadastra a propria empresa; sem cliente, aborta o auto_criar)
+        _clientes = db.listar_clientes()
+        if not _clientes:
+            raise ValueError(
+                "Nenhum cliente cadastrado — cadastre a empresa na tela Clientes "
+                "antes de usar SSO com auto_criar.")
+        cid = _clientes[0]["id"]
         with db.get_conn() as conn:
             cur = conn.execute(
                 "INSERT INTO usuarios (cliente_id, nome, login, senha, papel, area, ativo, criado_em) "

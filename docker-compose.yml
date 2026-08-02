@@ -34,6 +34,9 @@ services:
       BLUESHIFT_UPDATE_URL: "${BLUESHIFT_UPDATE_URL:-http://localhost:9001/v1/channel}"
       BLUESHIFT_UPDATE_PORT: "9001"
       BLUESHIFT_DEV: "${BLUESHIFT_DEV:-1}"
+      # Seed demo (1 = cria dados de exemplo XPTO; 0 = banco limpo — o cliente
+      # cadastra a propria empresa na tela Clientes). Usar 0 em instalacao final.
+      BLUESHIFT_SEED_DEMO: "${BLUESHIFT_SEED_DEMO:-1}"
     # Sobrescreve o CMD default (blueshift status) para subir o Portal do Cliente
     command: ["blueshift", "portal"]
     volumes:

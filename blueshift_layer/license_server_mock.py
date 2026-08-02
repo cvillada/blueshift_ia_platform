@@ -23,8 +23,8 @@ from flask import Flask, jsonify, request
 
 # Banco falso de licencas (em memoria). Em prod seria consulta ao backend.
 LICENSE_DB = {
-    "BS-PROD-PORTO-SEGURO-001": {
-        "cliente": "Porto Seguro",
+    "BS-PROD-XPTO-SEGURO-001": {
+        "cliente": "XPTO Seguro",
         "perfil": "cliente_seguradora",
         "modelo": "finetuned-v1",
     },

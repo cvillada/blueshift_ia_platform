@@ -501,6 +501,13 @@ def atualizar_usuario(uid: int, **campos) -> None:
         conn.execute(f"UPDATE usuarios SET {cols} WHERE id=?", (*campos.values(), uid))
 
 
+def existe_admin() -> bool:
+    """True se existe pelo menos um usuario com papel admin no sistema."""
+    with get_conn() as conn:
+        r = _row(conn, "SELECT COUNT(*) AS n FROM usuarios WHERE papel='admin'")
+        return (r["n"] or 0) > 0
+
+
 def autenticar(login: str, senha: str) -> dict | None:
     with get_conn() as conn:
         r = _row(conn, "SELECT * FROM usuarios WHERE login=? AND ativo=1", (login,))
@@ -1497,7 +1504,7 @@ def seed_demo() -> None:
                     criar_contrato(cid, valor_anual=120000.00, moeda="BRL",
                                    inicio="2026-07-01", fim="2027-06-30", status="ativo")
             return
-    cid = criar_cliente("porto", "Porto Seguros (Piloto)", "Porto Seguro S/A", "ti@porto.com.br")
+    cid = criar_cliente("xpto", "XPTO Seguros (Piloto)", "XPTO Seguro S/A", "ti@xpto.com.br")
     criar_usuario(cid, "Administrador BlueShift", "admin", "admin123", "admin", "operacoes")
     criar_usuario(cid, "Gestor Vendas", "gestor", "gestor123", "gestor", "vendas")
     criar_usuario(cid, "Ana Suporte", "ana", "ana123", "usuario", "suporte")

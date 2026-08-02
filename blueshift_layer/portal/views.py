@@ -44,6 +44,39 @@ def _user() -> dict | None:
 @bp.route("/login", methods=["GET", "POST"])
 @auth.rate_limit_login
 def login():
+    # ── Primeiro acesso: sem nenhum admin, o portal vira setup inicial ──
+    # O cliente cadastra a propria empresa + administrador (nada de demo fixo).
+    setup = not db.existe_admin()
+    if setup and request.method == "POST" and request.form.get("_acao") == "setup":
+        emp_nome = request.form.get("empresa_nome", "").strip()
+        emp_codigo = request.form.get("empresa_codigo", "").strip().lower()
+        emp_razao = request.form.get("empresa_razao", "").strip()
+        emp_email = request.form.get("empresa_email", "").strip()
+        adm_nome = request.form.get("admin_nome", "").strip()
+        adm_login = request.form.get("admin_login", "").strip()
+        adm_senha = request.form.get("admin_senha", "")
+        if not (emp_nome and emp_codigo and adm_nome and adm_login and adm_senha):
+            flash("Preencha todos os campos obrigatórios (*).", "warn")
+        elif len(adm_senha) < 6:
+            flash("Senha do administrador deve ter ao menos 6 caracteres.", "warn")
+        else:
+            try:
+                cid = db.criar_cliente(emp_codigo, emp_nome, emp_razao or emp_nome, emp_email)
+                db.criar_usuario(cid, adm_nome, adm_login, adm_senha, "admin", "operacoes")
+                user = db.autenticar(adm_login, adm_senha)
+                if not user:
+                    flash("Erro ao autenticar o admin recém-criado.", "bad")
+                    return redirect(url_for("portal.login"))
+                auth.fazer_login(user)
+                db.registrar_auditoria(
+                    user["login"], "admin", "setup_inicial",
+                    alvo=emp_nome, cliente_id=cid, ip=request.remote_addr,
+                    detalhe="primeiro acesso: empresa + admin inicial",
+                )
+                flash("Empresa e administrador inicial criados. Bem-vindo!", "ok")
+                return redirect(url_for("portal.monitorar"))
+            except Exception as e:  # noqa: BLE001
+                flash(f"Erro ao criar: {e}", "bad")
     if request.method == "POST":
         login_ = request.form.get("login", "").strip()
         senha = request.form.get("senha", "")
@@ -66,7 +99,31 @@ def login():
         aviso_texto = lgpd_cfg.get("aviso_texto", "").strip()
         if aviso_texto:
             aviso_html = f'<div class="card" style="max-width:380px;margin-bottom:12px;font-size:12px;background:var(--code-bg);border-color:var(--line-soft)"><span class="muted">{templates.h(aviso_texto)}</span></div>'
-    content = f"""
+    if setup:
+        content = f"""
+    {aviso_html}<div class="card" style="max-width:420px">
+      <h3 style="margin-top:0">Configuração inicial</h3>
+      <p class="muted" style="font-size:12px">Bem-vindo ao BlueShift! Cadastre a <b>empresa</b> e o <b>administrador inicial</b> — os demais usuários podem ser criados depois na tela Usuários.</p>
+      <form method="post">
+        {templates.csrf_field()}<input type="hidden" name="_acao" value="setup">
+        <label>Nome da empresa *</label><input name="empresa_nome" placeholder="ex: XPTO Seguros" autofocus>
+        <label>Código *</label><input name="empresa_codigo" placeholder="ex: xpto" style="text-transform:lowercase">
+        <div class="form-row">
+          <div><label>Razão social</label><input name="empresa_razao" placeholder="XPTO Seguro S/A"></div>
+          <div><label>E-mail de contato</label><input name="empresa_email" placeholder="ti@empresa.com.br"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Nome do admin *</label><input name="admin_nome" placeholder="Nome completo"></div>
+          <div><label>Login do admin *</label><input name="admin_login" placeholder="admin"></div>
+        </div>
+        <label>Senha do admin *</label><input name="admin_senha" type="password" placeholder="mínimo 6 caracteres">
+        <div style="margin-top:16px">
+          <button class="btn" type="submit">Criar empresa e acessar</button>
+        </div>
+      </form>
+    </div>"""
+    else:
+        content = f"""
     {aviso_html}<div class="card" style="max-width:380px">
       <h3 style="margin-top:0">Acesso ao Portal</h3>
       <form method="post">
@@ -416,13 +473,22 @@ def cliente_novo():
       <h3 style="margin-top:0">Cadastrar cliente</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
-          <div><label>Código *</label><input name="codigo" placeholder="ex: porto"></div>
-          <div><label>Nome *</label><input name="nome" placeholder="ex: Porto Seguros"></div>
+          <div><label>Código *</label><input name="codigo" placeholder="ex: xpto"></div>
+          <div><label>Nome *</label><input name="nome" placeholder="ex: XPTO Seguros"></div>
         </div>
         <div class="form-row">
           <div><label>Empresa</label><input name="empresa"></div>
           <div><label>Email de contato</label><input name="email" type="email"></div>
         </div>
+        <div class="form-row">
+          <div><label>Plano de licença</label>
+            <select name="licenca">
+              <option value="anual_por_empresa">Anual por empresa</option>
+              <option value="anual_por_empresa_plus">Anual + modelo externo</option>
+            </select></div>
+          <div></div>
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:6px">O plano é o tipo contratado (registro). A <b>chave de ativação</b> da plataforma é definida na instalação, na variável <code>BLUESHIFT_LICENSE</code> — consulte a tela Atualizações para ver o status.</p>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar cliente</button>
           <a class="btn ghost" href="/portal/clientes">Cancelar</a>
@@ -467,7 +533,7 @@ def cliente_editar(cid: int):
           <div><label>Email</label><input name="email" value="{c['email'] or ''}"></div>
         </div>
         <div class="form-row">
-          <div><label>Licença</label>
+          <div><label>Plano de licença</label>
             <select name="licenca">
               <option value="anual_por_empresa" {'selected' if c['licenca']=='anual_por_empresa' else ''}>Anual por empresa</option>
               <option value="anual_por_empresa_plus" {'selected' if c['licenca']=='anual_por_empresa_plus' else ''}>Anual + modelo externo</option>
@@ -3614,7 +3680,7 @@ def api_agente(canal):
         return jsonify({"ok": False, "erro": "agente nao encontrado"}), 404
 
     usuario = (data.get("usuario") or f"canal:{canal['id']}")[:40]
-    id_cliente = data.get("id_cliente") or "C001"
+    id_cliente = data.get("id_cliente") or ""
     out = agente_mod.responder(a, pergunta, usuario, id_cliente=id_cliente)
     db.registrar_auditoria(
         f"canal:{canal['id']}", "sistema", "api_agente", alvo=a["nome"],
@@ -3961,6 +4027,37 @@ def atualizacoes():
             flash(f"Não aplicada: {res.get('motivo')}", "bad")
         return redirect(url_for("portal.atualizacoes"))
     from blueshift_layer import __version__
+    # ── Card de licenca da plataforma ──
+    import os as _os
+    from blueshift_layer import license_client as _lc
+    chave = _os.environ.get("BLUESHIFT_LICENSE", "") or ""
+    if chave:
+        _valida = _lc.validate(chave)
+        _meta = _lc.activate(chave) if _valida else {}
+        _mascarada = (chave[:12] + "••••" + chave[-6:]) if len(chave) > 20 else "••••••"
+        _badge = ('<span class="badge ok">✅ ativa</span>' if _valida
+                  else '<span class="badge bad">⚠️ inválida</span>')
+        _meta_html = ""
+        if _valida and _meta.get("cliente") and _meta["cliente"] not in ("demo", None):
+            _meta_html = (f'<div class="muted" style="font-size:12px;margin-top:6px">'
+                          f'Cliente: <b>{templates.h(str(_meta.get("cliente","")))}</b> · '
+                          f'Perfil: {templates.h(str(_meta.get("perfil","")))}</div>')
+        card_licenca = f"""
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Licença da plataforma</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <code style="font-size:13px">{templates.h(_mascarada)}</code> {_badge}
+      </div>
+      {_meta_html}
+      <p class="muted" style="font-size:11px;margin-top:8px">A chave de ativação é definida na instalação (variável <code>BLUESHIFT_LICENSE</code>). Para trocar, reinicie o container com a nova chave.</p>
+    </div>"""
+    else:
+        card_licenca = """
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Licença da plataforma</h3>
+      <span class="badge warn">⚠️ não configurada</span>
+      <p class="muted" style="font-size:11px;margin-top:8px">Defina a variável <code>BLUESHIFT_LICENSE</code> na instalação para ativar a plataforma.</p>
+    </div>"""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Update Channel (canal aprovado)</h3>
@@ -3979,5 +4076,6 @@ def atualizacoes():
       <code>localhost:9001</code>). Em produção aponta para o backend real da BlueShift. O install
       é feito via <code>pip install blueshift-layer==versao</code> (dry-run em dev).
     </div>
+    {card_licenca}
     """
     return templates.page("Atualizações", content, active="atualizacoes", user=_user())

@@ -59,7 +59,11 @@ def create_app() -> "Flask":
     app.debug = False  # nunca rodar em debug em producao
 
     db.init_db()
-    db.seed_demo()
+    # Seed demo: so quando BLUESHIFT_SEED_DEMO != "0". Em instalacao de cliente
+    # final (sem BLUESHIFT_DEV), desligar nao cria dados demo de empresa —
+    # o cliente cadastra a propria empresa na tela Clientes.
+    if os.environ.get("BLUESHIFT_SEED_DEMO", "1") != "0":
+        db.seed_demo()
     app.register_blueprint(bp)
 
     # ── Retencao automatica de logs (LGPD Art. 15) ──
