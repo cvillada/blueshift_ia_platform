@@ -360,6 +360,7 @@ A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Voc
 | **[Ollama](https://ollama.com)** | CLI simples para rodar modelos locais | `http://127.0.0.1:11434` |
 | **[llama.cpp](https://github.com/ggerganov/llama.cpp)** | Engine C++ leve, via `llama-server` | `http://127.0.0.1:8080` |
 | **[vLLM](https://github.com/vllm-project/vllm)** | Alto throughput, ideal para GPU | `http://127.0.0.1:8000` |
+| **[SGL](https://docs.sglang.io/)** | Alto throughput, ideal para GPU | `http://127.0.0.1:8000` |
 
 ### Setup com LM Studio (recomendado para dev)
 
