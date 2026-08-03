@@ -2430,6 +2430,21 @@ def teste_ab():
                                 justificativa = (justificativa + " " + linha.strip()).strip()
                 vereditos.append(voto)
                 justificativas.append(justificativa)
+                # ── salva julgamento (fonte p/ fine-tuning / benchmark) ──
+                try:
+                    db.salvar_julgamento(
+                        pergunta=pergunta,
+                        resposta_a=r_orig,
+                        resposta_b=r_novo,
+                        modelo_a=r.get("modelo_orig", ""),
+                        modelo_b=r.get("modelo_novo", ""),
+                        voto=voto,
+                        justificativa=justificativa,
+                        modelo_juiz=modelo_juiz["modelo"],
+                        criado_por=u["login"],
+                    )
+                except Exception:  # noqa: BLE001 — nunca quebra a analise
+                    pass
 
             # Renderiza com cores
             rows = ""
@@ -2471,6 +2486,9 @@ def teste_ab():
         alvo = request.form.get("modelo_alvo", "").strip()
         if not selecionados:
             flash("Selecione ao menos um feedback para testar.", "warn")
+            return redirect(url_for("portal.teste_ab"))
+        if len(selecionados) > 10:
+            flash("Selecione no máximo 10 perguntas por execução — cada uma roda o agente completo (conectores + RAG + LLM) e o julgamento.", "warn")
             return redirect(url_for("portal.teste_ab"))
         if not alvo or not alvo.isdigit():
             flash("Selecione um modelo alvo para o teste.", "warn")
@@ -2591,17 +2609,51 @@ def teste_ab():
 </div>"""
         return templates.page("Teste A/B", content, active="teste_ab", user=u)
 
-    # GET: feedbacks recentes + modelos
+    # GET: feedbacks recentes + modelos (paginacao em memoria, padrao auditoria)
+    # Fixo em 10 por pagina: o limite de selecao e 10 por execucao — paginar
+    # com 20/50 nao faria sentido (mostra mais, mas so pode marcar 10).
     filtro = request.args.get("filtro", "todos")
-    feedbacks = []
+    limite_fb = 10
     try:
-        feedbacks = db.listar_feedback(limite=30)
-        if filtro == "util":
-            feedbacks = [f for f in feedbacks if f.get("feedback") == "util"]
-        elif filtro == "nao_util":
-            feedbacks = [f for f in feedbacks if f.get("feedback") == "nao_util"]
+        todos_fb = db.listar_feedback(limite=5000)
     except Exception:
-        pass
+        todos_fb = []
+    if filtro == "util":
+        todos_fb = [f for f in todos_fb if f.get("feedback") == "util"]
+    elif filtro == "nao_util":
+        todos_fb = [f for f in todos_fb if f.get("feedback") == "nao_util"]
+    total_fb = len(todos_fb)
+    total_paginas = max(1, (total_fb + limite_fb - 1) // limite_fb)
+    try:
+        pagina_fb = max(1, int(request.args.get("pagina", 1)))
+    except ValueError:
+        pagina_fb = 1
+    pagina_fb = min(pagina_fb, total_paginas)
+    inicio = (pagina_fb - 1) * limite_fb
+    feedbacks = todos_fb[inicio:inicio + limite_fb]
+
+    def _url_fb(**kw):
+        args = {"filtro": filtro, "pagina": pagina_fb}
+        args.update(kw)
+        return "?" + "&".join(f"{k}={v}" for k, v in args.items())
+
+    pag_btns = ""
+    if total_paginas > 1:
+        pag_btns = ('<div class="paginacao" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px">'
+                    f'<span class="muted">{inicio+1}–{min(inicio+limite_fb, total_fb)} de {total_fb}</span>'
+                    '<div style="display:flex;gap:4px">')
+        if pagina_fb > 1:
+            pag_btns += f'<a class="btn ghost" href="{_url_fb(pagina=1)}" style="padding:4px 10px;font-size:12px">«</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url_fb(pagina=pagina_fb-1)}" style="padding:4px 10px;font-size:12px">‹</a>'
+        for p in range(max(1, pagina_fb-2), min(total_paginas, pagina_fb+2)+1):
+            if p == pagina_fb:
+                pag_btns += f'<button class="btn" style="padding:4px 10px;font-size:12px">{p}</button>'
+            else:
+                pag_btns += f'<a class="btn ghost" href="{_url_fb(pagina=p)}" style="padding:4px 10px;font-size:12px">{p}</a>'
+        if pagina_fb < total_paginas:
+            pag_btns += f'<a class="btn ghost" href="{_url_fb(pagina=pagina_fb+1)}" style="padding:4px 10px;font-size:12px">›</a>'
+            pag_btns += f'<a class="btn ghost" href="{_url_fb(pagina=total_paginas)}" style="padding:4px 10px;font-size:12px">»</a>'
+        pag_btns += '</div></div>'
 
     filtro_links = "".join(
         f'<a class="btn ghost {"active" if filtro == v else ""}" '
@@ -2628,19 +2680,26 @@ def teste_ab():
     else:
         aviso = ""
 
+    n_julg = db.contar_julgamentos()
+    export_btn = (f'<a class="btn ghost" href="/portal/teste-ab/exportar-jsonl" style="font-size:12px" title="Baixar julgamentos salvos do Teste A/B (mascara LGPD aplicada)">📥 Exportar JSONL ({n_julg})</a>'
+                  if n_julg else "")
     content = f"""
     <div class="card" style="max-width:100%">
-      <h3 style="margin-top:0">Teste A/B entre Modelos</h3>
-      <p class="muted">Reexecute ate 10 perguntas do feedback contra um modelo diferente para comparar a qualidade das respostas.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin-top:0">Teste A/B entre Modelos</h3>
+        {export_btn}
+      </div>
+      <p class="muted">Compare a qualidade de dois modelos nas MESMAS perguntas. Selecione até <b>10 por execução</b> — cada uma roda o agente completo (conectores + RAG + LLM) e depois o juiz avalia. Navegue pela paginação para ver mais perguntas.</p>
       {aviso}
       <form method="post">
         {templates.csrf_field()}
         <h4>1. Selecione os feedbacks para testar</h4>
-        <div style=\"margin-bottom:8px\">{filtro_links}</div>
+        <div style="margin-bottom:8px">{filtro_links}</div>
         <table>
-        <thead><tr><th style="width:30px"><input type="checkbox" id="sel-todos" onchange="var c=this.checked;document.querySelectorAll('[name=selecionados]').forEach(function(e){{e.checked=c}})" style="width:auto;margin:0"></th><th>Pergunta</th><th>Tipo</th><th>Resposta original</th></tr></thead>
+        <thead><tr><th style="width:30px"><input type="checkbox" id="sel-todos" onchange="selTodos(this)" style="width:auto;margin:0"></th><th>Pergunta</th><th>Tipo</th><th>Resposta original</th></tr></thead>
         <tbody>{fb_opts or '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">Nenhum feedback encontrado. Faca perguntas no Chat primeiro.</td></tr>'}</tbody>
         </table>
+        {pag_btns}
         <h4 style="margin-top:18px">2. Modelo alvo para o teste</h4>
         <select name="modelo_alvo" style="max-width:400px">
           <option value="">-- selecione --</option>
@@ -2648,8 +2707,69 @@ def teste_ab():
         </select>
         <div style="margin-top:18px"><button class="btn btn-spin" type="submit" {"disabled" if len(modelos) < 2 else ""} onclick="this.classList.add('loading');this.innerHTML='⏳ Executando...'">Executar Teste A/B</button></div>
       </form>
-    </div>"""
+    </div>
+    <script>
+    function limiteSel(el){{
+      var c=document.querySelectorAll('[name=selecionados]:checked').length;
+      if(c>10){{el.checked=false;alert('Máximo de 10 selecionados por execução.');return}}
+    }}
+    function selTodos(el){{
+      var cbs=document.querySelectorAll('[name=selecionados]');
+      if(el.checked){{
+        var n=0;
+        for(var i=0;i<cbs.length&&n<10;i++){{cbs[i].checked=true;n++}}
+      }}else{{for(var i=0;i<cbs.length;i++){{cbs[i].checked=false}}}}
+    }}
+    var cbs=document.querySelectorAll('[name=selecionados]');
+    for(var i=0;i<cbs.length;i++){{cbs[i].setAttribute('onchange','limiteSel(this)')}}
+    </script>"""
     return templates.page("Teste A/B", content, active="teste_ab", user=u)
+
+
+@bp.route("/teste-ab/exportar-jsonl")
+@auth.login_required
+def teste_ab_exportar_jsonl():
+    """Exporta julgamentos salvos do Teste A/B como JSONL (mascara LGPD aplicada).
+
+    Formato rico (benchmark): pergunta, respostas A/B, voto, justificativa,
+    modelos. Se quiser treinar (SFT/DPO), converte chosen/rejected do voto.
+    """
+    u = _user()
+    papel = (u or {}).get("papel", "")
+    if papel not in ("admin", "gestor"):
+        flash("Acesso restrito a administradores e gestores.", "bad")
+        return redirect(url_for("portal.monitorar"))
+    julgamentos = db.listar_julgamentos()
+    if not julgamentos:
+        flash("Nenhum julgamento salvo para exportar.", "warn")
+        return redirect(url_for("portal.teste_ab"))
+    from . import mask as _mask
+    lgpd_cfg = db.carregar_lgpd_config()
+    linhas = []
+    for j in julgamentos:
+        linhas.append({
+            "pergunta": _mask.aplicar_mascaras(j.get("pergunta", ""), lgpd_cfg),
+            "resposta_original": _mask.aplicar_mascaras(j.get("resposta_a", ""), lgpd_cfg),
+            "resposta_novo_modelo": _mask.aplicar_mascaras(j.get("resposta_b", ""), lgpd_cfg),
+            "voto": j.get("voto", "EMPATE"),
+            "justificativa": _mask.aplicar_mascaras(j.get("justificativa", ""), lgpd_cfg),
+            "modelo_original": j.get("modelo_a", ""),
+            "modelo_novo": j.get("modelo_b", ""),
+            "modelo_juiz": j.get("modelo_juiz", ""),
+            "criado_por": j.get("criado_por", ""),
+            "criado_em": j.get("criado_em", ""),
+        })
+    from datetime import datetime as _dt
+    nome = f"teste_ab_julgamentos_{_dt.now().strftime('%Y%m%d')}.jsonl"
+    corpo = "\n".join(json.dumps(l, ensure_ascii=False) for l in linhas) + "\n"
+    resp = make_response(corpo)
+    resp.mimetype = "application/jsonl"
+    resp.headers["Content-Disposition"] = f'attachment; filename="{nome}"'
+    db.registrar_auditoria(
+        u["login"], u["papel"], "teste_ab_exportar",
+        alvo=f"{len(linhas)} julgamentos", ip=request.remote_addr or "",
+    )
+    return resp
 
 
 @bp.route("/lgpd", methods=["GET", "POST"])

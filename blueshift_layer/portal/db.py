@@ -353,6 +353,20 @@ def init_db() -> None:
                 ('retencao_auditoria', '90'),
                 ('retencao_tracing', '180'),
                 ('retencao_memorias', '365');
+            CREATE TABLE IF NOT EXISTS teste_ab (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                pergunta        TEXT NOT NULL,
+                resposta_a      TEXT NOT NULL DEFAULT '',
+                resposta_b      TEXT NOT NULL DEFAULT '',
+                modelo_a        TEXT NOT NULL DEFAULT '',
+                modelo_b        TEXT NOT NULL DEFAULT '',
+                voto            TEXT NOT NULL DEFAULT 'EMPATE',  -- A | B | EMPATE
+                justificativa   TEXT NOT NULL DEFAULT '',
+                modelo_juiz     TEXT NOT NULL DEFAULT '',
+                criado_por      TEXT NOT NULL DEFAULT '',
+                criado_em       TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_teste_ab_criado ON teste_ab(criado_em);
             """
         )
     # Migração idempotente: garante colunas novas em DBs já existentes
@@ -787,6 +801,36 @@ def buscar_feedback(fid: int) -> dict | None:
     return dict(row) if row else None
 
 
+# --- Teste A/B — julgamentos salvos (fonte p/ fine-tuning / benchmark) -------
+
+def salvar_julgamento(pergunta, resposta_a, resposta_b, modelo_a, modelo_b,
+                      voto, justificativa, modelo_juiz, criado_por) -> int:
+    """Salva um veredito do Teste A/B (A/B/EMPATE) com as duas respostas."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO teste_ab
+               (pergunta, resposta_a, resposta_b, modelo_a, modelo_b, voto,
+                justificativa, modelo_juiz, criado_por, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (pergunta, resposta_a, resposta_b, modelo_a, modelo_b,
+             voto, justificativa, modelo_juiz, criado_por, now_iso()))
+        return cur.lastrowid
+
+
+def listar_julgamentos(limite: int = 1000) -> list[dict]:
+    """Lista julgamentos salvos (mais recentes primeiro)."""
+    with get_conn() as conn:
+        rows = _rows(conn, "SELECT * FROM teste_ab ORDER BY id DESC LIMIT ?", (limite,))
+    return [dict(r) for r in rows]
+
+
+def contar_julgamentos() -> int:
+    """Total de julgamentos salvos (para exibir o botao de export)."""
+    with get_conn() as conn:
+        r = _row(conn, "SELECT COUNT(*) AS n FROM teste_ab")
+        return r["n"] or 0
+
+
 def verificar_pergunta_repetida(agente_id: int, pergunta: str,
                                 limite_minutos: int = 5) -> dict | None:
     """Detecta se a mesma pergunta foi feita recentemente (feedback implicito).
@@ -815,18 +859,25 @@ def verificar_pergunta_repetida(agente_id: int, pergunta: str,
 
 
 def listar_feedback(agente_id: int | None = None,
-                    limite: int = 100) -> list[dict]:
+                    limite: int = 100, offset: int = 0) -> list[dict]:
     """Lista feedbacks recentes, opcionalmente filtrados por agente."""
     sql = "SELECT * FROM feedback"
     params: list = []
     if agente_id:
         sql += " WHERE agente_id=?"
         params.append(agente_id)
-    sql += " ORDER BY id DESC LIMIT ?"
-    params.append(limite)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limite, offset])
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
+
+
+def contar_feedback() -> int:
+    """Total de feedbacks registrados (para paginacao do Teste A/B)."""
+    with get_conn() as conn:
+        r = _row(conn, "SELECT COUNT(*) AS n FROM feedback")
+        return r["n"] or 0
 
 
 # --- Metricas diarias (KPIs de observabilidade) ---------------------------------
