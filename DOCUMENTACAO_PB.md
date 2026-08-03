@@ -60,7 +60,7 @@ Módulos principais (blueshift_layer/):
 |:--------|:-----------------|
 | `portal/__init__.py` | App factory, CSRF global, CORS, retenção automática (LGPD) |
 | `portal/views.py` | Todas as rotas/telas do portal (58 rotas) |
-| `portal/db.py` | Acesso a dados (SQLite), migrações, seed demo, 22 tabelas |
+| `portal/db.py` | Acesso a dados (SQLite), migrações, seed demo, 23 tabelas |
 | `portal/auth.py` | RBAC (login_required, admin_required, api_key_required) + rate limit |
 | `portal/templates.py` | Layout (sidebar, temas claro/escuro/sistema), helpers HTML |
 | `portal/agente.py` | Orquestrador: conectores → RAG → LLM → resposta |
@@ -485,13 +485,36 @@ gestor** (validação de papel na rota).
 alvo → reexecuta cada pergunta com o modelo alvo (pipeline completo do
 agente; fallback usa o trace original se o agente foi excluído).
 
+- Limite de **10 perguntas por execução** (cada uma roda o agente completo
+  — conectores + RAG + LLM — e depois o juiz avalia; acima disso a espera
+  fica inviável). O limite vale no cliente (JS avisa no 11º) e no servidor
+  (POST com 11+ é rejeitado com aviso).
+- Lista de feedbacks **paginada em 10 por página** (padrão auditoria),
+  com filtro 👍 Úteis / 👎 Não úteis e navegação « ‹ 1 2 3 › ».
+
 **Passo 2 — Analisar:** seleciona um modelo **juiz** → o juiz compara as
 respostas A (original) e B (nova) e vota: **A, B ou EMPATE**, com
 justificativa. Colore as células (verde = venceu, vermelho = perdeu) e exibe
 badge de veredito.
 
+**Julgamentos salvos:** cada veredito é salvo automaticamente na tabela
+`teste_ab` (pergunta, respostas A/B, modelos, voto, justificativa, juiz,
+quem criou, data) — vira matéria-prima para fine-tuning e benchmark.
+
+**Exportar JSONL:** botão **📥 Exportar JSONL (N)** no topo da página
+(aparece quando há julgamentos salvos). Gera `teste_ab_julgamentos_AAAAMMDD.jsonl`
+com uma linha por julgamento:
+`pergunta`, `resposta_original`, `resposta_novo_modelo`, `voto`,
+`justificativa`, `modelo_original`, `modelo_novo`, `modelo_juiz`,
+`criado_por`, `criado_em`.
+- **Máscara LGPD aplicada** (CPF/email/telefone etc., conforme a tela LGPD)
+  — os dados são reais e podem conter dados pessoais.
+- Usos: benchmark pós-fine-tune (reexecutar as mesmas perguntas e
+  comparar) ou conversão para SFT/DPO (voto vira chosen/rejected;
+  descartar EMPATE).
+- Auditoria registra a exportação (`teste_ab_exportar`).
+
 - Requer 2+ modelos cadastrados com base_url válida.
-- Nada é salvo no banco (apenas auditoria `teste_ab`/`teste_ab_julgamento`).
 
 ### 5.19 LGPD (/portal/lgpd)
 
@@ -670,7 +693,7 @@ Detalhes:
 
 ## 10. Banco de Dados (SQLite)
 
-22 tabelas principais:
+23 tabelas principais:
 
 | Tabela | Conteúdo |
 |:-------|:---------|
@@ -695,6 +718,7 @@ Detalhes:
 | canais | Canais de integração (token próprio) |
 | sso_config | Configuração OIDC |
 | lgpd_config | Configurações LGPD (chave/valor) |
+| teste_ab | Julgamentos do Teste A/B (pergunta, respostas A/B, voto, justificativa, modelos) |
 
 Índices nas tabelas mais consultadas (auditoria, memories, knowledge).
 Backup: copiar o arquivo `portal.db` (o volume Docker `blueshift_data`
