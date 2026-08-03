@@ -376,28 +376,12 @@ def workspace():
 @bp.route("/clientes")
 @auth.login_required
 def clientes():
+    # On-premise: teoricamente 1 cliente por instalacao — sem paginacao,
+    # lista completa na tela (nao faz sentido paginar/limitar).
     rows = db.listar_clientes()
 
-    # Paginacao
-    pagina = request.args.get("pagina", 1, type=int)
-    limite = request.args.get("limite", 50, type=int)
-    if limite not in (10, 20, 50, 100, 200):
-        limite = 50
-    total = len(rows)
-    total_paginas = max(1, (total + limite - 1) // limite)
-    pagina = max(1, min(pagina, total_paginas))
-    inicio = (pagina - 1) * limite
-    fim = inicio + limite
-    pagina_atual = rows[inicio:fim]
-    limite_opts = " ".join(f'<option value="{n}" {"selected" if limite==n else ""}>{n}</option>' for n in [10,20,50,100,200])
-
-    def _url(**kw):
-        args = dict(request.args)
-        args.update(kw)
-        return url_for("portal.clientes", **args)
-
     body = ""
-    for c in pagina_atual:
+    for c in rows:
         n_user = len(db.listar_usuarios(c["id"]))
         n_age = len(db.listar_agentes(c["id"]))
         body += f"""<tr>
@@ -412,38 +396,14 @@ def clientes():
               {'suspender' if c['status']=='ativo' else 'ativar'}</a>
           </td></tr>"""
 
-    pag_btns = ""
-    if total_paginas > 1:
-        pag_btns = '<div class="paginacao" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px">'
-        pag_btns += f'<span class="muted">{inicio+1}–{min(fim, total)} de {total}</span>'
-        pag_btns += '<div style="display:flex;gap:4px">'
-        if pagina > 1:
-            pag_btns += f'<a class="btn ghost" href="{_url(pagina=1, limite=limite)}" style="padding:4px 10px;font-size:12px">«</a>'
-            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina-1, limite=limite)}" style="padding:4px 10px;font-size:12px">‹</a>'
-        for p in range(max(1, pagina-2), min(total_paginas, pagina+2)+1):
-            if p == pagina:
-                pag_btns += f'<button class="btn" style="padding:4px 10px;font-size:12px">{p}</button>'
-            else:
-                pag_btns += f'<a class="btn ghost" href="{_url(pagina=p, limite=limite)}" style="padding:4px 10px;font-size:12px">{p}</a>'
-        if pagina < total_paginas:
-            pag_btns += f'<a class="btn ghost" href="{_url(pagina=pagina+1, limite=limite)}" style="padding:4px 10px;font-size:12px">›</a>'
-            pag_btns += f'<a class="btn ghost" href="{_url(pagina=total_paginas, limite=limite)}" style="padding:4px 10px;font-size:12px">»</a>'
-        pag_btns += '</div></div>'
-
     tabela = f"""<table><thead><tr><th>Cliente</th><th>Código</th><th>Email</th><th>Status</th><th>Composição</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhum cliente.</td></tr>'}</tbody></table>{pag_btns}"""
+      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhum cliente.</td></tr>'}</tbody></table>"""
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="muted">Gerencie e cadastre os clientes da plataforma.</div>
       <a class="btn" href="{url_for('portal.cliente_novo')}">+ Cadastrar cliente</a>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:8px">
-      <div class="muted" style="font-size:13px">{total} memória(s) registrada(s)</div>
-      <div><label style="font-size:12px">Por página</label>
-        <select onchange="var u=new URL(location.href);u.searchParams.set('limite',this.value);u.searchParams.set('pagina','1');location.href=u.toString()" style="font-size:12px;padding:3px 6px">
-          {limite_opts}
-        </select></div>
-    </div>
+    <div class="muted" style="font-size:13px;margin-bottom:8px">{len(rows)} cliente(s) cadastrado(s)</div>
     {tabela}"""
     return templates.page("Clientes", content, active="clientes", user=_user())
 
