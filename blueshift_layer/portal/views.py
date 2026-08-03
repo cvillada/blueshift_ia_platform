@@ -1436,7 +1436,7 @@ def conectores():
           <label>URL</label><input name="api_url" placeholder="https://api.exemplo.com/v1/dados">
           <div class="form-row">
             <div><label>Método</label><select name="api_method"><option value="GET">GET</option><option value="POST">POST</option></select></div>
-            <div><label>Headers (JSON) ⓘ</label><input name="api_headers" placeholder='{{"User-Agent": "Mozilla/5.0"}}' title='Exemplo: {{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}'></div>
+            <div><label>Headers (JSON) <span class="info-tip" title='{{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}' style="cursor:help;color:var(--muted);font-size:13px">ⓘ</span></label><input name="api_headers" placeholder='{{"User-Agent": "Mozilla/5.0"}}'></div>
           </div>
           <label>Body (JSON, só POST)</label><input name="api_body" placeholder='{{"id": "{{id_cliente}}"}}'>
         </div>
