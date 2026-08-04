@@ -4182,6 +4182,27 @@ def atualizacoes():
       <span class="badge warn">⚠️ não configurada</span>
       <p class="muted" style="font-size:11px;margin-top:8px">Defina a variável <code>BLUESHIFT_LICENSE</code> na instalação para ativar a plataforma.</p>
     </div>"""
+    # ── Configuracao de ambiente (roteamento + areas) ──
+    _router_env = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "").strip()
+    if _router_env.isdigit():
+        _rm = db.buscar_modelo(int(_router_env))
+        _router_txt = (f"{_rm['nome']} ({_rm['modelo']}) — id {_router_env}" if _rm
+                       else f"id {_router_env} (não encontrado)")
+    elif _router_env:
+        _router_txt = _router_env
+    else:
+        _router_txt = "modelo principal de cada agente (padrão)"
+    _areas_txt = ", ".join(listar_areas()) or "(nenhuma)"
+    card_ambiente = f"""
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Configuração de ambiente</h3>
+      <div style="font-size:13px;line-height:1.8">
+        <div><span class="muted">Modelo de roteamento de conectores:</span> <b>{templates.h(_router_txt)}</b>
+          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_ROUTER_MODEL</code> — a IA que decide qual conector usar em cada pergunta</div></div>
+        <div style="margin-top:6px"><span class="muted">Áreas configuradas:</span> {templates.h(_areas_txt)}
+          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_AREAS</code> — departamentos do Workspace</div></div>
+      </div>
+    </div>"""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Update Channel (canal aprovado)</h3>
@@ -4201,6 +4222,7 @@ def atualizacoes():
       é feito via <code>pip install blueshift-layer==versao</code> (dry-run em dev).
     </div>
     {card_licenca}
+    {card_ambiente}
     """
     return templates.page("Atualizações", content, active="atualizacoes", user=_user())
 

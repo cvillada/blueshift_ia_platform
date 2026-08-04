@@ -167,7 +167,11 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 
 - **Modelo principal + fallback automático** — se o endpoint principal falha, tenta o secundário
 - **Skills do catálogo** — skills reutilizáveis por área
-- **Conectores da área** — executa automaticamente as fontes externas configuradas
+- **Conectores da área com ROTEAMENTO inteligente** — uma IA curta decide
+  qual conector é relevante para cada pergunta (ou nenhum): pergunta de
+  norma/política responde só com a Base de Conhecimento; pergunta que cita
+  um conector (ex: "CEP") executa só ele. Configurável via
+  `BLUESHIFT_ROUTER_MODEL` (recomendado: hermes-3-llama-3.1-8b local)
 - **Contexto dinâmico** — RAG (memória + knowledge) + dados de conectores injetados no prompt
 - **Teste em tempo real** — tela de teste com RAG + LLM real
 
@@ -294,6 +298,33 @@ volta a valer.
 ```bash
 # Exemplo: subir o portal limpo para um cliente
 BLUESHIFT_SEED_DEMO=0 blueshift portal --port 8080
+```
+
+### Variáveis de ambiente
+
+A configuração da instalação vive em variáveis de ambiente. O arquivo
+[`.env.example`](.env.example) traz todas com comentários — copie para
+`.env` antes de instalar. O `docker-compose.yml` usa as mesmas variáveis
+(com defaults), e a tela **Atualizações** do portal mostra as principais
+(card "Configuração de ambiente").
+
+| Variável | Padrão | Efeito |
+|:---------|:-------|:-------|
+| `BLUESHIFT_LICENSE` | vazio | Chave de ativação (validada no boot) |
+| `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | Áreas do Workspace |
+| `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo (setup inicial) |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores (id); vazio = principal do agente; recomendado 2 (hermes-3-llama-3.1-8b local) |
+| `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
+| `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
+| `BLUESHIFT_DEV` | 1 | Modo dev (licença BS-DEV-*) |
+| `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |
+
+Sem Docker (CLI direta), carregue o `.env` e suba:
+
+```bash
+cd blueshift_ia_platform
+set -a; . ./.env; set +a
+blueshift portal --port 8080
 ```
 
 ---

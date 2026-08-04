@@ -120,9 +120,17 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_PORTAL_SECRET` | aleatório | Secret key das sessões |
 | `BLUESHIFT_PORTAL_SECURE` | vazio | `1/true` → cookie Secure (HTTPS) |
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | Áreas disponíveis |
+| `BLUESHIFT_LICENSE` | vazio | Chave de ativação da instalação (validada no boot) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
+| `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: id de um modelo cadastrado; vazio = modelo principal de cada agente; recomendado modelo local rápido (2 = hermes-3-llama-3.1-8b) |
+| `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo → primeira entrada vira Configuração inicial (cliente final) |
 | `BLUESHIFT_DEV` | 1 no Docker | Modo dev (licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |
+
+> O `.env.example` da raiz traz todas as variáveis com comentários — copie
+> para `.env` antes de instalar. Sem Docker: `set -a; . ./.env; set +a` e
+> rode `blueshift portal`.
 
 ---
 
@@ -260,6 +268,17 @@ aqui: cadastre um modelo em Modelos IA"** (com link) e o item vira
 **Ordem de configuração (menu Cadastros):** Clientes → Usuários → Modelos IA →
 Skills → Agentes → Conectores → Canais — o menu segue a sequência de
 montagem (base → modelo/skills → agente → entrega).
+
+**Roteamento inteligente de conectores:** antes de executar os conectores
+da área, uma IA curta (a mesma do agente, ou a apontada por
+`BLUESHIFT_ROUTER_MODEL`) decide QUAL conector é relevante para a pergunta
+— ou nenhum. Pergunta de norma/política → responde só com a Base de
+Conhecimento (RAG), sem tocar nos conectores. Pergunta que cita um
+conector (ex: "CEP", "hospedagem") → executa só ele. Voto majoritário de
+3 tentativas; se a seleção falhar ou for ambígua, executa todos os
+conectores da área (comportamento seguro — nunca deixa o agente sem
+dados). A tela Atualizações mostra o modelo de roteamento e as áreas
+configuradas (card "Configuração de ambiente").
 
 **Importante:** os conectores do agente são herdados automaticamente da
 **área** dele (não há mais checkboxes de ERP/CRM/RH no formulário).
