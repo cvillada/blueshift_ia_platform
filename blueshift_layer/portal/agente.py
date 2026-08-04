@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import json as _json
 from pathlib import Path
 
 from . import db, memory, llm_client
@@ -146,6 +147,57 @@ def _skills_text(skills_csv: str) -> str:
     return "\n".join(partes)
 
 
+def _placeholders_conectores(conectores: list[dict], ids: list[int] | None) -> set[str]:
+    """Reune os placeholders {param} usados pelos conectores escolhidos."""
+    import re as _re
+    from ..connector_pack import registry as _reg
+    ph: set[str] = set()
+    for c in conectores:
+        if ids is not None and c["id"] not in ids:
+            continue
+        cfg = _reg._parse_config(c.get("config", "{}"))
+        ph.update(_re.findall(r"\{(\w+)\}", _json.dumps(cfg, ensure_ascii=False)))
+    return ph
+
+
+def _extrair_parametros_ia(pergunta: str, placeholders: set[str],
+                           modelo: dict) -> dict | None:
+    """Extrai parametros da pergunta via IA (linguagem natural).
+
+    Complementa o regex _extrair_parametros: cobre variacoes que o regex
+    nao reconhece (ex: \"id cliente igual a 58\"). Retorna dict ou None
+    (falha — o chamador mantem o regex como fallback).
+    """
+    if not placeholders:
+        return None
+    lista = ", ".join(sorted(placeholders))
+    from . import llm_client
+    mensagens = [
+        {"role": "system", "content": (
+            "Voce extrai parametros de uma pergunta do usuario para chamadas "
+            "de ferramentas. Retorne APENAS um JSON valido com os valores "
+            "encontrados (strings). Se nenhum parametro for encontrado, "
+            "retorne {}.")},
+        {"role": "user", "content": f"Pergunta: {pergunta}\n\nParametros disponiveis: {lista}\n\nJSON:"},
+    ]
+    out = llm_client.chat(modelo, mensagens, max_tokens=100, temperatura=0.0)
+    if not out.get("ok"):
+        return None
+    texto = (out.get("content") or "").strip()
+    # limpa cercas ```json ... ```
+    import re as _re
+    m = _re.search(r"\{.*\}", texto, _re.DOTALL)
+    if not m:
+        return None
+    try:
+        dados = _json.loads(m.group(0))
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(dados, dict):
+        return None
+    return {str(k): str(v) for k, v in dados.items() if v is not None and str(v).strip()}
+
+
 def _selecionar_conectores(pergunta: str, conectores: list[dict],
                            modelo_roteador: dict) -> list[int] | None:
     """Roteia conectores por relevancia via LLM (a mesma IA do agente).
@@ -256,6 +308,15 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             modelo_roteador = modelo_roteador or modelo
             conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
             somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
+            # B: IA completa parametros que o regex nao pegou (ex: "id cliente
+            # igual a 58") — usa os placeholders dos conectores escolhidos
+            if somente_ids:
+                ph = _placeholders_conectores(conectores_area, somente_ids)
+                params_ia = _extrair_parametros_ia(pergunta, ph, modelo_roteador)
+                if params_ia:
+                    for k, v in params_ia.items():
+                        if k in ph and k not in params:
+                            params[k] = v
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
                 somente_ids=somente_ids,
@@ -303,6 +364,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                           f"args={f.get('args')} -> {f.get('resultado')}")
         if blocos:
             system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+    if not tem_dados_vivos:
+        # C: guardrail anti-alucinacao — conectores rodaram sem dados vivos
+        system += (
+            "\nSe a informacao pedida nao estiver nos dados acima, NAO invente "
+            "valores (datas, nomes, numeros, IDs). Responda que nao encontrou "
+            "a informacao e sugira reformular (ex: informar id_cliente=58).\n"
+        )
     system += (
         "CONTEXTO (base de conhecimento — FONTE SECUNDARIA, pode estar desatualizado):\n"
         + ("\n".join(f"- {c['texto']}" for c in contexto) or "(vazio)")

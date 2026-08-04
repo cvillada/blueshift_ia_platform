@@ -172,6 +172,10 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
   norma/política responde só com a Base de Conhecimento; pergunta que cita
   um conector (ex: "CEP") executa só ele. Configurável via
   `BLUESHIFT_ROUTER_MODEL` (recomendado: hermes-3-llama-3.1-8b local)
+- **Extração de parâmetros por IA** — a IA extrai as chaves da pergunta em
+  linguagem natural ("id cliente igual a 58" → `customer_id='58'`), para
+  todos os tipos de conector (API/MCP/SQL) + anti-alucinação: sem dados,
+  o agente diz "não encontrei" em vez de inventar
 - **Contexto dinâmico** — RAG (memória + knowledge) + dados de conectores injetados no prompt
 - **Teste em tempo real** — tela de teste com RAG + LLM real
 

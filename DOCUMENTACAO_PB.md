@@ -280,6 +280,18 @@ conectores da área (comportamento seguro — nunca deixa o agente sem
 dados). A tela Atualizações mostra o modelo de roteamento e as áreas
 configuradas (card "Configuração de ambiente").
 
+**Extração de parâmetros por IA:** além do reconhecimento automático de
+padrões (códigos como `C001`, `id_cliente=58`, e-mails, datas), a IA
+também extrai os parâmetros da pergunta em linguagem natural (ex:
+"id cliente igual a 58" → `customer_id='58'`). Vale para **todos os tipos
+de conector** (API — URL/headers/body, MCP — args, SQL — WHERE), que
+usam o mesmo mecanismo de placeholders `{param}`.
+
+**Anti-alucinação:** quando os conectores retornam sem dados vivos, o
+agente é instruído a NÃO inventar valores (datas, nomes, números, IDs) —
+responde "não encontrei" e sugere reformular a pergunta (ex: informar
+`id_cliente=58`).
+
 **Importante:** os conectores do agente são herdados automaticamente da
 **área** dele (não há mais checkboxes de ERP/CRM/RH no formulário).
 
