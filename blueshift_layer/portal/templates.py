@@ -221,9 +221,7 @@ def _nav(active: str, user: dict | None) -> str:
     links += ('<hr style="border-color:var(--line-soft);margin:8px 0 4px">'
               '<a class="navlink" href="#" onclick="abrirAjuda();return false" title="Ajuda (documentação)">'
               f'<span class="nav-icon">{ICONS.get("ajuda", chr(0x2753))}</span>'
-              '<span class="nav-label">Ajuda</span></a>'
-              '<hr style="border-color:var(--line-soft);margin:4px 0 8px">'
-              '<div class="sidebar-by">By: Nei</div>')
+              '<span class="nav-label">Ajuda</span></a>')
 
     return '<nav class="sidebar" id="sidebar">' + links + "</nav>"
 
