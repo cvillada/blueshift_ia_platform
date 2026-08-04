@@ -123,7 +123,7 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_LICENSE` | vazio | Chave de ativação da instalação (validada no boot) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
 | `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
-| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: id de um modelo cadastrado; vazio = modelo principal de cada agente; recomendado modelo local rápido (2 = hermes-3-llama-3.1-8b) |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente; recomendado modelo local rápido (hermes-3-llama-3.1-8b) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo → primeira entrada vira Configuração inicial (cliente final) |
 | `BLUESHIFT_DEV` | 1 no Docker | Modo dev (licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |

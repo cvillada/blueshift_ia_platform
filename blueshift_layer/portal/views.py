@@ -3533,6 +3533,7 @@ def modelos():
     for m in rows:
         badge = templates.badge("online" if m["online"] else "offline")
         body += f"""<tr>
+          <td class="muted" style="font-size:12px">{m['id']}</td>
           <td><b>{m['nome']}</b></td>
           <td>{templates.badge(m['tipo'])}</td>
           <td class="muted">{m['base_url']}</td>
@@ -3543,8 +3544,8 @@ def modelos():
             <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {m['nome']}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Status</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=5 class="empty">Nenhum modelo cadastrado.</td></tr>'}</tbody></table>"""
+    tabela = f"""<table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Status</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhum modelo cadastrado.</td></tr>'}</tbody></table>"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
       Cadastro de LLMs por cliente (OpenAI-compatible: LM Studio, vLLM, Ollama). O chat de teste usa estes modelos.
@@ -4189,7 +4190,10 @@ def atualizacoes():
         _router_txt = (f"{_rm['nome']} ({_rm['modelo']}) — id {_router_env}" if _rm
                        else f"id {_router_env} (não encontrado)")
     elif _router_env:
-        _router_txt = _router_env
+        _rm = next((m for m in db.listar_modelos()
+                    if m["nome"].lower() == _router_env.lower()), None)
+        _router_txt = (f"{_rm['nome']} ({_rm['modelo']})" if _rm
+                       else f"{_router_env} (não encontrado)")
     else:
         _router_txt = "modelo principal de cada agente (padrão)"
     _areas_txt = ", ".join(listar_areas()) or "(nenhuma)"
@@ -4198,7 +4202,7 @@ def atualizacoes():
       <h3 style="margin-top:0">Configuração de ambiente</h3>
       <div style="font-size:13px;line-height:1.8">
         <div><span class="muted">Modelo de roteamento de conectores:</span> <b>{templates.h(_router_txt)}</b>
-          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_ROUTER_MODEL</code> — a IA que decide qual conector usar em cada pergunta</div></div>
+          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_ROUTER_MODEL</code> (id ou nome — o nome é o que aparece na tela Modelos IA)</div></div>
         <div style="margin-top:6px"><span class="muted">Áreas configuradas:</span> {templates.h(_areas_txt)}
           <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_AREAS</code> — departamentos do Workspace</div></div>
       </div>

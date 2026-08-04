@@ -241,11 +241,19 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             from ..connector_pack import registry
             params = _extrair_parametros(pergunta)
             # ── Roteamento inteligente: a IA escolhe QUAIS conectores usar ──
-            # (env BLUESHIFT_ROUTER_MODEL aponta um modelo barato p/ rotear;
-            #  padrao: o proprio modelo principal do agente — max_tokens 30)
+            # (env BLUESHIFT_ROUTER_MODEL aceita o ID ou o NOME do modelo —
+            #  o nome e o que aparece na tela Modelos IA; vazio = principal)
             import os as _os
-            _router_id = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "")
-            modelo_roteador = db.buscar_modelo(int(_router_id)) if _router_id.isdigit() else modelo
+            _router_id = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "").strip()
+            if _router_id.isdigit():
+                modelo_roteador = db.buscar_modelo(int(_router_id))
+            elif _router_id:
+                modelo_roteador = next(
+                    (m for m in db.listar_modelos()
+                     if m["nome"].lower() == _router_id.lower()), None)
+            else:
+                modelo_roteador = None
+            modelo_roteador = modelo_roteador or modelo
             conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
             somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
             ferramentas = registry.executar_conectores_area(

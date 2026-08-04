@@ -313,7 +313,7 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 | `BLUESHIFT_LICENSE` | vazio | Chave de ativação (validada no boot) |
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | Áreas do Workspace |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo (setup inicial) |
-| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores (id); vazio = principal do agente; recomendado 2 (hermes-3-llama-3.1-8b local) |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome aparece na tela Modelos IA); vazio = principal do agente; recomendado `hermes-3-llama-3.1-8b` (local) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
 | `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
 | `BLUESHIFT_DEV` | 1 | Modo dev (licença BS-DEV-*) |
