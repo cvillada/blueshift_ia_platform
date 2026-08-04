@@ -223,7 +223,7 @@ Ações admin-only. Auditoria registra criar/editar/alternar cliente.
 
 | Campo | Obrigatório | Exemplo | Dica |
 |:------|:-----------:|:--------|:-----|
-| Cliente | ✅ | XPTO Seguros (Piloto) | Empresa dona do usuário |
+| Cliente | ✅ | XPTO Seguros (Piloto) | Já vem selecionado (primeira empresa cadastrada — on-premise) |
 | Nome | ✅ | `Ana Suporte` | Nome completo |
 | Login | ✅ | `ana` | Único no sistema |
 | Senha | ✅ (novo) / ❌ (editar) | `••••••` | Em branco no editar = mantém atual |
@@ -239,7 +239,7 @@ suspenso, o usuário não consegue logar). Auditoria registra as ações.
 
 | Campo | Obrigatório | Exemplo | Dica |
 |:------|:-----------:|:--------|:-----|
-| Cliente | ✅ | XPTO Seguros (Piloto) | |
+| Cliente | ✅ | XPTO Seguros (Piloto) | Já vem selecionado (primeira empresa) |
 | Nome do agente | ✅ | `Agente Vendas` | |
 | Área | ✅ | `vendas` | Define quais conectores o agente enxerga |
 | Modelo de IA (principal) | ✅ | `bonsai-8b` | Modelo cadastrado em Modelos IA |
@@ -250,6 +250,16 @@ suspenso, o usuário não consegue logar). Auditoria registra as ações.
 
 Ações: **testar** (chat de teste com o pipeline completo: conectores → RAG →
 LLM, com 👍/👎 feedback e 🔍 rastreio), **editar**, **excluir**.
+
+**Checklist contextual (topo da página Agentes):** a plataforma mostra o que
+o agente precisa, na ordem de configuração — `✓ Modelo IA (N)` · `Skills: N` ·
+`Conectores: N`. Sem nenhum modelo cadastrado, aparece o aviso **"Comece por
+aqui: cadastre um modelo em Modelos IA"** (com link) e o item vira
+`✗ Modelo IA — cadastre aqui`.
+
+**Ordem de configuração (menu Cadastros):** Clientes → Usuários → Modelos IA →
+Skills → Agentes → Conectores → Canais — o menu segue a sequência de
+montagem (base → modelo/skills → agente → entrega).
 
 **Importante:** os conectores do agente são herdados automaticamente da
 **área** dele (não há mais checkboxes de ERP/CRM/RH no formulário).
@@ -311,7 +321,7 @@ Campos comuns:
 
 | Campo | Obrigatório | Exemplo |
 |:------|:-----------:|:--------|
-| Cliente | ✅ | XPTO Seguros (Piloto) |
+| Cliente | ✅ | XPTO Seguros (Piloto) — já vem selecionado (primeira empresa) |
 | Área | ✅ | `vendas` |
 | Nome | ✅ | `API Câmbio` |
 | Tipo | ✅ | `api` / `mcp` / `sql` |
