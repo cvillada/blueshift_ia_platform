@@ -264,7 +264,36 @@ blueshift activate BS-DEV-teste123   # deve mostrar LICENSE OK
 # 5. Suba o Portal
 blueshift portal --port 8080
 # Acesse: http://localhost:8080/portal
-# Login: admin / admin123
+# Modo desenvolvimento (BLUESHIFT_SEED_DEMO=1): Login: admin / admin123
+# Cliente final (BLUESHIFT_SEED_DEMO=0): veja "Primeira instalação" abaixo
+```
+
+### Primeira instalação (cliente final)
+
+A plataforma nasce com **banco limpo**: nenhuma empresa, nenhum usuário,
+nenhum dado demo. Quem instala controla isso pela variável
+`BLUESHIFT_SEED_DEMO` (default `1` para desenvolvimento — cria dados de
+exemplo XPTO; defina `0` para o cliente final não receber nada).
+
+Com o banco limpo, o primeiro acesso acontece assim:
+
+1. Abra `http://localhost:8080/portal` (ou a porta/URL do deploy)
+2. A tela de login vira um formulário de **Configuração inicial**
+3. O cliente cadastra:
+   - a própria **empresa** (nome, código, razão social, e-mail)
+   - o **administrador inicial** (nome, login, senha — mínimo 6 caracteres)
+4. Ao salvar, o portal autentica automaticamente e cai no Monitorar
+
+Depois disso, o formulário de Configuração inicial **some para sempre** —
+ninguém mais consegue reabrir o setup (só existe um admin). O login normal
+volta a valer.
+
+> ⚠️ Por segurança, em instalação de cliente final use sempre
+> `BLUESHIFT_SEED_DEMO=0` e troque a senha do admin periodicamente.
+
+```bash
+# Exemplo: subir o portal limpo para um cliente
+BLUESHIFT_SEED_DEMO=0 blueshift portal --port 8080
 ```
 
 ---
