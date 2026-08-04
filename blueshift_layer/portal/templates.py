@@ -74,6 +74,90 @@ function toggleTemaMenu(e){e.stopPropagation();var m=document.getElementById("th
 document.addEventListener("click",function(e){var m=document.getElementById("theme-menu");if(m&&!e.target.closest(".theme-wrap"))m.classList.remove("show")})
 window.addEventListener("load",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}aplicarTema(t);var i=document.getElementById("theme-icon");if(i)i.textContent=temaIcone(t)})
 if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEventListener("change",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}if(t==="system")aplicarTema("system")})}
+function escFluxo(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function abrirFluxo(d){
+  var skills=(d.skills&&d.skills.length)?d.skills:[];
+  var conns=(d.conectores&&d.conectores.length)?d.conectores:[];
+  var n=Math.max(skills.length,conns.length,1);
+  var H=150+n*92;
+  var C={ent:"#3b82f6",llm:"#f59e0b",skill:"#22c55e",res:"#e879f9",conn:"#38bdf8",mut:"#aab6d4"};
+  var wEnt=100,wConn=140,wLlm=140,wSki=140,wRes=110,wEnv=80,gap=36;
+  var xEnt=16;
+  var xConn=xEnt+wEnt+gap;
+  var xLlm=conns.length?xConn+wConn+gap:xEnt+wEnt+gap;
+  var xSki=xLlm+wLlm+gap;
+  var xRes=skills.length?xSki+wSki+gap:xLlm+wLlm+gap;
+  var xEnv=xRes+wRes+gap;
+  var W=xEnv+wEnv+16;
+  var cy=H/2;
+  var nodes=[],edges=[],map={},seq=0;
+  function addNode(x,y,w,h,cor,icone,titulo,sub){
+    var id="n"+(seq++); var o={id:id,x:x,y:y,w:w,h:h,cor:cor,icone:icone,titulo:titulo,sub:sub||"",el:null};
+    nodes.push(o); map[id]=o; return o;
+  }
+  function addEdge(from,to){edges.push({from:from.id,to:to.id,el:null});}
+  var nEnt=addNode(xEnt,cy-38,wEnt,76,C.ent,"💬","Entrada","Chat / API");
+  var nCon=[],nSki=[];
+  if(conns.length){var yc0=cy-((conns.length*58-16)/2);for(var i=0;i<conns.length;i++){nCon.push(addNode(xConn,yc0+i*58,wConn,50,C.conn,"🔌",conns[i].nome,conns[i].tipo));}}
+  var nLlm=addNode(xLlm,cy-40,wLlm,80,C.llm,"🧠","LLM",d.modelo+(d.fallback?" · fb: "+d.fallback:""));
+  if(skills.length){var ys0=cy-((skills.length*56-14)/2);for(var i=0;i<skills.length;i++){nSki.push(addNode(xSki,ys0+i*56,wSki,42,C.skill,"⚙️",skills[i],""));}}
+  var nRes=addNode(xRes,cy-38,wRes,76,C.res,"📤","Resposta","final");
+  var nEnv=addNode(xEnv,cy-38,wEnv,76,C.ent,"📡","Envio","Chat/API");
+  if(nCon.length){for(var i=0;i<nCon.length;i++){addEdge(nEnt,nCon[i]);addEdge(nCon[i],nLlm);}}
+  else{addEdge(nEnt,nLlm);}
+  if(nSki.length){for(var i=0;i<nSki.length;i++){addEdge(nLlm,nSki[i]);addEdge(nSki[i],nRes);}}
+  else{addEdge(nLlm,nRes);}
+  addEdge(nRes,nEnv);
+  var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;min-width:'+(W*0.6)+'px">';
+  s+='<defs><marker id="mk" markerWidth="4.5" markerHeight="4.5" refX="4" refY="2.25" orient="auto"><path d="M0,0 L4.5,2.25 L0,4.5 Z" fill="'+C.mut+'"/></marker></defs>';
+  for(var i=0;i<nodes.length;i++){
+    var o=nodes[i];
+    s+='<rect id="r'+o.id+'" data-node="'+o.id+'" x="'+o.x+'" y="'+o.y+'" width="'+o.w+'" height="'+o.h+'" rx="10" fill="var(--panel2)" stroke="'+o.cor+'" stroke-width="1.5" style="cursor:move"/>';
+    if(o.sub){
+      s+='<text id="t1'+o.id+'" x="'+(o.x+o.w/2)+'" y="'+(o.y+22)+'" text-anchor="middle" font-size="13" fill="'+o.cor+'" style="pointer-events:none">'+o.icone+' '+escFluxo(o.titulo)+'</text>';
+      s+='<text id="t2'+o.id+'" x="'+(o.x+o.w/2)+'" y="'+(o.y+38)+'" text-anchor="middle" font-size="10" fill="'+C.mut+'" style="pointer-events:none">'+escFluxo(o.sub)+'</text>';
+    }else{
+      s+='<text id="t1'+o.id+'" x="'+(o.x+o.w/2)+'" y="'+(o.y+o.h/2+5)+'" text-anchor="middle" font-size="13" fill="'+o.cor+'" style="pointer-events:none">'+o.icone+' '+escFluxo(o.titulo)+'</text>';
+    }
+  }
+  for(var i=0;i<edges.length;i++){
+    var e=edges[i];var a=map[e.from],b=map[e.to];
+    s+='<path id="e'+i+'" d="M'+(a.x+a.w)+','+(a.y+a.h/2)+' L'+(b.x)+','+(b.y+b.h/2)+'" fill="none" stroke="'+C.mut+'" stroke-width="2" marker-end="url(#mk)"/>';
+  }
+  s+='</svg>';
+  var cont=document.getElementById("fluxo-conteudo");
+  cont.innerHTML=s;
+  document.getElementById("fluxo-titulo").textContent="Fluxo do agente: "+d.nome;
+  document.getElementById("fluxo-popup").style.display="flex";
+  var svg=cont.querySelector("svg");
+  for(var i=0;i<nodes.length;i++){var o=nodes[i];o.el={rect:document.getElementById("r"+o.id),t1:document.getElementById("t1"+o.id),t2:document.getElementById("t2"+o.id)};}
+  for(var i=0;i<edges.length;i++){edges[i].el=document.getElementById("e"+i);}
+  var escala=Math.max(svg.getBoundingClientRect().width,1)/W;
+  function edgeD(e){var a=map[e.from],b=map[e.to];return "M"+(a.x+a.w)+","+(a.y+a.h/2)+" L"+(b.x)+","+(b.y+b.h/2);}
+  if(!window.__fluxoDrag){
+    window.__fluxoDrag={node:null,dx:0,dy:0,escala:1,edges:[],edgeD:null};
+    document.addEventListener("mousemove",function(ev){
+      var D=window.__fluxoDrag;if(!D.node)return;
+      var o=D.node;
+      o.x=(ev.clientX-D.dx)/D.escala;o.y=(ev.clientY-D.dy)/D.escala;
+      o.el.rect.setAttribute("x",o.x);o.el.rect.setAttribute("y",o.y);
+      o.el.t1.setAttribute("x",o.x+o.w/2);o.el.t1.setAttribute("y",o.sub?(o.y+22):(o.y+o.h/2+5));
+      if(o.el.t2){o.el.t2.setAttribute("x",o.x+o.w/2);o.el.t2.setAttribute("y",o.y+38);}
+      var es=D.edges;
+      for(var i=0;i<es.length;i++){var e=es[i];if(e.from===o.id||e.to===o.id){e.el.setAttribute("d",D.edgeD(e));}}
+    });
+    document.addEventListener("mouseup",function(){if(window.__fluxoDrag)window.__fluxoDrag.node=null});
+  }
+  window.__fluxoDrag.escala=escala;
+  svg.addEventListener("mousedown",function(ev){
+    var r=ev.target;if(r.tagName!=="rect")return;
+    var o=map[r.getAttribute("data-node")];if(!o)return;
+    var D=window.__fluxoDrag;D.node=o;D.escala=escala;D.edges=edges;D.edgeD=edgeD;
+    D.dx=ev.clientX-o.x*escala;D.dy=ev.clientY-o.y*escala;
+    ev.preventDefault();
+  });
+}
+function fecharFluxo(){var p=document.getElementById("fluxo-popup");if(p)p.style.display="none"}
 </script>"""
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -121,6 +205,16 @@ if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEven
     <div style="margin-top:10px"><button class="btn" onclick="enviarAjuda()">Perguntar</button></div>
     <div id="ajuda-resposta" style="margin-top:12px"></div>
     <div class="muted" style="font-size:10px;margin-top:10px">Respostas baseadas no DOCUMENTACAO_PB.md — edite o arquivo para atualizar a ajuda.</div>
+  </div>
+</div>
+<div class="fluxo-popup" id="fluxo-popup" style="display:none" onclick="if(event.target===this)fecharFluxo()">
+  <div class="fluxo-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0" id="fluxo-titulo">Fluxo do agente</h3>
+      <button class="btn ghost" onclick="fecharFluxo()" title="Fechar">✕</button>
+    </div>
+    <div id="fluxo-conteudo" class="fluxo-canvas"></div>
+    <div class="muted" style="font-size:10px;margin-top:14px">Fluxo de execução do agente: a pergunta entra (Chat/API), o LLM processa com o modelo e as skills, e a resposta é enviada de volta (Chat/API). Dados dinâmicos deste agente.</div>
   </div>
 </div>
 </body>
@@ -376,6 +470,9 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .theme-menu a{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:8px;color:var(--txt);text-decoration:none;font-size:13px;cursor:pointer;white-space:nowrap}
 .theme-menu a:hover{background:var(--panel2)}
 .ajuda-popup{position:fixed;right:24px;bottom:24px;width:440px;max-width:calc(100vw - 40px);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:200;flex-direction:column;max-height:70vh}
+.fluxo-popup{position:fixed;inset:0;background:rgba(0,0,0,.55);align-items:center;justify-content:center;z-index:300}
+.fluxo-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(1120px,96vw);max-height:94vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.fluxo-canvas{background:radial-gradient(var(--line-soft) 1px,transparent 1px);background-size:18px 18px;border:1px solid var(--line);border-radius:10px;padding:8px;overflow-x:auto}
 .ajuda-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:move;user-select:none;font-weight:700;font-size:13px}
 .ajuda-body{padding:12px 14px;overflow-y:auto}
 .ajuda-body .ajuda-resposta{font-size:13px;line-height:1.6;white-space:pre-wrap}

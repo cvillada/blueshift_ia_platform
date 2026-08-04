@@ -359,12 +359,24 @@ def workspace():
 
     cards_agentes = ""
     for a in agentes:
+        _conns = [{"nome": c["nome"], "tipo": c["tipo"]}
+                  for c in db.listar_conectores(cliente_id=a.get("cliente_id"), area=a.get("area") or "")]
+        _fluxo = json.dumps({
+            "id": a["id"], "nome": a["nome"],
+            "modelo": a.get("modelo") or "-",
+            "fallback": a.get("modelo_secundario") or "",
+            "skills": [s.strip() for s in (a.get("skills") or "").split(",") if s.strip()],
+            "conectores": _conns,
+        }, ensure_ascii=False)
         cards_agentes += f"""
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <strong>{a['nome']}</strong>{templates.badge(a['status'])}</div>
           <div class="muted" style="font-size:12px;margin:6px 0">modelo {a['modelo']} · skills [{a['skills'] or '-'}]</div>
-          <a class="btn ghost" href="/portal/agentes/{a['id']}/testar">testar agente</a>
+          <div style="display:flex;gap:8px">
+            <a class="btn ghost" href="/portal/agentes/{a['id']}/testar">testar agente</a>
+            <button class="btn ghost" type="button" onclick='abrirFluxo({_fluxo})' title="Ver o fluxo de execução do agente">fluxo</button>
+          </div>
         </div>"""
 
     kpis = f"""
