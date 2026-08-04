@@ -37,6 +37,10 @@ services:
       # Seed demo (1 = cria dados de exemplo XPTO; 0 = banco limpo — o cliente
       # cadastra a propria empresa na tela Clientes). Usar 0 em instalacao final.
       BLUESHIFT_SEED_DEMO: "${BLUESHIFT_SEED_DEMO:-1}"
+      # Modelo de ROTEAMENTO dos conectores (qual IA escolhe a ferramenta certa).
+      # Padrao (vazio): usa o modelo principal de cada agente. Recomendado:
+      # um modelo local rapido (id 2 = hermes-3-llama-3.1-8b) — custo ~0.
+      BLUESHIFT_ROUTER_MODEL: "${BLUESHIFT_ROUTER_MODEL:-2}"
     # Sobrescreve o CMD default (blueshift status) para subir o Portal do Cliente
     command: ["blueshift", "portal"]
     volumes:

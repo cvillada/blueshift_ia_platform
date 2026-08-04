@@ -27,14 +27,17 @@ from ..portal import db
 # --------------------------------------------------------------------------- #
 
 def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
-                             parametros: dict | None = None) -> list[dict]:
-    """Executa todos os conectores ATIVOS de uma area, passando parametros.
+                             parametros: dict | None = None,
+                             somente_ids: list[int] | None = None) -> list[dict]:
+    """Executa conectores ATIVOS de uma area, passando parametros.
 
     Args:
         cliente_id: id do cliente.
         area: nome da area (vendas/suporte/...).
         pergunta: texto original para extrair parametros adicionais.
         parametros: dict opcional com parametros pre-extraidos (ex: id_cliente).
+        somente_ids: roteamento por relevancia — executa apenas os ativos
+            com id na lista. [] = nenhum (so RAG). None = todos (antigo).
 
     Returns:
         Lista de dicts {conector, tipo, tool, args, resultado, erro}.
@@ -45,6 +48,8 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
 
     for c in conectores:
         if not c.get("ativo"):
+            continue
+        if somente_ids is not None and c["id"] not in somente_ids:
             continue
         config = _parse_config(c.get("config", "{}"))
         nome = c["nome"]

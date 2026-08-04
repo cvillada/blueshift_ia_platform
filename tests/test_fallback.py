@@ -29,9 +29,13 @@ def _chatarra():
 
 def test_fallback_quando_principal_falha():
     cid, m1, m2 = _setup()
-    chamadas = {"principal": 0, "secundario": 0}
+    chamadas = {"principal": 0, "secundario": 0, "roteamento": 0}
 
-    def fake_chat(modelo, mensagens, **kw):
+    def fake_chat(modelo, mensagens, max_tokens=None, **kw):
+        if max_tokens == 100:
+            # chamada de ROTEAMENTO de conectores (max_tokens=50)
+            chamadas["roteamento"] += 1
+            return {"ok": True, "content": "nenhum", "model": modelo.get("modelo"), "error": None}
         if modelo["modelo"] == "principal-fake":
             chamadas["principal"] += 1
             return {"ok": False, "content": "", "model": "principal-fake",
@@ -49,6 +53,7 @@ def test_fallback_quando_principal_falha():
     assert agente is not None
     out = agente_mod.responder(agente, "qual o status?", "tester", id_cliente="C001")
 
+    assert chamadas["roteamento"] == 3, "roteamento deve rodar 1x (max_tokens=100)"
     assert chamadas["principal"] == 1, "deve tentar o principal"
     assert chamadas["secundario"] == 1, "deve tentar o fallback apos falha"
     assert out["ok"] is True, "fallback deve entregar resposta"
@@ -59,9 +64,12 @@ def test_fallback_quando_principal_falha():
 
 def test_sem_fallback_se_principal_ok():
     cid, m1, m2 = _setup()
-    chamadas = {"principal": 0, "secundario": 0}
+    chamadas = {"principal": 0, "secundario": 0, "roteamento": 0}
 
-    def fake_chat(modelo, mensagens, **kw):
+    def fake_chat(modelo, mensagens, max_tokens=None, **kw):
+        if max_tokens == 100:
+            chamadas["roteamento"] += 1
+            return {"ok": True, "content": "nenhum", "model": modelo.get("modelo"), "error": None}
         if modelo["modelo"] == "principal-fake":
             chamadas["principal"] += 1
             return {"ok": True, "content": "resposta principal", "model": "principal-fake", "error": None}
@@ -76,6 +84,7 @@ def test_sem_fallback_se_principal_ok():
     assert agente is not None
     out = agente_mod.responder(agente, "oi", "tester", id_cliente="C001")
 
+    assert chamadas["roteamento"] == 3
     assert chamadas["principal"] == 1
     assert chamadas["secundario"] == 0, "nao deve usar fallback se principal ok"
     assert out["model_fallback"] is False

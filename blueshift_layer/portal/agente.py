@@ -146,6 +146,68 @@ def _skills_text(skills_csv: str) -> str:
     return "\n".join(partes)
 
 
+def _selecionar_conectores(pergunta: str, conectores: list[dict],
+                           modelo_roteador: dict) -> list[int] | None:
+    """Roteia conectores por relevancia via LLM (a mesma IA do agente).
+
+    Retorno:
+      []     -> nenhum conector relevante (responde so com RAG)
+      [ids]  -> executar apenas estes conectores
+      None   -> falha na selecao -> executa TODOS (comportamento antigo)
+
+    Conectores SEM descricao nunca sao excluidos (entram sempre).
+    """
+    if not conectores:
+        return []
+    from ..connector_pack import registry as _reg
+    sempre = [c["id"] for c in conectores if not (_reg._parse_config(c.get("config", "{}")).get("descricao") or "").strip()]
+    com_desc = [c for c in conectores if (_reg._parse_config(c.get("config", "{}")).get("descricao") or "").strip()]
+    if not com_desc:
+        return [c["id"] for c in conectores]  # tudo sem descricao -> executa tudo
+    linhas = "\n".join(
+        f"{i+1}. {c['nome']} ({c['tipo']}) — {_reg._parse_config(c.get('config', '{}')).get('descricao', '')[:120]}"
+        for i, c in enumerate(com_desc)
+    )
+    from . import llm_client
+    mensagens = [
+        {"role": "system", "content": (
+            "Voce e o roteador de ferramentas de um agente de IA corporativo. "
+            "Escolha UMA opcao da lista que ajudaria a responder a pergunta "
+            "do usuario. Responda APENAS com o numero da opcao (0 se nenhuma "
+            "ajudar).")},
+        {"role": "user", "content": f"Pergunta: {pergunta}\n\nOpcoes:\n0. nenhum\n{linhas}\n\nNumero:"},
+    ]
+    out = None
+    import re as _re
+    # Voto majoritario: 3 tentativas — modelos (principalmente externos com
+    # reasoning) sao NAO-DETERMINISTICOS mesmo com temperatura 0.0. A
+    # resposta valida e a que se repete; incompreensivel/erro nao e voto.
+    votos: list = []  # "nenhum" | id(int) | None(incompreensivel)
+    for _ in range(3):
+        out = llm_client.chat(modelo_roteador, mensagens, max_tokens=100, temperatura=0.0)
+        if not out.get("ok"):
+            votos.append(None)
+            continue
+        texto = (out.get("content") or "").strip().lower()
+        nums = [int(n) for n in _re.findall(r"\d+", texto)]
+        if "nenhum" in texto or 0 in nums:
+            votos.append("nenhum")
+        else:
+            sel = [com_desc[i - 1]["id"] for i in nums if 1 <= i <= len(com_desc)]
+            votos.append(sel[0] if sel else None)
+    ids_ok = {v for v in votos if isinstance(v, int)}
+    viu_nenhum = "nenhum" in votos
+    if ids_ok and not viu_nenhum:
+        return sorted(set(sempre + list(ids_ok)))
+    if viu_nenhum and not ids_ok:
+        # Reforco por NOME: se o nome de um conector aparece na pergunta,
+        # executa mesmo assim (match deterministico e forte — ex: "CEP").
+        pergunta_l = pergunta.lower()
+        reforco = [c["id"] for c in com_desc if c["nome"].lower() in pergunta_l]
+        return sorted(set(sempre + reforco))
+    return None  # ambiguo ou falha total -> executa todos (seguro)
+
+
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
               anonimizar: bool = True) -> dict:
     """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
@@ -178,8 +240,17 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         try:
             from ..connector_pack import registry
             params = _extrair_parametros(pergunta)
+            # ── Roteamento inteligente: a IA escolhe QUAIS conectores usar ──
+            # (env BLUESHIFT_ROUTER_MODEL aponta um modelo barato p/ rotear;
+            #  padrao: o proprio modelo principal do agente — max_tokens 30)
+            import os as _os
+            _router_id = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "")
+            modelo_roteador = db.buscar_modelo(int(_router_id)) if _router_id.isdigit() else modelo
+            conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
+            somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
+                somente_ids=somente_ids,
             )
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
