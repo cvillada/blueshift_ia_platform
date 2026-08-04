@@ -37,6 +37,23 @@ def _user() -> dict | None:
     }
 
 
+def _opts_cliente(sel: int | None = None) -> str:
+    """Options de cliente para selects; default = PRIMEIRA empresa cadastrada.
+
+    Modelo on-premise (1 empresa por instalacao): nunca deixar o form sem
+    selecao — a primeira empresa ja vem marcada. Se sel for passado (ex:
+    filtro ou edicao), marca o valor informado.
+    """
+    clientes = db.listar_clientes()
+    if not clientes:
+        return ""
+    alvo = sel if sel else clientes[0]["id"]
+    return "".join(
+        f'<option value="{c["id"]}" {"selected" if c["id"] == alvo else ""}>{c["nome"]}</option>'
+        for c in clientes
+    )
+
+
 # ---------------------------------------------------------------------------
 # Autenticacao
 # ---------------------------------------------------------------------------
@@ -579,12 +596,12 @@ def usuario_novo():
                                    cliente_id=cid, ip=request.remote_addr)
             flash(f"Usuário '{login}' criado.", "ok")
             return redirect(url_for("portal.usuarios"))
-    opts = "".join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in clientes)
+    opts = _opts_cliente()
     content = f"""
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Cadastrar usuário</h3>
       <form method="post">
-        {templates.csrf_field()}<label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select>
+        {templates.csrf_field()}<label>Cliente</label><select name="cliente_id">{opts}</select>
         <div class="form-row">
           <div><label>Nome</label><input name="nome"></div>
           <div><label>Login</label><input name="login"></div>
@@ -704,11 +721,38 @@ def agentes():
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=8 class="empty">Nenhum agente.</td></tr>'}</tbody></table>"""
+
+    # ── Checklist contextual: o que o agente precisa (em ordem de config) ──
+    from . import agente as agente_mod
+    n_modelos = len(db.listar_modelos())
+    try:
+        n_skills = len(agente_mod.listar_skills())
+    except Exception:  # noqa: BLE001
+        n_skills = 0
+    n_conn = len(db.listar_conectores())
+    chk_modelo = (f'<span class="badge ok">✓ Modelo IA ({n_modelos})</span>' if n_modelos
+                  else '<a class="badge warn" href="/portal/modelos" style="text-decoration:none">✗ Modelo IA — cadastre aqui</a>')
+    chk_skills = (f'<span class="badge neutral">Skills: {n_skills}</span>' if n_skills
+                  else '<span class="muted" style="font-size:12px">Skills: opcional</span>')
+    chk_conn = (f'<span class="badge neutral">Conectores: {n_conn}</span>' if n_conn
+                else '<span class="muted" style="font-size:12px">Conectores: opcional</span>')
+    aviso = ""
+    if n_modelos == 0:
+        aviso = ('<div class="flash warn" style="margin-bottom:12px">⚠️ Nenhum modelo de IA cadastrado. '
+                 '<b>Comece por aqui:</b> cadastre um modelo em <a href="/portal/modelos">Modelos IA</a> '
+                 '— sem ele os agentes não têm de onde responder.</div>')
+    checklist = (f'<div style="font-size:12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
+                 f'{chk_modelo} {chk_skills} {chk_conn} '
+                 '<span class="muted" style="font-size:11px">— o que o agente precisa, na ordem de configuração</span></div>')
+
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="muted">Agent Factory: monte agentes a partir do catálogo de skills + conectores MCP + modelo de IA.</div>
       <a class="btn" href="/portal/agentes/novo">+ Montar agente</a>
-    </div>{tabela}"""
+    </div>
+    {aviso}
+    {checklist}
+    {tabela}"""
     return templates.page("Agentes", content, active="agentes", user=_user())
 
 
@@ -897,7 +941,7 @@ def agente_novo():
                                    cliente_id=cid, ip=request.remote_addr)
             flash(f"Agente '{nome}' criado.", "ok")
             return redirect(url_for("portal.agentes"))
-    opts = "".join(f'<option value="{c["id"]}">{c["nome"]}</option>' for c in clientes)
+    opts = _opts_cliente()
     mopts = "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
     skopts = "".join(
@@ -914,7 +958,7 @@ def agente_novo():
       <h3 style="margin-top:0">Montar agente (Agent Factory)</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
-          <div><label>Cliente</label><select name="cliente_id"><option value="">-- selecione --</option>{opts}</select></div>
+          <div><label>Cliente</label><select name="cliente_id">{opts}</select></div>
           <div><label>Nome do agente</label><input name="nome" placeholder="ex: Agente Vendas"></div>
         </div>
         <div class="form-row">
@@ -1373,7 +1417,7 @@ def conectores():
           </td></tr>"""
 
     opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in listar_areas())
-    opts_cliente = "".join(f'<option value="{i}" {"selected" if i == cid_sel else ""}>{n}</option>' for i, n in clientes.items())
+    opts_cliente = _opts_cliente(cid_sel)
     content = f"""
     <div class="card" style="max-width:720px">
       <h3 style="margin-top:0">Cadastrar fonte externa</h3>

@@ -161,11 +161,13 @@ def _nav(active: str, user: dict | None) -> str:
     # Submenus: (rotulo, icone_grupo, [(key, label, href), ...])
     submenus = [
         ("Cadastros", "grupo_cadastros", [
+            # Ordem = sequencia de configuracao: base (clientes/usuarios) ->
+            # modelos/skills -> agentes (monta) -> conectores/canais (entrega)
             ("clientes", "Clientes", "/portal/clientes"),
             ("usuarios", "Usuários", "/portal/usuarios"),
-            ("agentes", "Agentes", "/portal/agentes"),
-            ("skills", "Skills", "/portal/skills"),
             ("modelos", "Modelos IA", "/portal/modelos"),
+            ("skills", "Skills", "/portal/skills"),
+            ("agentes", "Agentes", "/portal/agentes"),
             ("conectores", "Conectores", "/portal/conectores"),
             ("canais", "Canais", "/portal/canais"),
         ]),
