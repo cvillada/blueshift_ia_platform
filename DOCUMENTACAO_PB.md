@@ -320,25 +320,59 @@ REGRAS:
 - SEMPRE cite a fonte dos dados
 ```
 
-### 5.8 Modelos IA (/portal/modelos)
+### 5.8 Modelos IA (/portal/modelos) — cadastro de LLMs (locais e externos)
 
-**Propósito:** cadastro de modelos (endpoints OpenAI-compatíveis) — locais ou
-externos. A plataforma é **agnóstica a provedor**.
+**Propósito:** cadastro dos modelos de IA (endpoints **OpenAI-compatíveis**)
+que os agentes usam para responder — servidores **locais** (LM Studio,
+vLLM, servidor do cliente) ou **externos** (OpenRouter, DeepSeek, OpenAI).
+A plataforma é **agnóstica a provedor**: qualquer endpoint que fale o
+protocolo OpenAI entra aqui.
 
-| Campo | Obrigatório | Exemplo | Dica |
-|:------|:-----------:|:--------|:-----|
-| Cliente | ✅ | XPTO Seguros (Piloto) | |
-| Nome | ✅ | `bonsai-8b` | Nome de exibição |
-| Endpoint (base_url) | ✅ | `http://127.0.0.1:1234` | A **base** do endpoint — o sistema acrescenta `/v1/chat/completions` e `/v1/models` |
-| Modelo | ✅ | `bonsai-8b` | Nome do modelo no servidor |
-| Tipo | ✅ | `local` | local / externo |
-| API Key | ❌ | `sk-...` | Obrigatória p/ externo; local sem chave |
-| Max tokens | ❌ | `4096` | Limite da resposta |
-| Preço input (R$/1M tokens) | ❌ | `0.15` | Alimenta Cost Intelligence |
-| Preço output (R$/1M tokens) | ❌ | `0.60` | Alimenta Cost Intelligence |
+**Como cadastrar um modelo de IA (resumo):** em Cadastros → Modelos IA →
+"+ Novo modelo", preencha Nome, Endpoint (base_url), Modelo, Tipo e — se
+externo — a API Key, e salve. O badge de status indica se o endpoint
+respondeu (online) ou não (offline). Detalhe de cada campo abaixo.
 
-Ações: **editar**, **excluir**. Cada agente escolhe o modelo via `modelo_id`
-— pode mesclar modelos locais e externos entre agentes.
+**O que preencher em cada campo (passo a passo):**
+
+| Campo | Obrigatório? | O que é | Exemplo |
+|:------|:-----------:|:--------|:--------|
+| Cliente | ✅ | Empresa dona do modelo (primeira já vem selecionada) | XPTO Seguros (Piloto) |
+| Nome | ✅ | Nome de exibição — como aparece nas telas e no `BLUESHIFT_ROUTER_MODEL` | `bonsai-8b` |
+| Endpoint (base_url) | ✅ | A **base** do servidor do modelo — o sistema acrescenta `/v1/chat/completions` na chamada e `/v1/models` no teste de status. ⚠️ NÃO colocar o `/chat/completions` no final (ver regra de ouro abaixo) | `http://127.0.0.1:1234` |
+| Modelo | ✅ | O NOME exato do modelo dentro do servidor (o que o provedor documenta) | `bonsai-8b` ou `qwen/qwen3.7-flash` |
+| Tipo | ✅ | `local` = servidor interno (sem chave) · `hibrido` = externo na nuvem (com chave) | `local` / `hibrido` |
+| API Key | ❌ | Chave de autenticação — **obrigatória para externo** (OpenRouter/DeepSeek/OpenAI); deixe VAZIA para local | `sk-or-v1-...` |
+| Max tokens | ❌ | Limite máximo de tokens da resposta (padrão 4096) | `4096` |
+| Preço input (R$/1M tokens) | ❌ | Custo de entrada — alimenta o Cost Intelligence | `0.15` |
+| Preço output (R$/1M tokens) | ❌ | Custo de saída — alimenta o Cost Intelligence | `0.60` |
+
+**Exemplo 1 — modelo LOCAL (LM Studio no servidor do cliente):**
+
+| Campo | Valor |
+|:------|:------|
+| Nome | `bonsai-8b` |
+| Endpoint (base_url) | `http://127.0.0.1:1234` |
+| Modelo | `bonsai-8b` |
+| Tipo | `local` |
+| API Key | (vazio) |
+
+**Exemplo 2 — modelo EXTERNO (OpenRouter na nuvem):**
+
+| Campo | Valor |
+|:------|:------|
+| Nome | `qwen3.7-flash` |
+| Endpoint (base_url) | `https://openrouter.ai/api` |
+| Modelo | `qwen/qwen3.7-flash` |
+| Tipo | `hibrido` |
+| API Key | `sk-or-v1-...` (a chave do OpenRouter) |
+
+**Para que servem os modelos cadastrados:**
+- Cada **Agente** escolhe o modelo via `modelo_id` (tela Montar/Editar
+  agente) — pode mesclar local e externo entre agentes;
+- **Roteamento de conectores**: o `BLUESHIFT_ROUTER_MODEL` (ID ou NOME)
+  aponta qual modelo decide a ferramenta (recomendado: local rápido);
+- **Ajuda IA** e **geração de skills** usam o modelo selecionado.
 
 **Dica:** no Docker, `127.0.0.1`/`localhost` é traduzido automaticamente para
 `host.docker.internal` (o modelo roda no HOST, fora do container).
@@ -363,6 +397,26 @@ Exemplos corretos por provedor:
 `.../chat/completions/v1/models` → 404 e o modelo aparece **offline** —
 mesmo com o nome e a chave corretos. Nesse caso, edite o modelo e remova
 o `/v1/chat/completions` do final.
+
+**Status online/offline:** o badge na lista testa `{base}/v1/models` a
+cada carregamento. Offline geralmente significa: (a) URL errada (regra de
+ouro acima); (b) servidor local desligado; (c) chave inválida ou sem
+acesso ao provedor externo.
+
+**Perguntas frequentes (FAQ):**
+
+- **O que devo preencher no cadastro de modelos de IA?** Nome (exibição),
+  Endpoint (a base do servidor, sem `/chat/completions`), Modelo (nome
+  exato no provedor), Tipo (local ou híbrido) e, para externo, a API Key.
+  O resto é opcional (max tokens, preços).
+- **Preciso de chave de API para modelo local?** Não — local (LM Studio,
+  vLLM, servidor do cliente) roda sem chave; a chave é obrigatória só
+  para modelos externos (OpenRouter, DeepSeek, OpenAI).
+- **Onde acho o nome exato do modelo?** Na documentação do provedor
+  (ex: `qwen/qwen3.7-flash` no OpenRouter) ou na lista do servidor local.
+- **Por que o modelo aparece offline?** URL errada (regra de ouro),
+  servidor local desligado, ou chave inválida/sem acesso. O teste de
+  status usa `{base}/v1/models`.
 
 ### 5.9 Conectores (/portal/conectores)
 
