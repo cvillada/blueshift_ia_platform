@@ -3835,13 +3835,18 @@ def api_agente(canal):
         "tempo_ms": out.get("tempo_ms", 0),
     }
     if canal.get("webhook_url"):
+        import json as _json
+        try:
+            _wh_headers = _json.loads(canal.get("webhook_headers") or "{}")
+        except Exception:  # noqa: BLE001
+            _wh_headers = {}
         wh = agente_mod.enviar_webhook(canal["webhook_url"], {
             "canal": canal["nome"],
             "agente": a["nome"],
             "pergunta": pergunta,
             "resposta": out["content"],
             "modelo": out.get("model"),
-        })
+        }, headers_extra=_wh_headers)
         resposta["webhook"] = wh
     return jsonify(resposta)
 
@@ -3865,7 +3870,17 @@ def canais():
             return redirect(url_for("portal.canais"))
         tipo = request.form.get("tipo", "api")
         webhook_url = request.form.get("webhook_url", "").strip() or None
-        db.criar_canal(cid, nome, agente_id, tipo=tipo, webhook_url=webhook_url)
+        # Headers extras do webhook de saida (JSON opcional — ex: X-Webhook-Secret)
+        wh_headers_raw = (request.form.get("webhook_headers") or "").strip()
+        wh_headers = None
+        if wh_headers_raw:
+            try:
+                wh_headers = json.dumps(json.loads(wh_headers_raw), ensure_ascii=False)
+            except Exception:  # noqa: BLE001
+                flash("Headers do webhook inválidos — use JSON válido (ex: {\"X-Webhook-Secret\": \"abc\"}).", "warn")
+                return redirect(url_for("portal.canais"))
+        db.criar_canal(cid, nome, agente_id, tipo=tipo, webhook_url=webhook_url,
+                       webhook_headers=wh_headers)
         db.registrar_auditoria(_user()["login"], "admin", "criar_canal", alvo=nome,
                                cliente_id=cid, ip=request.remote_addr)
         flash("Canal criado.", "ok")
@@ -3999,6 +4014,9 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharTestar
         <label>Tipo</label><select name="tipo"><option value="api">API</option><option value="webhook">Webhook</option></select>
         <label>Agente</label><select name="agente_id"><option value="">(nenhum)</option>{''.join(f'<option value="{a["id"]}">{a["nome"]}</option>' for a in agentes)}</select>
         <label>Webhook de saída (URL)</label><input name="webhook_url" placeholder="https://... (POST da resposta)">
+        <label>Headers do webhook (JSON, opcional)</label>
+        <textarea name="webhook_headers" rows="2" placeholder='{{"X-Webhook-Secret": "sua-chave"}}' style="font-family:var(--code-font,monospace);font-size:12px"></textarea>
+        <div class="muted" style="font-size:11px">Para webhooks que exigem autenticação — ex: <code>{{"X-Webhook-Secret": "abc"}}</code> ou <code>{{"Authorization": "Bearer token"}}</code>.</div>
         <div style="margin-top:12px"><button class="btn" type="submit">Criar canal</button></div>
       </form>
     </div>
@@ -4075,7 +4093,16 @@ def canal_editar(canal_id: int):
         if not agente_id:
             flash("Selecione um agente para o canal.", "warn")
             return redirect(url_for("portal.canal_editar", canal_id=canal_id))
-        db.atualizar_canal(canal_id, nome=nome, tipo=tipo, agente_id=agente_id, webhook_url=webhook_url)
+        wh_headers_raw = (request.form.get("webhook_headers") or "").strip()
+        wh_headers = None
+        if wh_headers_raw:
+            try:
+                wh_headers = json.dumps(json.loads(wh_headers_raw), ensure_ascii=False)
+            except Exception:  # noqa: BLE001
+                flash("Headers do webhook inválidos — use JSON válido (ex: {\"X-Webhook-Secret\": \"abc\"}).", "warn")
+                return redirect(url_for("portal.canal_editar", canal_id=canal_id))
+        db.atualizar_canal(canal_id, nome=nome, tipo=tipo, agente_id=agente_id,
+                           webhook_url=webhook_url, webhook_headers=wh_headers)
         db.registrar_auditoria(
             _user()["login"], "admin", "editar_canal",
             alvo=nome, cliente_id=canal["cliente_id"], ip=request.remote_addr,
@@ -4102,6 +4129,9 @@ def canal_editar(canal_id: int):
         <select name="agente_id"><option value="">(nenhum)</option>{opts}</select>
         <label>Webhook de saída (URL)</label>
         <input name="webhook_url" value="{canal.get('webhook_url') or ''}" placeholder="https://... (POST da resposta)">
+        <label>Headers do webhook (JSON, opcional)</label>
+        <textarea name="webhook_headers" rows="2" style="font-family:var(--code-font,monospace);font-size:12px">{templates.h(canal.get('webhook_headers') or '')}</textarea>
+        <div class="muted" style="font-size:11px">Para webhooks que exigem autenticação — ex: <code>{{"X-Webhook-Secret": "abc"}}</code> ou <code>{{"Authorization": "Bearer token"}}</code>.</div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/canais">Cancelar</a>

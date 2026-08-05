@@ -604,11 +604,15 @@ def _extrair_parametros(pergunta: str) -> dict:
     return params
 
 
-def enviar_webhook(webhook_url: str, payload: dict) -> dict:
+def enviar_webhook(webhook_url: str, payload: dict,
+                   headers_extra: dict | None = None) -> dict:
     """Dispara a resposta do agente para a URL de saida do canal (best-effort).
 
     Usa urllib (sem libs externas). Falhas nao quebram a resposta da API —
     apenas sao reportadas em 'erro' para auditoria/debug.
+
+    headers_extra: headers adicionais do canal (ex: X-Webhook-Secret,
+    Authorization) — configurados no campo "Headers (JSON)" do canal.
 
     Retry: ate 3 tentativas com backoff exponencial (2s, 4s).
     """
@@ -620,13 +624,18 @@ def enviar_webhook(webhook_url: str, payload: dict) -> dict:
     if not webhook_url:
         return {"enviado": False, "motivo": "sem_webhook"}
     body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if headers_extra:
+        for k, v in headers_extra.items():
+            if k and v is not None:
+                headers[str(k)] = str(v)
     erros: list[str] = []
     for tentativa in range(3):
         try:
             req = urllib.request.Request(
                 webhook_url,
                 data=body_bytes,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=10) as resp:

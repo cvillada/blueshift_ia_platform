@@ -317,6 +317,7 @@ def init_db() -> None:
                 agente_id   INTEGER,                           -- FK agentes(id); canal aponta p/ 1 agente
                 token       TEXT NOT NULL UNIQUE,              -- bs_chan_xxxx (auth do canal)
                 webhook_url TEXT,                              -- URL de saida (POST da resposta)
+                webhook_headers TEXT DEFAULT '{}',             -- headers extras (JSON) p/ o webhook de saida
                 ativo       INTEGER NOT NULL DEFAULT 1,
                 criado_em   TEXT NOT NULL
             );
@@ -417,6 +418,9 @@ def _migrar_colunas() -> None:
         ],
         "tracing": [
             ("agente_id", "INTEGER"),
+        ],
+        "canais": [
+            ("webhook_headers", "TEXT DEFAULT '{}'"),
         ],
     }
     with get_conn() as conn:
@@ -1434,16 +1438,19 @@ def validar_webhook_url(url: str) -> str | None:
     return None
 
 
-def criar_canal(cliente_id, nome, agente_id, tipo="api", token=None, webhook_url=None) -> int:
+def criar_canal(cliente_id, nome, agente_id, tipo="api", token=None, webhook_url=None,
+                webhook_headers=None) -> int:
     if webhook_url:
         erro = validar_webhook_url(webhook_url)
         if erro:
             raise ValueError(erro)
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO canais (cliente_id, nome, tipo, agente_id, token, webhook_url, ativo, criado_em)
-               VALUES (?,?,?,?,?,?,1,?)""",
-            (cliente_id, nome, tipo, agente_id, token or gerar_token(), webhook_url, now_iso()),
+            """INSERT INTO canais (cliente_id, nome, tipo, agente_id, token, webhook_url,
+                                   webhook_headers, ativo, criado_em)
+               VALUES (?,?,?,?,?,?,?,1,?)""",
+            (cliente_id, nome, tipo, agente_id, token or gerar_token(), webhook_url,
+             webhook_headers or '{}', now_iso()),
         )
         return cur.lastrowid
 
