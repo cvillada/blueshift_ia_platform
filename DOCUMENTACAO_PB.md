@@ -211,8 +211,8 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
   fallback, skills e ações:
   - **testar agente**: abre o chat de teste do agente (pipeline completo
     conectores → RAG → LLM, com 👍/👎 feedback e 🔍 rastreio);
-  - **fluxo**: abre o popup do **fluxo de execução** do agente (estilo
-    N8N, 100% offline, sem lib externa):
+  - **fluxo**: abre o popup do **fluxo de execução** do agente (diagrama
+    de fluxo horizontal, 100% offline, sem lib externa):
     `Entrada (Chat/API) → fontes de dados (conectores da área) → LLM
     (modelo + fallback) → skills (1 caixinha por skill) → Resposta →
     Envio (Chat/API)`.
