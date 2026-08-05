@@ -329,7 +329,7 @@ externos. A plataforma é **agnóstica a provedor**.
 |:------|:-----------:|:--------|:-----|
 | Cliente | ✅ | XPTO Seguros (Piloto) | |
 | Nome | ✅ | `bonsai-8b` | Nome de exibição |
-| Endpoint (base_url) | ✅ | `http://127.0.0.1:1234` | LM Studio/vLLM local ou `https://api.deepseek.com` |
+| Endpoint (base_url) | ✅ | `http://127.0.0.1:1234` | A **base** do endpoint — o sistema acrescenta `/v1/chat/completions` e `/v1/models` |
 | Modelo | ✅ | `bonsai-8b` | Nome do modelo no servidor |
 | Tipo | ✅ | `local` | local / externo |
 | API Key | ❌ | `sk-...` | Obrigatória p/ externo; local sem chave |
@@ -342,6 +342,27 @@ Ações: **editar**, **excluir**. Cada agente escolhe o modelo via `modelo_id`
 
 **Dica:** no Docker, `127.0.0.1`/`localhost` é traduzido automaticamente para
 `host.docker.internal` (o modelo roda no HOST, fora do container).
+
+**Regra de ouro da `base_url`:** cadastre apenas a BASE — **sem** o
+`/v1` e **sem** o `/chat/completions` no final. O sistema monta sozinho:
+
+- Chamada: `{base}/v1/chat/completions`
+- Teste de status: `{base}/v1/models`
+
+Exemplos corretos por provedor:
+
+| Provedor | base_url correta |
+|:---------|:-----------------|
+| OpenRouter | `https://openrouter.ai/api` |
+| DeepSeek | `https://api.deepseek.com` |
+| OpenAI | `https://api.openai.com` |
+| LM Studio / vLLM local | `http://127.0.0.1:1234` |
+
+⚠️ Se a URL for cadastrada com o endpoint completo (ex:
+`https://openrouter.ai/api/v1/chat/completions`), o teste de status monta
+`.../chat/completions/v1/models` → 404 e o modelo aparece **offline** —
+mesmo com o nome e a chave corretos. Nesse caso, edite o modelo e remova
+o `/v1/chat/completions` do final.
 
 ### 5.9 Conectores (/portal/conectores)
 
