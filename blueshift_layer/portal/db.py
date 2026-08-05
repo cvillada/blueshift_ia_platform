@@ -686,6 +686,12 @@ def carregar_skill_db(nome: str) -> dict | None:
     return None
 
 
+def deletar_skill_db(nome: str) -> None:
+    """Remove uma skill do banco de dados."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM skills WHERE nome=?", (nome,))
+
+
 def listar_skills_db() -> list[dict]:
     """Lista todas as skills salvas no banco."""
     with get_conn() as conn:

@@ -18,27 +18,40 @@ _SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "template
 
 
 def listar_skills() -> list[dict]:
-    """Lista skills disponíveis no catálogo (pastas com SKILL.md + frontmatter)."""
+    """Lista skills do catálogo (template_skills/) + banco (fonte oficial).
+
+    Skills salvas via UI vivem no banco (volume persistente) — os arquivos
+    SKILL.md em template_skills/ NÃO sobrevivem a rebuilds do container.
+    O banco domina quando o mesmo nome existe nos dois lugares.
+    """
     skills: list[dict] = []
-    if not os.path.isdir(_SKILLS_DIR):
-        return skills
-    for nome in sorted(os.listdir(_SKILLS_DIR)):
-        skill_md = os.path.join(_SKILLS_DIR, nome, "SKILL.md")
-        if not os.path.isfile(skill_md):
-            continue
-        try:
-            with open(skill_md, encoding="utf-8") as f:
-                texto = f.read()
-        except OSError:
-            continue
-        fm = re.search(r"^---\s*\n(.*?)\n---", texto, re.DOTALL)
-        meta = {"name": nome, "description": nome}
-        if fm:
-            for line in fm.group(1).splitlines():
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    meta[k.strip()] = v.strip().strip('"')
-        skills.append(meta)
+    if os.path.isdir(_SKILLS_DIR):
+        for nome in sorted(os.listdir(_SKILLS_DIR)):
+            skill_md = os.path.join(_SKILLS_DIR, nome, "SKILL.md")
+            if not os.path.isfile(skill_md):
+                continue
+            try:
+                with open(skill_md, encoding="utf-8") as f:
+                    texto = f.read()
+            except OSError:
+                continue
+            fm = re.search(r"^---\s*\n(.*?)\n---", texto, re.DOTALL)
+            meta = {"name": nome, "description": nome}
+            if fm:
+                for line in fm.group(1).splitlines():
+                    if ":" in line:
+                        k, v = line.split(":", 1)
+                        meta[k.strip()] = v.strip().strip('"')
+            skills.append(meta)
+    # Banco: fonte oficial de armazenamento — skills criadas pela UI
+    try:
+        from . import db as _db
+        por_nome = {s["name"]: s for s in skills}
+        for s in _db.listar_skills_db():
+            por_nome[s["name"]] = s
+        skills = [por_nome[k] for k in sorted(por_nome)]
+    except Exception:  # noqa: BLE001
+        pass
     return skills
 
 
@@ -126,13 +139,19 @@ def salvar_skill(nome: str, descricao: str, body: str, version: str = "1.0.0") -
 
 
 def deletar_skill(nome: str) -> bool:
-    """Remove a pasta da skill. Retorna True se removeu."""
+    """Remove a skill do banco e da pasta do catálogo. Retorna True."""
+    # Banco (fonte oficial — persiste entre rebuilds)
+    from . import db as _db
+    try:
+        _db.deletar_skill_db(nome)
+    except Exception:  # noqa: BLE001
+        pass
+    # Arquivo local
     import shutil
     path = os.path.join(_SKILLS_DIR, nome)
     if os.path.isdir(path):
         shutil.rmtree(path)
-        return True
-    return False
+    return True
 
 
 def _skills_text(skills_csv: str) -> str:
