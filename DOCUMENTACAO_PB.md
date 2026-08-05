@@ -1,7 +1,7 @@
 # 📘 Documentação BlueShift IA Platform (Portal BlueShift)
 
 > Documentação funcional completa do sistema — telas, campos, fluxos e API.
-> Fonte: código real (blueshift_layer/) em 2026-08-02. Versão: 0.1.0.
+> Fonte: código real (blueshift_layer/) em 2026-08-05. Versão: 0.9.2.
 > Exemplos de preenchimento são FICTÍCIOS (nunca dados reais de cliente).
 
 ---
@@ -205,8 +205,19 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 
 **Propósito:** ambiente de trabalho por área (vendas, suporte, financeiro...).
 
-- Exibe o conteúdo relevante à área do usuário logado (agentes da área,
-  conectores, atalhos).
+- KPIs do topo: agentes, usuários e documentos da base de conhecimento da
+  área selecionada; filtro **Área** (todas ou uma específica).
+- **Cards de agentes** da área: nome, status (ativo/pausado), modelo e
+  fallback, skills e ações:
+  - **testar agente**: abre o chat de teste do agente (pipeline completo
+    conectores → RAG → LLM, com 👍/👎 feedback e 🔍 rastreio);
+  - **fluxo**: abre o popup do **fluxo de execução** do agente (estilo
+    N8N, 100% offline, sem lib externa):
+    `Entrada (Chat/API) → fontes de dados (conectores da área) → LLM
+    (modelo + fallback) → skills (1 caixinha por skill) → Resposta →
+    Envio (Chat/API)`.
+    As caixinhas são **arrastáveis** (as linhas acompanham) e os dados
+    são dinâmicos do agente (modelo, fallback, skills, conectores).
 - Acesso: qualquer usuário autenticado.
 
 ### 5.4 Clientes (/portal/clientes)
@@ -491,6 +502,7 @@ Ações na lista: **editar**, **excluir** (vermelho). Coluna Heartbeat mostra o
 | Tipo | ✅ | `API` / `Webhook` |
 | Agente | ✅ | Agente Vendas |
 | Webhook de saída (URL) | ❌ | `https://...` (recebe POST da resposta; bloqueia IPs internos) |
+| Headers do webhook (JSON) | ❌ | `{"X-Webhook-Secret": "minha-chave"}` — para webhooks que exigem autenticação; qualquer header (X-Webhook-Secret, Authorization: Bearer ...) é enviado no POST junto com o Content-Type |
 
 Ações na linha: **testar** (abre modal que chama a API com o token do canal —
 aba 1. Agente com pergunta + resposta/modelo/tokens/webhook; aba 2. Feedback
@@ -498,6 +510,14 @@ com trace_id automático e 👍/👎), **editar**, **nova chave** (regenera toke
 o anterior para de funcionar na hora), **revogar/reativar**.
 
 **⚠️ Nunca use a chave de licença da plataforma como token de canal.**
+
+**Webhook de saída com autenticação:** muitos webhooks reais (Slack, Zapier,
+n8n, sistemas corporativos) exigem uma chave secreta. Preencha o campo
+**Headers do webhook (JSON)** com o que o receptor pedir — ex:
+`{"X-Webhook-Secret": "abc123"}` ou `{"Authorization": "Bearer token"}`.
+O sistema envia esses headers no POST da resposta (junto com o
+`Content-Type: application/json`). Evite colocar a chave na URL
+(`?secret=...`) — ela vaza em logs.
 
 ### 5.11 Memória (/portal/memoria)
 
@@ -662,11 +682,19 @@ formatos GGUF/MLX/SafeTensors/AWQ/GPTQ, tipos Full FT/LoRA/QLoRA, hardware
 recomendado, dados via export JSONL, serviço BlueShift). Não executa treino —
 é um serviço contratado à parte.
 
-### 5.21 Atualizações (/portal/atualizacoes)
+### 5.21 Atualizações (/portal/atualizacoes) — versão e configuração de ambiente
 
 **Propósito:** canal de atualizações aprovadas da plataforma. Mostra a versão
 instalada e se há nova versão disponível no canal (`update_server` na porta
 9001). Admin-only.
+
+**Card "Configuração de ambiente":** exibe as configurações ativas da
+instalação:
+- **Modelo de roteamento configurado** — o `BLUESHIFT_ROUTER_MODEL`
+  resolvido (nome + ID, ou "(não encontrado)" se a env apontar um modelo
+  inexistente; vazio = modelo principal de cada agente);
+- **Áreas configuradas** — a lista do `BLUESHIFT_AREAS` (ou o padrão do
+  sistema). Cada linha mostra a variável de ambiente de origem.
 
 ### 5.22 SSO (OIDC) (/portal/sso/config)
 
@@ -713,7 +741,8 @@ Resposta (JSON limpa — sem contexto/ferramentas):
   "feedback_url": "http://localhost:8080/portal/api/v1/feedback/123",
   "erro": null,
   "tokens": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
-  "tempo_ms": 1542
+  "tempo_ms": 1542,
+  "webhook": {"enviado": true, "status": 200}
 }
 ```
 
@@ -721,7 +750,10 @@ Resposta (JSON limpa — sem contexto/ferramentas):
 - Erros: 401 (token ausente/inválido), 400 (sem pergunta), 404 (agente).
 - Rate limit: 100 req/min por token.
 - Se o canal tiver webhook de saída, a resposta também é POSTada lá
-  (retry exponencial 2s/4s, best-effort).
+  (retry exponencial 2s/4s, best-effort). O campo `webhook` da resposta
+  informa o resultado do envio (`{"enviado": false, "motivo": ...}` se
+  falhou — não quebra a resposta da API). Headers extras configurados no
+  canal (ex: `X-Webhook-Secret`) são enviados no POST.
 
 ### 6.2 Enviar feedback
 
@@ -740,12 +772,22 @@ O `tipo` diferencia manual (UI) de api (curl/integração).
 ## 7. Conectores — como funcionam
 
 1. O usuário faz uma pergunta ao agente.
-2. `_extrair_parametros()` extrai automaticamente: códigos (`C001`, `PED-99`),
-   e-mails, datas, `chave=valor`, números após palavras-chave.
-3. Os conectores da **área do agente** são executados (tolerante a falhas —
-   um conector com erro não derruba os outros; heartbeat atualizado).
-4. Placeholders `{param}` são substituídos pelos valores extraídos.
-5. Resultados viram o contexto do prompt (FONTE PRIMÁRIA).
+2. **Roteamento inteligente**: uma IA curta (a do agente, ou a de
+   `BLUESHIFT_ROUTER_MODEL`) decide QUAIS conectores da área executar —
+   ou nenhum (pergunta de norma/política responde só com a base RAG).
+   Voto majoritário de 3 tentativas; falha/ambiguidade → executa todos
+   (seguro). Detalhes na §5.6.
+3. `_extrair_parametros()` extrai automaticamente: códigos (`C001`,
+   `PED-99`), e-mails, datas, `chave=valor`, números após palavras-chave.
+   A **IA complementa** o que o regex não reconheceu (linguagem natural:
+   "id cliente igual a 58" → `{id_cliente} = 58`).
+4. Os conectores escolhidos são executados (tolerante a falhas — um
+   conector com erro não derruba os outros; heartbeat atualizado).
+5. Placeholders `{param}` são substituídos pelos valores extraídos.
+6. Resultados viram o contexto do prompt (FONTE PRIMÁRIA).
+7. **Anti-alucinação**: se os conectores rodarem sem dados vivos, o
+   agente é instruído a NÃO inventar valores — responde "não encontrei"
+   e sugere reformular (ex: informar `id_cliente=58`).
 
 Extração de parâmetros (exemplos):
 
@@ -768,7 +810,9 @@ retorna vazio — honesto, sem forçar valor padrão).
 
 Hierarquia no `agente.responder()`:
 
-1. **Conectores da área** — executa SQL/API/MCP, extrai params da pergunta.
+1. **Conectores da área (selecionados por IA)** — o roteamento escolhe
+   quais executar (ou nenhum); executa SQL/API/MCP com os parâmetros
+   extraídos (regex + IA).
 2. **RAG complementar** — sempre busca na base (top_k=2 se conectores ok,
    top_k=4 se não).
 3. **LLM** — prompt com skills (descrições) + dados dos conectores + contexto
@@ -809,7 +853,7 @@ Detalhes:
 
 ## 10. Banco de Dados (SQLite)
 
-23 tabelas principais:
+22 tabelas principais:
 
 | Tabela | Conteúdo |
 |:-------|:---------|
@@ -879,12 +923,24 @@ Observabilidade (taxa de acerto, drift, custos) + Teste A/B com modelo juiz.
 Use **nova chave** na página Canais — o token anterior para de funcionar
 imediatamente.
 
+**Meu webhook de saída exige uma chave secreta — o que faço?**
+Preencha o campo **Headers do webhook (JSON)** do canal com o que o
+receptor pedir: `{"X-Webhook-Secret": "abc"}` ou
+`{"Authorization": "Bearer token"}`. Esses headers são enviados no POST
+da resposta (não coloque a chave na URL — vaza em logs).
+
+**Criei uma skill, mas ela não aparece nas telas (Skills/Agentes)?**
+Skills criadas pela UI ficam no banco (persistem entre rebuilds do
+container). Se a lista não mostra, recarregue a página. O catálogo
+embarcado (template_skills/) é a base inicial; o banco domina por nome
+quando os dois existem.
+
 **Dados pessoais aparecem nas respostas?**
 Ative as máscaras LGPD (tela LGPD). A saída é mascarada; o trace preserva o
 original para auditoria (com retenção automática).
 
 ---
 
-*Documentação gerada a partir do código (2026-08-02). Em caso de divergência
+*Documentação gerada a partir do código (2026-08-05). Em caso de divergência
 entre este documento e o comportamento real, o código é a fonte da verdade —
 atualize este arquivo na mesma entrega da mudança.*
