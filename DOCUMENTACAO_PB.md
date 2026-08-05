@@ -193,6 +193,8 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 
 ### 5.2 Monitorar (/portal/monitorar)
 
+**Onde:** menu Monitorar (primeiro item da sidebar).
+
 **Propósito:** visão geral do estado da plataforma (dashboard).
 
 - 8 KPIs: Clientes, Usuários, Agentes, Modelos IA, Conectores, Canais,
@@ -202,6 +204,8 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 - Acesso: qualquer usuário autenticado.
 
 ### 5.3 Workspace (/portal/workspace)
+
+**Onde:** menu Workspace.
 
 **Propósito:** ambiente de trabalho por área (vendas, suporte, financeiro...).
 
@@ -222,6 +226,8 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 
 ### 5.4 Clientes (/portal/clientes)
 
+**Onde:** Cadastros → Clientes.
+
 **Propósito:** cadastro e gestão dos clientes (empresas contratantes).
 
 | Campo | Obrigatório | Exemplo | Dica |
@@ -238,6 +244,8 @@ Ações admin-only. Auditoria registra criar/editar/alternar cliente.
 
 ### 5.5 Usuários (/portal/usuarios)
 
+**Onde:** Cadastros → Usuários.
+
 **Propósito:** gestão dos usuários com acesso ao portal.
 
 | Campo | Obrigatório | Exemplo | Dica |
@@ -253,6 +261,8 @@ Ações na lista: **editar**, **suspender/reativar** (link de texto; quando
 suspenso, o usuário não consegue logar). Auditoria registra as ações.
 
 ### 5.6 Agentes (/portal/agentes)
+
+**Onde:** Cadastros → Agentes.
 
 **Propósito:** criar e gerenciar os agentes de IA por área.
 
@@ -307,6 +317,8 @@ responde "não encontrei" e sugere reformular a pergunta (ex: informar
 **área** dele (não há mais checkboxes de ERP/CRM/RH no formulário).
 
 ### 5.7 Skills (/portal/skills)
+
+**Onde:** Cadastros → Skills.
 
 **Propósito:** catálogo de instruções (SKILL.md) que guiam o comportamento
 dos agentes. O LLM recebe a **descrição** de cada skill no prompt do sistema.
@@ -431,6 +443,8 @@ acesso ao provedor externo.
 
 ### 5.9 Conectores (/portal/conectores)
 
+**Onde:** Cadastros → Conectores.
+
 **Propósito:** cadastro de fontes externas de dados por área. Três tipos:
 **API REST**, **MCP** (stdio local ou SSE remoto) e **SQL** (banco do cliente).
 
@@ -490,7 +504,11 @@ substituídos automaticamente por valores extraídos da pergunta do usuário:
 Ações na lista: **editar**, **excluir** (vermelho). Coluna Heartbeat mostra o
 último status de execução. Filtros por Cliente e Área.
 
-### 5.10 Canais (/portal/canais)
+### 5.10 Canais (/portal/canais) — cadastro da API de saída para sistemas externos
+
+**Onde:** Cadastros → Canais. **Para que serve:** é aqui que se cadastra a
+integração de SAÍDA com sistemas externos — a API que outro sistema chama
+para falar com o agente, e o webhook que recebe a resposta.
 
 **Propósito:** integração máquina-a-máquina. Cada canal tem **token próprio**
 (`bs_chan_*`) para chamar a API do agente. **Página admin-only.**
@@ -521,6 +539,8 @@ O sistema envia esses headers no POST da resposta (junto com o
 
 ### 5.11 Memória (/portal/memoria)
 
+**Onde:** Inteligência → Memória.
+
 **Propósito:** histórico de memória persistente por usuário/cliente — base do
 contexto do agente (auto-alimentação: pergunta+resposta são salvas).
 
@@ -533,6 +553,8 @@ contexto do agente (auto-alimentação: pergunta+resposta são salvas).
 - Acesso: login_required.
 
 ### 5.12 Conhecimento (/portal/conhecimento) — RAG
+
+**Onde:** Inteligência → Conhecimento.
 
 **Propósito:** base de conhecimento vetorial que complementa o contexto do
 agente (fonte SECUNDÁRIA — os conectores são a fonte primária).
@@ -559,6 +581,8 @@ Filtros por Cliente, Área, Categoria, Fonte.
 
 ### 5.13 Chat (/portal/chat)
 
+**Onde:** Inteligência → Chat.
+
 **Propósito:** chat de teste com qualquer modelo cadastrado (sem pipeline de
 agente — LLM direto).
 
@@ -571,10 +595,14 @@ Mostra a resposta do modelo. Acesso: login_required.
 
 ### 5.14 Uso de Tokens (/portal/uso-tokens)
 
-**Propósito:** consumo de tokens por agente/modelo (fonte para cobrança e
+**Onde:** Operação → Uso de Tokens.
+
+**Propósito:** consumo de tokens e custos por agente/modelo (fonte para cobrança e
 monitoramento). Tabela com paginação e filtros. Acesso: login_required.
 
 ### 5.15 Auditoria (/portal/auditoria)
+
+**Onde:** Operação → Auditoria.
 
 **Propósito:** trilha de auditoria de todas as ações sensíveis (login, CRUDs,
 testes A/B, imports, etc.).
@@ -587,6 +615,8 @@ Colunas: Usuário, Papel, Ação, Alvo, Cliente, IP, Detalhe, Quando.
 - Retenção automática configurável (LGPD, padrão 90 dias).
 
 ### 5.16 Observabilidade (/portal/observabilidade)
+
+**Onde:** Operação → Observabilidade.
 
 **Propósito:** dashboard de qualidade e custo dos agentes.
 
@@ -603,6 +633,8 @@ Colunas: Usuário, Papel, Ação, Alvo, Cliente, IP, Detalhe, Quando.
 
 ### 5.17 Alertas (configuração) (/portal/alertas-config)
 
+**Onde:** Configurações → Alertas.
+
 **Propósito:** thresholds dos alertas de observabilidade (salvos no banco).
 
 | Chave | Padrão | Descrição |
@@ -612,6 +644,8 @@ Colunas: Usuário, Papel, Ação, Alvo, Cliente, IP, Detalhe, Quando.
 | erros_max | 5 | Erros máximos por dia |
 
 ### 5.18 Teste A/B (/portal/teste-ab)
+
+**Onde:** Inteligência → Teste A/B.
 
 **Propósito:** comparar dois modelos na mesma pergunta (qualidade).
 **Acesso:** usuários autenticados, mas a operação é restrita a **admin e
@@ -652,7 +686,9 @@ com uma linha por julgamento:
 
 - Requer 2+ modelos cadastrados com base_url válida.
 
-### 5.19 LGPD (/portal/lgpd)
+### 5.19 LGPD (/portal/lgpd) — configuração das máscaras de dados pessoais
+
+**Onde:** Configurações → LGPD (configurar as máscaras).
 
 **Propósito:** conformidade na SAÍDA da informação (a origem/coleta é
 responsabilidade do sistema conectado). Admin-only.
@@ -677,12 +713,16 @@ A retenção automática cobre o expurgo.
 
 ### 5.20 Fine-Tuning (/portal/fine-tuning)
 
+**Onde:** Inteligência → Fine-Tuning.
+
 **Propósito:** documentação inline sobre fine-tuning de modelos (quando fazer,
 formatos GGUF/MLX/SafeTensors/AWQ/GPTQ, tipos Full FT/LoRA/QLoRA, hardware
 recomendado, dados via export JSONL, serviço BlueShift). Não executa treino —
 é um serviço contratado à parte.
 
 ### 5.21 Atualizações (/portal/atualizacoes) — versão e configuração de ambiente
+
+**Onde:** Configurações → Atualizações.
 
 **Propósito:** canal de atualizações aprovadas da plataforma. Mostra a versão
 instalada e se há nova versão disponível no canal (`update_server` na porta
@@ -697,6 +737,8 @@ instalação:
   sistema). Cada linha mostra a variável de ambiente de origem.
 
 ### 5.22 SSO (OIDC) (/portal/sso/config)
+
+**Onde:** Configurações → SSO (OIDC).
 
 **Propósito:** login federado (Azure AD, Okta, Keycloak, Google).
 

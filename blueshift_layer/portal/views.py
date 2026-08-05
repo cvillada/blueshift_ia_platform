@@ -4310,8 +4310,15 @@ def _secoes_doc() -> list:
 
 
 def _secoes_relevantes(pergunta: str, secoes: list, limite_chars: int = 6000) -> list:
-    """Seleciona secoes cujo texto contem palavras-chave da pergunta (>=4 chars)."""
+    """Seleciona secoes cujo texto contem palavras-chave da pergunta (>=4 chars).
+
+    Normaliza acentos (pergunta sem acento casa com doc acentuada) e da
+    PESO 2 para termos que aparecem no TITULO da secao — em empates de
+    score, a secao cujo titulo casa a pergunta sobe no ranking (ex:
+    'conhecimento' empata em varias secoes, mas so o titulo 5.12 o tem).
+    """
     import re as _re
+    import unicodedata as _u
     stop = {
         "como", "para", "qual", "quais", "onde", "quando", "porque", "com",
         "uma", "um", "que", "tem", "ser", "pode", "precisa", "fazer", "tela",
@@ -4321,13 +4328,19 @@ def _secoes_relevantes(pergunta: str, secoes: list, limite_chars: int = 6000) ->
         "mais", "menos", "outra", "outro", "outros", "entre", "apos", "ate",
         "voce", "vc", "quero", "saber", "existe", "existir", "posso",
     }
-    termos = [t for t in _re.findall(r"[a-zà-ú0-9]{4,}", pergunta.lower()) if t not in stop]
+
+    def _norm(s: str) -> str:
+        return _u.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+
+    pergunta_n = _norm(pergunta.lower())
+    termos = [t for t in _re.findall(r"[a-z0-9]{4,}", pergunta_n) if t not in stop]
     if not termos:
         return []
     pontuados = []
     for titulo, texto in secoes:
-        alvo = (titulo + " " + texto).lower()
-        score = sum(1 for t in termos if t in alvo)
+        titulo_n = _norm(titulo.lower())
+        alvo_n = _norm((titulo + " " + texto).lower())
+        score = sum(2 if t in titulo_n else 1 for t in termos if t in alvo_n)
         if score > 0:
             pontuados.append((score, titulo, texto))
     pontuados.sort(key=lambda x: -x[0])
@@ -4405,6 +4418,20 @@ def api_ajuda():
         {"role": "user", "content": pergunta},
     ]
     out = llm_client.chat(modelo, mensagens)
+    # Registra o consumo de tokens (origem "ajuda") — visível em Uso de
+    # Tokens / Cost Intelligence. Não grava auditoria (pergunta de ajuda é
+    # banal e a rota é pública — inclusive na tela de login).
+    try:
+        tok = out.get("tokens") or {}
+        db.registrar_uso_token(
+            modelo.get("cliente_id"), out.get("model") or modelo.get("modelo"),
+            int(tok.get("total_tokens") or 0),
+            prompt_tokens=int(tok.get("prompt_tokens") or 0),
+            completion_tokens=int(tok.get("completion_tokens") or 0),
+            modelo_fallback=0, quem="sistema", origem="ajuda",
+        )
+    except Exception:  # noqa: BLE001 - registro de uso nunca quebra a resposta
+        pass
     if out["ok"]:
         return jsonify({
             "ok": True,
