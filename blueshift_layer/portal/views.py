@@ -4195,7 +4195,7 @@ def gateway():
         nome = request.form.get("nome", "").strip()
         canal_id = request.form.get("canal_id") or None
         modo = request.form.get("modo", "completa")
-        ativo = 1 if request.form.get("ativo") else 1
+        ativo = 1 if request.form.get("ativo") else 0
         if not nome or not canal_id:
             flash("Nome e canal são obrigatórios.", "warn")
             return redirect(url_for("portal.gateway"))
@@ -4238,6 +4238,7 @@ def gateway():
           <option value="completa">Resposta completa (JSON)</option>
           <option value="streaming">Streaming (efeito de digitação — SSE)</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" checked style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div style="margin-top:12px"><button class="btn" type="submit">Ativar gateway</button></div>
       </form>
     </div>"""
@@ -4278,7 +4279,7 @@ def gateway_editar(gid: int):
           <option value="completa" {"selected" if g['modo']=='completa' else ''}>Resposta completa (JSON)</option>
           <option value="streaming" {"selected" if g['modo']=='streaming' else ''}>Streaming (SSE)</option>
         </select>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''}> Gateway ativo</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''} style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/gateway">Cancelar</a>
