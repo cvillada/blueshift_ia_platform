@@ -83,6 +83,31 @@ def _auth_token() -> str | None:
     return None
 
 
+# Marcadores do prompt de GERACAO DE TITULO que chats externos (Open WebUI)
+# disparam em paralelo a cada conversa — nao sao perguntas reais do usuario.
+_MARCADORES_TITULO = [
+    "### task: generate a concise title",
+    "generate a concise title summarizing",
+    "### chat history:",
+    "raw json object",
+]
+
+
+def _eh_pedido_titulo(pergunta: str) -> bool:
+    p = pergunta.lower()
+    return any(m in p for m in _MARCADORES_TITULO)
+
+
+def _titulo_do_historico(pergunta: str) -> str:
+    """Deriva um titulo curto da primeira mensagem USER do historico."""
+    import re as _re
+    m = _re.search(r"USER:\s*([^\n]+)", pergunta)
+    if m:
+        t = m.group(1).strip()
+        return t[:40] + ("..." if len(t) > 40 else "")
+    return "Conversa BlueShift"
+
+
 def _resposta_openai(resposta: str, modelo: str, gw_id: int) -> dict:
     """Monta o corpo no formato OpenAI (resposta completa)."""
     return {
@@ -153,6 +178,29 @@ def create_app() -> Flask:
         if not token:
             return jsonify({"error": {"message": "Authorization (Bearer) obrigatorio",
                                       "type": "authentication_error"}}), 401
+
+        # Chats externos (ex: Open WebUI) fazem uma chamada EXTRA para gerar o
+        # TITULO da conversa. Nao e pergunta real — responder direto com um
+        # titulo (sem chamar o agente): nao grava trace/memoria/conhecimento
+        # e nao gasta tokens.
+        if _eh_pedido_titulo(pergunta):
+            titulo = json.dumps({"title": _titulo_do_historico(pergunta)},
+                                ensure_ascii=False)
+            modelo = gw["agente_nome"] or "blueshift"
+            if gw["modo"] == "streaming":
+                def gen_titulo():
+                    yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
+                          '"model":"%s","choices":[{"index":0,"delta":{"role":"assistant"},' \
+                          '"finish_reason":null}]}\n\n' % (gw["id"], modelo)
+                    yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
+                          '"model":"%s","choices":[{"index":0,"delta":{"content":%s},' \
+                          '"finish_reason":null}]}\n\n' % (gw["id"], modelo, titulo)
+                    yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
+                          '"model":"%s","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' \
+                          % (gw["id"], modelo)
+                    yield "data: [DONE]\n\n"
+                return Response(gen_titulo(), mimetype="text/event-stream")
+            return jsonify(_resposta_openai(titulo, modelo, gw["id"]))
 
         out = _chamar_canal(gw["canal_token"], pergunta)
         if not out["ok"]:
