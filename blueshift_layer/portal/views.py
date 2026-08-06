@@ -3819,7 +3819,9 @@ def api_agente(canal):
 
     usuario = (data.get("usuario") or f"canal:{canal['id']}")[:40]
     id_cliente = data.get("id_cliente") or ""
-    out = agente_mod.responder(a, pergunta, usuario, id_cliente=id_cliente)
+    contexto = (data.get("contexto") or "").strip()
+    out = agente_mod.responder(a, pergunta, usuario, id_cliente=id_cliente,
+                               contexto_extra=contexto)
     db.registrar_auditoria(
         f"canal:{canal['id']}", "sistema", "api_agente", alvo=a["nome"],
         cliente_id=canal["cliente_id"], ip=request.remote_addr, detalhe=pergunta[:80],

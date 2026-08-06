@@ -788,6 +788,12 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 - **Streaming**: o canal devolve a resposta completa; o gateway a envia
   em chunks (SSE) — efeito de digitação no chat externo (streaming
   simulado; latência total igual).
+- **Contexto da conversa**: o gateway repassa as mensagens anteriores do
+  chat (últimas 6, truncadas em 300 chars cada) no campo `contexto` da
+  API — o LLM entende referências ("e o dele?") sem repetir o ID. O
+  trabalho de enviar o histórico é do sistema solicitante (Open WebUI já
+  o faz). A memória e o RAG gravam apenas a última pergunta/resposta
+  real (sem o contexto concatenado).
 - **Segurança**: o `Authorization` do chat externo precisa ser o token do
   canal vinculado (`Bearer bs_chan_*`) — token errado → 401.
 - Endpoint exibido na tela: `http://<host>:9003/v1`.
@@ -833,7 +839,14 @@ Resposta (JSON limpa — sem contexto/ferramentas):
 }
 ```
 
-- Campos opcionais no body: `usuario` (máx 40 chars), `id_cliente`.
+- Campos opcionais no body: `usuario` (máx 40 chars), `id_cliente`,
+  `contexto` (mensagens anteriores da conversa — entram SÓ no prompt do
+  LLM para manter o contexto; a memória/trace gravam apenas a pergunta
+  real). Ex:
+  ```json
+  {"pergunta": "e o aluguel anterior dele?",
+   "contexto": "usuario: qual o ultimo aluguel do id_cliente=30\nassistente: foi RIDGEMONT SUBMARINE."}
+  ```
 - Erros: 401 (token ausente/inválido), 400 (sem pergunta), 404 (agente).
 - Rate limit: 100 req/min por token.
 - Se o canal tiver webhook de saída, a resposta também é POSTada lá

@@ -280,7 +280,7 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
-              anonimizar: bool = True) -> dict:
+              anonimizar: bool = True, contexto_extra: str = "") -> dict:
     """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
 
     Hierarquia de execução:
@@ -294,6 +294,12 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
 
     id_cliente: opcional. Se fornecido, usado como fallback se a extração
     automática não encontrar. Padrão vazio — nenhum ID forçado.
+
+    contexto_extra: opcional (chats externos via gateway). Mensagens
+    anteriores da conversa — entram APENAS no prompt do LLM (para o
+    modelo entender referencias tipo "e o dele?"). NAO afeta roteador/
+    extrator/RAG e NAO é gravado no trace/memória — lá fica a pergunta
+    real (última mensagem).
     """
     import time as _time
     _t0 = _time.time()
@@ -394,9 +400,15 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         "CONTEXTO (base de conhecimento — FONTE SECUNDARIA, pode estar desatualizado):\n"
         + ("\n".join(f"- {c['texto']}" for c in contexto) or "(vazio)")
     )
+    user_content = pergunta
+    if contexto_extra:
+        user_content = (
+            "CONTEXTO DA CONVERSA (mensagens anteriores do usuario):\n"
+            f"{contexto_extra}\n\nPERGUNTA ATUAL:\n{pergunta}"
+        )
     mensagens = [
         {"role": "system", "content": system},
-        {"role": "user", "content": pergunta},
+        {"role": "user", "content": user_content},
     ]
 
     # --- tentativa principal ---

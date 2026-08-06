@@ -52,9 +52,16 @@ def _gateways_ativos() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _chamar_canal(token: str, pergunta: str) -> dict:
-    """Chama a API do canal e devolve {ok, resposta, modelo, erro}."""
-    body = json.dumps({"pergunta": pergunta}).encode("utf-8")
+def _chamar_canal(token: str, pergunta: str, contexto: str = "") -> dict:
+    """Chama a API do canal e devolve {ok, resposta, modelo, erro}.
+
+    contexto: mensagens anteriores da conversa (entram so no prompt do
+    LLM; a memoria/trace gravam apenas a pergunta real).
+    """
+    payload: dict = {"pergunta": pergunta}
+    if contexto:
+        payload["contexto"] = contexto
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         f"{_PORTAL_URL}/portal/api/v1/agente",
         data=body,
@@ -91,6 +98,28 @@ _MARCADORES_TITULO = [
     "### chat history:",
     "raw json object",
 ]
+
+
+def _montar_contexto(messages: list[dict], max_msg: int = 6,
+                     max_chars: int = 300) -> str:
+    """Concatena as mensagens ANTERIORES (antes da ultima) como contexto.
+
+    O trabalho de mandar o contexto e do sistema solicitante (Open WebUI
+    ja envia o historico); o gateway repassa ao agente. Limita a N
+    mensagens e trunca cada uma (nao explodir tokens/latencia).
+    """
+    partes = []
+    for m in messages[:-1][-max_msg:]:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        txt = (m.get("content") or "").strip()
+        if not txt:
+            continue
+        if len(txt) > max_chars:
+            txt = txt[:max_chars] + "..."
+        partes.append(f"{'usuario' if role == 'user' else 'assistente'}: {txt}")
+    return "\n".join(partes)
 
 
 def _eh_pedido_titulo(pergunta: str) -> bool:
@@ -202,7 +231,8 @@ def create_app() -> Flask:
                 return Response(gen_titulo(), mimetype="text/event-stream")
             return jsonify(_resposta_openai(titulo, modelo, gw["id"]))
 
-        out = _chamar_canal(gw["canal_token"], pergunta)
+        out = _chamar_canal(gw["canal_token"], pergunta,
+                            contexto=_montar_contexto(messages))
         if not out["ok"]:
             return jsonify({"error": {"message": out.get("erro") or "falha no agente",
                                       "type": "server_error"}}), 502
