@@ -24,6 +24,11 @@ def main():
 
     sub.add_parser("mcp", help="Sobe o servidor MCP stdio (conectores CRM/RH/ERP)")
 
+    gateway_p = sub.add_parser(
+        "gateway", help="Sobe o Gateway OpenAI-compatível (chats externos)")
+    gateway_p.add_argument("--host", default="0.0.0.0")
+    gateway_p.add_argument("--port", type=int, default=9003)
+
     args = p.parse_args()
     if args.cmd == "init":
         installer.create_profile(args.cliente)
@@ -44,6 +49,11 @@ def main():
         from blueshift_layer.connector_pack.mcp_server import run as run_mcp
 
         run_mcp()
+    elif args.cmd == "gateway":
+        from blueshift_layer.gateway import run as run_gateway
+
+        print(f"[gateway] BlueShift Gateway OpenAI-compatível em http://{args.host}:{args.port}/v1")
+        run_gateway(host=args.host, port=args.port)
     else:
         p.print_help()
 

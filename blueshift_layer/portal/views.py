@@ -17,6 +17,7 @@ from flask import (
     Blueprint, request, redirect, url_for, session, flash, current_app, jsonify, make_response,
 )
 import json
+import os
 import urllib.parse
 from . import db, auth, templates, sso
 from .db import listar_areas
@@ -4174,6 +4175,143 @@ def canal_alternar(canal_id: int):
     )
     flash(f"Canal '{canal['nome']}' {acao}.", "ok" if canal["ativo"] else "warn")
     return redirect(url_for("portal.canais"))
+
+
+# --------------------------------------------------------------------------- #
+# Gateway OpenAI-compatível (chats externos: Open WebUI, LibreChat...)        #
+# --------------------------------------------------------------------------- #
+
+def _endpoint_gateway() -> str:
+    """Endpoint publico do gateway (porta 9003) baseado no host do request."""
+    host = request.host.split(":")[0] or "localhost"
+    porta = os.environ.get("GATEWAY_PORT", "9003")
+    return f"http://{host}:{porta}/v1"
+
+
+@bp.route("/gateway", methods=["GET", "POST"])
+@auth.admin_required
+def gateway():
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        canal_id = request.form.get("canal_id") or None
+        modo = request.form.get("modo", "completa")
+        ativo = 1 if request.form.get("ativo") else 1
+        if not nome or not canal_id:
+            flash("Nome e canal são obrigatórios.", "warn")
+            return redirect(url_for("portal.gateway"))
+        gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo)
+        db.registrar_auditoria(_user()["login"], "admin", "criar_gateway", alvo=nome,
+                               cliente_id=1, ip=request.remote_addr)
+        flash(f"Gateway '{nome}' ativado. Endpoint: {_endpoint_gateway()}", "ok")
+        return redirect(url_for("portal.gateway"))
+
+    rows = db.listar_gateways()
+    canais = [c for c in db.listar_canais() if c["ativo"]]
+    opts = "".join(f'<option value="{c["id"]}">{c["nome"]} → {next((a["nome"] for a in db.listar_agentes() if a["id"] == c["agente_id"]), "(sem agente)")}</option>' for c in canais)
+    body = ""
+    for g in rows:
+        st = "ativo" if g["ativo"] else "pausado"
+        body += f"""<tr>
+          <td><b>{g['nome']}</b></td>
+          <td>{g.get('canal_nome','-')}</td>
+          <td>{g.get('agente_nome','-')} <span class="muted">({g.get('agente_area','')})</span></td>
+          <td>{templates.badge(g['modo'])}</td>
+          <td>{templates.badge(st)}</td>
+          <td style="max-width:220px"><code style="font-size:11px">{_endpoint_gateway()}</code></td>
+          <td class="row-actions">
+            <a href="/portal/gateway/{g['id']}/editar">editar</a>
+            <a href="/portal/gateway/{g['id']}/alternar">{"pausar" if g['ativo'] else "ativar"}</a>
+            <a href="/portal/gateway/{g['id']}/excluir" onclick="return confirm('Excluir gateway {g['nome']}?')" style="color:var(--bad)">excluir</a>
+          </td>
+        </tr>"""
+    tabela = f"""<table><thead><tr><th>Nome</th><th>Canal</th><th>Agente</th><th>Modo</th><th>Status</th><th>Endpoint (OpenAI)</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum gateway ativado.</td></tr>'}</tbody></table>"""
+    form = f"""
+    <div class="card" style="max-width:680px">
+      <h3 style="margin-top:0">Ativar gateway (chat externo)</h3>
+      <form method="post">
+        {templates.csrf_field()}<label>Nome</label><input name="nome" placeholder="Ex: Gateway Vendas (Open WebUI)">
+        <label>Canal vinculado (o token autentica o chat externo)</label>
+        <select name="canal_id">{opts or '<option value="">(nenhum canal ativo — crie um canal primeiro)</option>'}</select>
+        <label>Modo de resposta</label>
+        <select name="modo">
+          <option value="completa">Resposta completa (JSON)</option>
+          <option value="streaming">Streaming (efeito de digitação — SSE)</option>
+        </select>
+        <div style="margin-top:12px"><button class="btn" type="submit">Ativar gateway</button></div>
+      </form>
+    </div>"""
+    content = f"""
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="muted">Gateway OpenAI-compatível: chats externos (Open WebUI, LibreChat, apps) falam o protocolo padrão e o gateway repassa ao agente via API do canal. Endpoint: <code>{_endpoint_gateway()}</code> — API Key = token do canal.</div>
+    </div>{form}<h3 style="margin-top:18px">Gateways ativados</h3>{tabela}"""
+    return templates.page("Gateway", content, active="gateway", user=_user())
+
+
+@bp.route("/gateway/<int:gid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def gateway_editar(gid: int):
+    g = db.buscar_gateway(gid)
+    if not g:
+        flash("Gateway não encontrado.", "bad")
+        return redirect(url_for("portal.gateway"))
+    if request.method == "POST":
+        nome = (request.form.get("nome") or g["nome"]).strip()
+        canal_id = int(request.form.get("canal_id") or g["canal_id"])
+        modo = request.form.get("modo") or g["modo"]
+        ativo = 1 if request.form.get("ativo") else 0
+        db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo)
+        db.registrar_auditoria(_user()["login"], "admin", "editar_gateway", alvo=nome,
+                               cliente_id=1, ip=request.remote_addr)
+        flash(f"Gateway '{nome}' atualizado.", "ok")
+        return redirect(url_for("portal.gateway"))
+    canais = db.listar_canais()
+    opts = "".join(f'<option value="{c["id"]}" {"selected" if c["id"] == g["canal_id"] else ""}>{c["nome"]}</option>' for c in canais)
+    content = f"""
+    <div class="card" style="max-width:680px">
+      <h3 style="margin-top:0">Editar gateway #{gid}</h3>
+      <form method="post">
+        {templates.csrf_field()}<label>Nome</label><input name="nome" value="{g['nome']}">
+        <label>Canal vinculado</label><select name="canal_id">{opts}</select>
+        <label>Modo de resposta</label>
+        <select name="modo">
+          <option value="completa" {"selected" if g['modo']=='completa' else ''}>Resposta completa (JSON)</option>
+          <option value="streaming" {"selected" if g['modo']=='streaming' else ''}>Streaming (SSE)</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''}> Gateway ativo</label>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/gateway">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page("Editar gateway", content, active="gateway", user=_user())
+
+
+@bp.route("/gateway/<int:gid>/alternar")
+@auth.admin_required
+def gateway_alternar(gid: int):
+    g = db.buscar_gateway(gid)
+    if g:
+        novo = 0 if g["ativo"] else 1
+        db.atualizar_gateway(gid, ativo=novo)
+        db.registrar_auditoria(_user()["login"], "admin",
+                               "ativar_gateway" if novo else "pausar_gateway",
+                               alvo=g["nome"], cliente_id=1, ip=request.remote_addr)
+        flash(f"Gateway '{g['nome']}' {'ativado' if novo else 'pausado'}.", "ok")
+    return redirect(url_for("portal.gateway"))
+
+
+@bp.route("/gateway/<int:gid>/excluir")
+@auth.admin_required
+def gateway_excluir(gid: int):
+    g = db.buscar_gateway(gid)
+    if g:
+        db.excluir_gateway(gid)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_gateway",
+                               alvo=g["nome"], cliente_id=1, ip=request.remote_addr)
+        flash(f"Gateway '{g['nome']}' excluído.", "ok")
+    return redirect(url_for("portal.gateway"))
 
 
 # --------------------------------------------------------------------------- #

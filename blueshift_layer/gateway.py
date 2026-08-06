@@ -1,0 +1,194 @@
+"""Gateway OpenAI-compatível da BlueShift (chats externos: Open WebUI,
+LibreChat, apps custom...).
+
+Implementa o protocolo OpenAI (`/v1/chat/completions` + `/v1/models`) e
+traduz para a API de canal do portal (`POST /portal/api/v1/agente` com o
+token do canal). O gateway lê a configuração direto do SQLite (volume
+compartilhado com o portal) — não cria superfície nova no portal.
+
+Modos por gateway (definidos na tela Gateway do portal):
+  - completa   -> responde JSON OpenAI normal
+  - streaming  -> responde SSE (streaming SIMULADO: o canal devolve a
+                  resposta completa; o gateway a envia em chunks para o
+                  chat externo ter o efeito de digitação)
+
+Segurança: o Authorization do chat externo deve ser o TOKEN do canal
+vinculado (Bearer bs_chan_*). Sem token valido -> 401.
+"""
+import json
+import os
+import sqlite3
+import threading
+import time
+import urllib.error
+import urllib.request
+
+from flask import Flask, Response, jsonify, request
+
+# Caminho do banco do portal (volume compartilhado)
+_PORTAL_DB = os.environ.get("BLUESHIFT_PORTAL_DB", "data/portal.db")
+# URL interna do portal (no compose: http://blueshift-platform:8080)
+_PORTAL_URL = os.environ.get("GATEWAY_PORTAL_URL", "http://localhost:8080")
+
+
+def _con():
+    con = sqlite3.connect(_PORTAL_DB)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def _gateways_ativos() -> list[dict]:
+    """Gateways ativos com canal+token+agente (para /v1/models e roteamento)."""
+    with _con() as con:
+        rows = con.execute(
+            """SELECT g.id, g.nome, g.modo, c.token AS canal_token,
+                      a.nome AS agente_nome, a.area AS agente_area
+               FROM gateway_config g
+               JOIN canais c ON c.id = g.canal_id
+               LEFT JOIN agentes a ON a.id = c.agente_id
+               WHERE g.ativo = 1 AND c.ativo = 1
+               ORDER BY g.id"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _chamar_canal(token: str, pergunta: str) -> dict:
+    """Chama a API do canal e devolve {ok, resposta, modelo, erro}."""
+    body = json.dumps({"pergunta": pergunta}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_PORTAL_URL}/portal/api/v1/agente",
+        data=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            out = json.loads(resp.read().decode("utf-8"))
+        if out.get("ok"):
+            return {"ok": True, "resposta": out.get("resposta", ""),
+                    "modelo": out.get("modelo") or "blueShift"}
+        return {"ok": False, "resposta": "", "erro": out.get("erro") or "falha no agente"}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "resposta": "", "erro": f"HTTP {e.code}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "resposta": "", "erro": str(e)}
+
+
+def _auth_token() -> str | None:
+    """Extrai o Bearer token do Authorization."""
+    h = request.headers.get("Authorization", "")
+    if h.lower().startswith("bearer "):
+        return h[7:].strip()
+    return None
+
+
+def _resposta_openai(resposta: str, modelo: str, gw_id: int) -> dict:
+    """Monta o corpo no formato OpenAI (resposta completa)."""
+    return {
+        "id": f"chatcmpl-bs-{gw_id}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": modelo,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": resposta},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+def create_app() -> Flask:
+    app = Flask(__name__)
+
+    @app.get("/healthz")
+    def healthz():
+        return jsonify({"ok": True, "servico": "blueshift-gateway"})
+
+    @app.get("/v1/models")
+    def v1_models():
+        gws = _gateways_ativos()
+        data = [{
+            "id": f"agente:{g['agente_nome'] or 'gateway'}",  # model id p/ o chat
+            "object": "model",
+            "created": int(time.time()),
+            "owned_by": "blueshift",
+        } for g in gws]
+        return jsonify({"object": "list", "data": data})
+
+    @app.post("/v1/chat/completions")
+    def v1_chat():
+        token = _auth_token()
+        body = request.get_json(silent=True) or {}
+        messages = body.get("messages") or []
+        # Ultima mensagem do usuario vira a pergunta do agente
+        pergunta = ""
+        for m in reversed(messages):
+            if m.get("role") == "user" and (m.get("content") or "").strip():
+                pergunta = m["content"].strip()
+                break
+        if not pergunta:
+            return jsonify({"error": {"message": "mensagem de usuario obrigatoria",
+                                      "type": "invalid_request_error"}}), 400
+
+        gws = _gateways_ativos()
+        if not gws:
+            return jsonify({"error": {"message": "nenhum gateway ativo configurado",
+                                      "type": "server_error"}}), 404
+
+        # Escolhe o gateway: pelo model pedido (nome do agente) ou o primeiro
+        model_pedido = body.get("model") or ""
+        gw = None
+        if model_pedido:
+            alvo = model_pedido.removeprefix("agente:")
+            gw = next((g for g in gws if (g["agente_nome"] or "") == alvo), None)
+        if gw is None:
+            gw = gws[0]
+
+        # Auth: o token do chat externo precisa ser o token do canal vinculado
+        if token and token != gw["canal_token"]:
+            return jsonify({"error": {"message": "token invalido",
+                                      "type": "authentication_error"}}), 401
+        if not token:
+            return jsonify({"error": {"message": "Authorization (Bearer) obrigatorio",
+                                      "type": "authentication_error"}}), 401
+
+        out = _chamar_canal(gw["canal_token"], pergunta)
+        if not out["ok"]:
+            return jsonify({"error": {"message": out.get("erro") or "falha no agente",
+                                      "type": "server_error"}}), 502
+
+        modelo = out.get("modelo") or gw["agente_nome"] or "blueshift"
+
+        if gw["modo"] == "streaming":
+            # Streaming SIMULADO: envia a resposta completa em chunks (SSE)
+            def gen():
+                yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
+                      '"model":"%s","choices":[{"index":0,"delta":{"role":"assistant"},' \
+                      '"finish_reason":null}]}\n\n' % (gw["id"], modelo)
+                pedacos = [out["resposta"][i:i + 24]
+                           for i in range(0, len(out["resposta"]), 24)] or [""]
+                for p in pedacos:
+                    pj = json.dumps({"content": p}, ensure_ascii=False)
+                    yield f'data: {{"id":"chatcmpl-bs-{gw["id"]}","object":"chat.completion.chunk","model":"{modelo}","choices":[{{"index":0,"delta":{pj},"finish_reason":null}}]}}\n\n'
+                    time.sleep(0.015)
+                yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
+                      '"model":"%s","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' \
+                      % (gw["id"], modelo)
+                yield "data: [DONE]\n\n"
+
+            return Response(gen(), mimetype="text/event-stream")
+
+        return jsonify(_resposta_openai(out["resposta"], modelo, gw["id"]))
+
+    return app
+
+
+def run(host: str = "0.0.0.0", port: int = 9003) -> None:
+    app = create_app()
+    app.run(host=host, port=port, threaded=True)
+
+
+if __name__ == "__main__":
+    run()

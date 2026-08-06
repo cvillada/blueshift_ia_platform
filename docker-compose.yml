@@ -51,6 +51,25 @@ services:
       # DOCUMENTACAO_PB.md editavel sem rebuild (dev): edita no host, vale no proximo F5
       - ./DOCUMENTACAO_PB.md:/opt/blueshift/DOCUMENTACAO_PB.md
 
+  # Gateway OpenAI-compativel — chats externos (Open WebUI, LibreChat, apps)
+  # falam o protocolo padrao /v1/chat/completions e o gateway repassa ao
+  # agente via API do canal (token). Configurado/ativado na tela Gateway
+  # do portal. Sobe junto com a plataforma (mesma imagem, mesmo volume).
+  gateway:
+    image: blueshift/platform:latest
+    container_name: blueshift-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-9003}:9003"
+    environment:
+      BLUESHIFT_PORTAL_DB: "/opt/blueshift/data/portal.db"
+      GATEWAY_PORTAL_URL: "http://blueshift-platform:8080"
+    command: ["blueshift", "gateway", "--port", "9003"]
+    volumes:
+      - blueshift-data:/opt/blueshift/data
+    depends_on:
+      - blueshift
+
 volumes:
   blueshift-data:
   blueshift-models:

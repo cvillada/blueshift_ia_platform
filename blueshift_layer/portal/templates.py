@@ -229,7 +229,7 @@ def _nav(active: str, user: dict | None) -> str:
         "agentes": "\U0001f916", "skills": "\u2699\ufe0f",
         "modelos": "\U0001f9e0", "conectores": "\U0001f50c",
         "alertas_config": "\U0001f514",
-        "canais": "\U0001f4e1", "memoria": "\U0001f4be",
+        "canais": "\U0001f4e1", "gateway": "\U0001f500", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
         'observabilidade': '\U0001f4ca', 'teste_ab': '\U0001f91d', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
@@ -264,6 +264,7 @@ def _nav(active: str, user: dict | None) -> str:
             ("agentes", "Agentes", "/portal/agentes"),
             ("conectores", "Conectores", "/portal/conectores"),
             ("canais", "Canais", "/portal/canais"),
+            ("gateway", "Gateway", "/portal/gateway"),
         ]),
         ("Inteligência", "grupo_inteligencia", [
             ("memoria", "Memória", "/portal/memoria"),

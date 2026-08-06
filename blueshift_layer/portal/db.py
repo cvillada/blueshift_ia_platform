@@ -338,6 +338,15 @@ def init_db() -> None:
                 chave       TEXT PRIMARY KEY,
                 valor       TEXT NOT NULL DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS gateway_config (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome        TEXT NOT NULL,                     -- ex: Gateway Vendas
+                canal_id    INTEGER NOT NULL REFERENCES canais(id) ON DELETE CASCADE,
+                modo        TEXT NOT NULL DEFAULT 'completa',  -- completa | streaming
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                criado_em   TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            );
             INSERT OR IGNORE INTO lgpd_config (chave, valor) VALUES
                 ('anonimizar_llm', '0'),
                 ('anonimizar_rag', '0'),
@@ -1501,6 +1510,51 @@ def atualizar_canal(canal_id: int, **campos) -> None:
     cols = ", ".join(f"{k}=?" for k in campos)
     with get_conn() as conn:
         conn.execute(f"UPDATE canais SET {cols} WHERE id=?", list(campos.values()) + [canal_id])
+
+
+# --- Gateway OpenAI-compatível (chats externos: Open WebUI, LibreChat...) ----
+
+def criar_gateway(nome: str, canal_id: int, modo: str = "completa",
+                  ativo: int = 1) -> int:
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO gateway_config (nome, canal_id, modo, ativo, criado_em, atualizado_em)
+               VALUES (?,?,?,?,?,?)""",
+            (nome, canal_id, modo, ativo, ts, ts),
+        )
+        return cur.lastrowid
+
+
+def listar_gateways() -> list[dict]:
+    """Lista gateways com o nome do canal e do agente vinculado."""
+    with get_conn() as conn:
+        rows = _rows(conn, """SELECT g.*, c.nome AS canal_nome, c.token AS canal_token,
+                                     a.nome AS agente_nome, a.area AS agente_area
+                              FROM gateway_config g
+                              JOIN canais c ON c.id = g.canal_id
+                              LEFT JOIN agentes a ON a.id = c.agente_id
+                              ORDER BY g.id DESC""")
+    return [dict(r) for r in rows]
+
+
+def buscar_gateway(gid: int) -> dict | None:
+    with get_conn() as conn:
+        row = _one(conn, "SELECT * FROM gateway_config WHERE id=?", (gid,))
+        return dict(row) if row else None
+
+
+def atualizar_gateway(gid: int, **campos) -> None:
+    campos["atualizado_em"] = now_iso()
+    cols = ", ".join(f"{k}=?" for k in campos)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE gateway_config SET {cols} WHERE id=?",
+                     list(campos.values()) + [gid])
+
+
+def excluir_gateway(gid: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM gateway_config WHERE id=?", (gid,))
 
 
 # --- Auditoria (rastreabilidade / LGPD) ------------------------------------

@@ -24,6 +24,7 @@ Componentes principais:
 | **RAG / Memória** | Base de conhecimento vetorial local (TF-IDF + similaridade cosseno) |
 | **Skills** | Instruções de comportamento (SKILL.md) que guiam os agentes |
 | **Canais** | Integração máquina-a-máquina com token próprio (API/webhook) |
+| **Gateway** | OpenAI-compatível para chats externos (Open WebUI, apps) — porta 9003 |
 | **Licença** | Validação por chave anual; offline (servidor mock incluso) |
 
 ---
@@ -757,6 +758,50 @@ Fluxo: `/sso/login` → IdP → callback com `code` → troca por id_token →
 validação (HMAC HS256 ou emissor) → sessão criada. Defesa CSRF via `state` +
 `nonce`. Em modo dev, o token é gerado localmente (sem rede).
 
+### 5.23 Gateway (/portal/gateway) — OpenAI-compatível para chats externos
+
+**Onde:** Cadastros → Gateway.
+
+**Propósito:** conecta **chats externos** (Open WebUI, LibreChat, apps
+custom, OpenAI SDK/LangChain) à plataforma falando o **protocolo padrão
+OpenAI** (`/v1/chat/completions`). O gateway repassa a pergunta ao agente
+via **API do canal** (token próprio) — com todo o pipeline (roteamento de
+conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
+(container irmão no mesmo compose, porta 9003).
+
+**Como ativar (passo a passo):**
+1. Crie um canal na tela Canais apontando para o agente desejado (ex:
+   Agente Vendas) e copie o token `bs_chan_*`;
+2. Cadastros → Gateway → **Ativar gateway**: Nome, Canal vinculado,
+   Modo de resposta (`Resposta completa` ou `Streaming`) e salvar;
+3. No chat externo (ex: Open WebUI → Configurações → Conexões → OpenAI
+   API): API URL = `http://<servidor>:9003/v1` · API Key = **o token do
+   canal** · Model = `agente:<nome do agente>` (lista em `/v1/models`).
+
+| Campo | Obrigatório | Exemplo |
+|:------|:-----------:|:--------|
+| Nome | ✅ | `Gateway Vendas (Open WebUI)` |
+| Canal vinculado | ✅ | `API Vendas` (o token autentica o chat externo) |
+| Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) |
+| Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
+
+- **Streaming**: o canal devolve a resposta completa; o gateway a envia
+  em chunks (SSE) — efeito de digitação no chat externo (streaming
+  simulado; latência total igual).
+- **Segurança**: o `Authorization` do chat externo precisa ser o token do
+  canal vinculado (`Bearer bs_chan_*`) — token errado → 401.
+- Endpoint exibido na tela: `http://<host>:9003/v1`.
+
+Exemplo de chamada (formato OpenAI):
+
+```bash
+curl -X POST http://localhost:9003/v1/chat/completions \
+  -H "Authorization: Bearer bs_chan_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "agente:Agente Vendas",
+       "messages": [{"role": "user", "content": "Qual o saldo do cliente C001?"}]}'
+```
+
 ---
 
 ## 6. API de Canal (integração máquina-a-máquina)
@@ -895,7 +940,7 @@ Detalhes:
 
 ## 10. Banco de Dados (SQLite)
 
-22 tabelas principais:
+23 tabelas principais:
 
 | Tabela | Conteúdo |
 |:-------|:---------|
@@ -918,6 +963,7 @@ Detalhes:
 | modelos | Modelos OpenAI-compatíveis |
 | api_keys | Chaves de API (legado) |
 | canais | Canais de integração (token próprio) |
+| gateway_config | Gateways OpenAI-compatíveis (canal vinculado, modo streaming/completa) |
 | sso_config | Configuração OIDC |
 | lgpd_config | Configurações LGPD (chave/valor) |
 | teste_ab | Julgamentos do Teste A/B (pergunta, respostas A/B, voto, justificativa, modelos) |
