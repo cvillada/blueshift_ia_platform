@@ -2301,11 +2301,18 @@ def observabilidade():
     function processarMetricas(){{
       var b=document.getElementById("btn-processar");
       b.innerHTML="Processando...";b.disabled=true;
-      fetch("/portal/processar-metricas").then(r=>r.json()).then(d=>{{
+      fetch("/portal/processar-metricas").then(function(r){{
+        if(!r.ok){{ throw new Error("HTTP "+r.status); }}
+        return r.json();
+      }}).then(function(d){{
         b.innerHTML="OK ("+d.inseridas+" linhas)";
         setTimeout(function(){{window.location.reload();}},1000);
       }}).catch(function(e){{
-        b.innerHTML="Erro";b.disabled=false;
+        // 302 -> login (sessao expirada) retorna HTML: o json() falharia
+        // com "Erro" mudo. Mensagem clara + leva para o login.
+        b.innerHTML="Sessao expirada — relogando...";
+        b.disabled=false;
+        window.location.href="/portal/login";
       }});
     }}
     </script>

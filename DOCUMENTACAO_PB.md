@@ -127,6 +127,7 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente; recomendado modelo local rápido (hermes-3-llama-3.1-8b) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`) — sem ela, usa o host da requisição. Chat externo em Docker na mesma máquina: `http://host.docker.internal:9003/v1` |
+| `BLUESHIFT_PORTAL_SECRET` | vazio | Chave da SESSÃO do portal — deve ser **FIXA entre deploys** (sem ela, cada rebuild gera uma chave nova e derruba todos os logins; usuário logado cai com redirecionamento para o login no próximo clique). Trocar em produção e manter estável |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo → primeira entrada vira Configuração inicial (cliente final) |
 | `BLUESHIFT_DEV` | 1 no Docker | Modo dev (licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |

@@ -28,6 +28,10 @@ services:
     environment:
       TZ: "America/Sao_Paulo"
       BLUESHIFT_AREAS: "vendas,suporte,financeiro,rh,operacoes"
+      # Chave da sessao do portal: FIXA (se nao, cada rebuild gera uma nova
+      # e TODAS as sessoes morrem — usuario logado cai com 302 no proximo
+      # clique). Trocar em producao e manter estavel entre deploys.
+      BLUESHIFT_PORTAL_SECRET: "${BLUESHIFT_PORTAL_SECRET:-bs-portal-secret-troque-em-producao}"
       BLUESHIFT_LICENSE: "${BLUESHIFT_LICENSE:-BS-DEV-CHANGE-ME}"
       BLUESHIFT_LICENSE_URL: "http://localhost:9000/v1/validate"
       BLUESHIFT_LICENSE_PORT: "9000"
