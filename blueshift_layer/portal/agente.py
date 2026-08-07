@@ -502,9 +502,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                         grafico_md = grafico_mod.marcar_grafico_md(b64)
                         user_content += (
                             "\n\nO usuario pediu um GRAFICO. Os dados e a imagem "
-                            "foram gerados pelo sistema (a imagem sera anexada "
-                            "automaticamente a sua resposta). Resuma os dados "
-                            "em 2-3 linhas e, se necessario, explique o grafico."
+                            "foram gerados pelo sistema e a imagem sera ANEXADA "
+                            "automaticamente a sua resposta. NAO inclua nenhuma "
+                            "tag de imagem nem markdown de imagem (nenhum "
+                            "![...](...)). Apenas resuma os dados em 2-3 linhas "
+                            "e explique o grafico em texto."
                         )
         except Exception:  # noqa: BLE001 — grafico e best-effort
             pass

@@ -769,6 +769,18 @@ def agentes():
     return templates.page("Agentes", content, active="agentes", user=_user())
 
 
+def _resposta_html(texto: str) -> str:
+    """Converte a resposta em HTML: escapa tudo e transforma a imagem
+    data-URI (grafico gerado) em <img> renderizavel."""
+    import re as _re
+    def _img(m):
+        return (f'<img src="data:image/png;base64,{m.group(1)}" '
+                'style="max-width:100%;border-radius:8px;margin:6px 0">')
+    return _re.sub(
+        r"!\[[^\]]*\]\(data:image/png;base64,([A-Za-z0-9+/=]+)\)",
+        _img, templates.h(texto or ""))
+
+
 @bp.route("/agentes/<int:aid>/testar", methods=["GET", "POST"])
 @auth.login_required
 def agente_testar(aid: int):
@@ -857,7 +869,7 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {a["nome"]}:</b><p style="margin:8px 0 0">{resposta}</p>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {a["nome"]}:</b><div style="margin:8px 0 0">{_resposta_html(resposta)}</div>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>

@@ -66,18 +66,17 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
             elif tipo == "mcp":
                 res = _executar_mcp(nome, config, params, pergunta)
             elif tipo == "sql":
-                res = _executar_sql(nome, config, params, pergunta)
-                # Consulta inteligente: query fixa vazia + pergunta de
-                # analise + conector permitindo -> SELECT gerado sobre o
-                # schema real (text-to-SQL generico por driver).
-                if (not res.get("resultado") and not res.get("erro")
-                        and config.get("sql_analise", "1") != "0"
-                        and modelo and _pergunta_analise(pergunta)):
-                    res2 = _executar_sql_dinamico(nome, config, pergunta, modelo)
-                    if res2.get("resultado"):
-                        resultados.append({
-                            "conector": nome, "tipo": tipo, **res2,
-                        })
+                # Consulta inteligente DIRETA para perguntas de analise:
+                # a query fixa nao faz sentido (placeholders virariam lixo
+                # — ex: title='grafico de barras' quebra o SQL). O SELECT e
+                # montado sobre o schema real. Fallback: query fixa.
+                if (modelo and config.get("sql_analise", "1") != "0"
+                        and _pergunta_analise(pergunta)):
+                    res = _executar_sql_dinamico(nome, config, pergunta, modelo)
+                    if not res.get("resultado"):
+                        res = _executar_sql(nome, config, params, pergunta)
+                else:
+                    res = _executar_sql(nome, config, params, pergunta)
             else:
                 res = {"erro": f"Tipo de conector desconhecido: {tipo}"}
 
