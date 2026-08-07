@@ -28,7 +28,8 @@ from ..portal import db
 
 def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                              parametros: dict | None = None,
-                             somente_ids: list[int] | None = None) -> list[dict]:
+                             somente_ids: list[int] | None = None,
+                             modelo: dict | None = None) -> list[dict]:
     """Executa conectores ATIVOS de uma area, passando parametros.
 
     Args:
@@ -38,6 +39,10 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
         parametros: dict opcional com parametros pre-extraidos (ex: id_cliente).
         somente_ids: roteamento por relevancia — executa apenas os ativos
             com id na lista. [] = nenhum (so RAG). None = todos (antigo).
+        modelo: modelo usado pela CONSULTA INTELIGENTE (text-to-SQL). Quando
+            informado e a query fixa do conector SQL volta vazia, uma
+            pergunta de analise ("quem alugou mais e menos") dispara a
+            geracao de SELECT sobre o schema real da fonte.
 
     Returns:
         Lista de dicts {conector, tipo, tool, args, resultado, erro}.
@@ -62,6 +67,17 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                 res = _executar_mcp(nome, config, params, pergunta)
             elif tipo == "sql":
                 res = _executar_sql(nome, config, params, pergunta)
+                # Consulta inteligente: query fixa vazia + pergunta de
+                # analise + conector permitindo -> SELECT gerado sobre o
+                # schema real (text-to-SQL generico por driver).
+                if (not res.get("resultado") and not res.get("erro")
+                        and config.get("sql_analise", "1") != "0"
+                        and modelo and _pergunta_analise(pergunta)):
+                    res2 = _executar_sql_dinamico(nome, config, pergunta, modelo)
+                    if res2.get("resultado"):
+                        resultados.append({
+                            "conector": nome, "tipo": tipo, **res2,
+                        })
             else:
                 res = {"erro": f"Tipo de conector desconhecido: {tipo}"}
 
@@ -232,6 +248,64 @@ def _resolver_host_sql(host: str) -> str:
 # Executor: SQL View (PostgreSQL, MySQL, SQL Server)                            #
 # --------------------------------------------------------------------------- #
 
+def _conectar_sql(config: dict):
+    """Abre conexao com o banco do conector (PostgreSQL, MySQL, SQL Server, Oracle).
+
+    Levanta ImportError (driver ausente) ou Exception (falha de conexao).
+    """
+    driver = config.get("sql_driver", "postgresql")
+    dsn = config.get("dsn", "") or os.environ.get(config.get("dsn_env", ""), "")
+    host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
+    if driver == "postgresql":
+        import psycopg
+        if dsn:
+            return psycopg.connect(dsn)
+        return psycopg.connect(
+            host=host, port=config.get("sql_port", "5432"),
+            dbname=config.get("sql_db", ""),
+            user=config.get("sql_user", ""),
+            password=config.get("sql_pass", ""),
+        )
+    if driver == "mysql":
+        import pymysql
+        return pymysql.connect(
+            host=host, port=int(config.get("sql_port", "3306")),
+            database=config.get("sql_db", ""),
+            user=config.get("sql_user", ""),
+            password=config.get("sql_pass", ""),
+            charset="utf8mb4",
+        )
+    if driver == "sqlserver":
+        import pymssql
+        return pymssql.connect(
+            server=host, port=config.get("sql_port", "1433"),
+            database=config.get("sql_db", ""),
+            user=config.get("sql_user", ""),
+            password=config.get("sql_pass", ""),
+        )
+    if driver == "oracle":
+        import oracledb
+        oracledb.defaults.fetchmany = 50
+        return oracledb.connect(
+            host=host, port=config.get("sql_port", "1521"),
+            service_name=config.get("sql_db", ""),
+            user=config.get("sql_user", ""),
+            password=config.get("sql_pass", ""),
+        )
+    raise ValueError(f"Driver SQL desconhecido: {driver}")
+
+
+def _rodar_select(conn, sql: str, driver: str, limite: int = 50) -> list[dict]:
+    """Executa um SELECT e devolve as linhas (dicts), limitadas a `limite`."""
+    kwargs = {"as_dict": True} if driver == "sqlserver" else {}
+    with conn.cursor(**kwargs) as cur:
+        cur.execute(sql)
+        if driver == "sqlserver":
+            return cur.fetchmany(limite)
+        cols = [desc[0] for desc in cur.description] if cur.description else []
+        return [dict(zip(cols, r)) for r in cur.fetchmany(limite)]
+
+
 def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     """Executa consulta SQL contra um banco configurado (PostgreSQL, MySQL ou SQL Server)."""
     driver = config.get("sql_driver", "postgresql")
@@ -242,100 +316,172 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     # Substitui placeholders na query
     query = _aplicar_params(query, params)
 
-    # Tenta DSN direto primeiro
-    dsn = config.get("dsn", "") or os.environ.get(config.get("dsn_env", ""), "")
-
     try:
-        if driver == "postgresql":
-            import psycopg
-            if dsn:
-                conn = psycopg.connect(dsn)
-            else:
-                host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
-                port = config.get("sql_port", "5432")
-                conn = psycopg.connect(
-                    host=host, port=port,
-                    dbname=config.get("sql_db", ""),
-                    user=config.get("sql_user", ""),
-                    password=config.get("sql_pass", ""),
-                )
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(query)
-                    cols = [desc[0] for desc in cur.description] if cur.description else []
-                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
-                conn.commit()
-                return {"tool": "sql:query", "args": query, "resultado": rows}
-            finally:
-                conn.close()
-
-        elif driver == "mysql":
-            import pymysql
-            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
-            port = int(config.get("sql_port", "3306"))
-            conn = pymysql.connect(
-                host=host, port=port,
-                database=config.get("sql_db", ""),
-                user=config.get("sql_user", ""),
-                password=config.get("sql_pass", ""),
-                charset="utf8mb4",
-            )
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(query)
-                    cols = [desc[0] for desc in cur.description] if cur.description else []
-                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
-                conn.commit()
-                return {"tool": "sql:query", "args": query, "resultado": rows}
-            finally:
-                conn.close()
-
-        elif driver == "sqlserver":
-            import pymssql
-            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
-            port = config.get("sql_port", "1433")
-            conn = pymssql.connect(
-                server=host, port=port,
-                database=config.get("sql_db", ""),
-                user=config.get("sql_user", ""),
-                password=config.get("sql_pass", ""),
-            )
-            try:
-                with conn.cursor(as_dict=True) as cur:
-                    cur.execute(query)
-                    rows = cur.fetchmany(50)
-                conn.commit()
-                return {"tool": "sql:query", "args": query, "resultado": rows}
-            finally:
-                conn.close()
-
-        elif driver == "oracle":
-            import oracledb
-            oracledb.defaults.fetchmany = 50
-            host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
-            port = config.get("sql_port", "1521")
-            conn = oracledb.connect(
-                host=host, port=port,
-                service_name=config.get("sql_db", ""),
-                user=config.get("sql_user", ""),
-                password=config.get("sql_pass", ""),
-            )
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(query)
-                    cols = [desc[0] for desc in cur.description] if cur.description else []
-                    rows = [dict(zip(cols, r)) for r in cur.fetchmany(50)]
-                conn.commit()
-                return {"tool": "sql:query", "args": query, "resultado": rows}
-            finally:
-                conn.close()
-
-        else:
-            return {"erro": f"Driver SQL desconhecido: {driver}"}
-
+        conn = _conectar_sql(config)
+        try:
+            rows = _rodar_select(conn, query, driver)
+            conn.commit()
+            return {"tool": "sql:query", "args": query, "resultado": rows}
+        finally:
+            conn.close()
     except ImportError as e:
         nome_driver = {"postgresql": "psycopg[binary]", "mysql": "pymysql", "sqlserver": "pymssql", "oracle": "oracledb"}
         return {"erro": f"Driver {driver} nao instalado. Instale: pip install {nome_driver.get(driver, driver)}"}
+    except Exception as e:
+        return {"erro": f"Erro SQL ({driver}): {e}"}
+
+
+# --------------------------------------------------------------------------- #
+# Consulta inteligente (text-to-SQL) — analises sobre o schema real da fonte  #
+# --------------------------------------------------------------------------- #
+
+def _descobrir_schema(config: dict, max_tabelas: int = 15,
+                      max_colunas: int = 20) -> str:
+    """Descreve o schema da fonte (tabelas/views + colunas) para o LLM.
+
+    Generico por driver: information_schema (MySQL/PostgreSQL/SQL Server)
+    ou user_tab_columns (Oracle). Prioriza a tabela/view usada na query do
+    conector. Nunca expoe dados — so estrutura.
+    """
+    driver = config.get("sql_driver", "postgresql")
+    try:
+        conn = _conectar_sql(config)
+        try:
+            if driver == "oracle":
+                q = ("SELECT table_name, column_name, data_type FROM user_tab_columns "
+                     "WHERE table_name NOT LIKE 'BIN$%' ORDER BY table_name, column_id")
+            else:
+                filtro = ("table_schema = 'public'" if driver == "postgresql"
+                          else "table_schema = 'dbo'" if driver == "sqlserver"
+                          else "table_schema = DATABASE()")
+                q = (f"SELECT table_name, column_name, data_type FROM information_schema.columns "
+                     f"WHERE {filtro} ORDER BY table_name, ordinal_position")
+            kwargs = {"as_dict": True} if driver == "sqlserver" else {}
+            with conn.cursor(**kwargs) as cur:
+                cur.execute(q)
+                rows = cur.fetchmany(800)
+        finally:
+            conn.close()
+    except Exception as e:
+        return f"(schema indisponivel: {e})"
+
+    por_tabela: dict[str, list[str]] = {}
+    for r in rows:
+        t = str((r.get("table_name") or "") if isinstance(r, dict) else r[0])
+        c = str((r.get("column_name") or "") if isinstance(r, dict) else r[1])
+        ty = str((r.get("data_type") or "") if isinstance(r, dict) else r[2])
+        if t:
+            por_tabela.setdefault(t, []).append(f"{c} {ty}")
+
+    # Prioriza a tabela/view da query do conector
+    query = config.get("query", "")
+    from_ = re.findall(r"from\s+([\w.\"`\[\]]+)", query.lower()) if query else []
+    prioridade = [f.split(".")[-1].strip('"`[]') for f in from_] if from_ else []
+    nomes = sorted(por_tabela.keys(), key=lambda t: (t not in prioridade, t))[:max_tabelas]
+    blocos = []
+    for t in nomes:
+        colunas = por_tabela[t][:max_colunas]
+        blocos.append(f"{t}({', '.join(colunas)})")
+    return "\n".join(blocos) or "(schema vazio)"
+
+
+def _validar_sql_gerado(sql: str) -> list[str] | None:
+    """Valida SQL gerado por IA: uma ou mais consultas SELECT de leitura.
+
+    Divide por ';' e valida CADA statement (somente SELECT, sem DDL/DML,
+    comentarios, UNION, INTO...). Cada um ganha LIMIT 50 quando o dialeto
+    nao trouxe. Retorna a lista de SQLs validados, ou None se qualquer
+    statement falhar (ex: "mais e menos" gera 2 SELECTs legitimos).
+    """
+    if not sql:
+        return None
+    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    if not statements:
+        return None
+    validados: list[str] = []
+    for st in statements:
+        limpo = st.rstrip().strip()
+        low = limpo.lower()
+        if not low.startswith("select"):
+            return None
+        proibido = ("--", "/*", "drop ", "insert ", "update ", "delete ",
+                    "alter ", "create ", "truncate ", "grant ", "revoke ",
+                    "exec ", "execute ", "union ", "into ", "call ", "replace ")
+        for p in proibido:
+            if p in low:
+                return None
+        if not any(k in low for k in ("limit", "fetch first", "rownum")):
+            # SQL Server usa TOP logo apos o SELECT (nao adiciona LIMIT)
+            if " top " not in (" " + limpo[:24].lower()):
+                limpo += " LIMIT 50"
+        validados.append(limpo)
+    return validados
+
+
+def _gerar_sql_ia(pergunta: str, schema: str, modelo: dict,
+                  dialeto: str = "MySQL") -> str | None:
+    """Pede ao LLM para montar o SELECT sobre o schema real (so estrutura)."""
+    from ..portal import llm_client
+    mensagens = [
+        {"role": "system", "content": (
+            "Voce monta consultas SQL de LEITURA (SELECT) sobre o schema abaixo. "
+            f"O banco e {dialeto}. Responda APENAS com o SQL: sem markdown, sem "
+            "explicacoes, sem ponto e virgula no final. Use apenas tabelas e "
+            "colunas existentes no schema. Se a pergunta pedir ranking/limite, "
+            "use LIMIT (ou TOP no SQL Server).")},
+        {"role": "user", "content": f"SCHEMA:\n{schema}\n\nPERGUNTA: {pergunta}\n\nSQL:"},
+    ]
+    out = llm_client.chat(modelo, mensagens, max_tokens=300, temperatura=0.0)
+    if not out.get("ok"):
+        return None
+    texto = (out.get("content") or "").strip()
+    m = re.search(r"```(?:sql)?\s*(.*?)```", texto, re.DOTALL)
+    if m:
+        texto = m.group(1).strip()
+    return texto or None
+
+
+_MARCADORES_ANALISE = (
+    " mais", " menos", " quantos", " quantas", " top ", " ranking", " maior",
+    " menor", " media", " média", " total", " soma", " count(", " sum(",
+    " por categoria", " agrupad", " grupo", " group by", " resumo", " cada",
+    " lista de", " listar", " ordenad", " classifica", " estatistica",
+    " estatística", " compar", " distribui", " percentual",
+)
+
+
+def _pergunta_analise(pergunta: str) -> bool:
+    """True se a pergunta pede analise/agregacao (gatilho da consulta inteligente)."""
+    p = " " + pergunta.lower().strip()
+    return any(m in p for m in _MARCADORES_ANALISE)
+
+
+def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
+                           modelo: dict) -> dict:
+    """Consulta inteligente: schema real -> SQL por IA -> validacao -> execucao."""
+    driver = config.get("sql_driver", "postgresql")
+    schema = _descobrir_schema(config)
+    if not schema or schema.startswith("(schema indisponivel"):
+        return {"erro": "Schema da fonte indisponivel para consulta inteligente"}
+    dialeto = {"postgresql": "PostgreSQL", "mysql": "MySQL",
+               "sqlserver": "SQL Server", "oracle": "Oracle"}.get(driver, driver)
+    sql = _gerar_sql_ia(pergunta, schema, modelo, dialeto)
+    if not sql:
+        return {"erro": "Nao foi possivel montar a consulta"}
+    sqls = _validar_sql_gerado(sql)
+    if not sqls:
+        return {"erro": "Consulta gerada rejeitada pela validacao de seguranca"}
+    try:
+        conn = _conectar_sql(config)
+        try:
+            blocos = []
+            for s in sqls:
+                rows = _rodar_select(conn, s, driver)
+                blocos.append({"sql": s, "linhas": rows})
+            conn.commit()
+            return {"tool": "sql:analise", "args": sqls, "resultado": blocos}
+        finally:
+            conn.close()
     except Exception as e:
         return {"erro": f"Erro SQL ({driver}): {e}"}
 

@@ -205,6 +205,12 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 
 Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticamente da pergunta do usuário.
 
+**Consulta inteligente (SQL):** quando a query fixa volta vazia e a pergunta pede
+análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o
+SELECT sozinho a partir do **schema real da fonte** (tabelas/views + colunas),
+genérico por driver (MySQL/PostgreSQL/SQL Server/Oracle), com validação de
+segurança (somente SELECT de leitura + LIMIT) e checkbox por conector na tela.
+
 ### 🧠 Base de Conhecimento (RAG)
 
 | Mecanismo | Descrição |

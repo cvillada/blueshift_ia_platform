@@ -493,11 +493,30 @@ Campos comuns:
 | Senha | ✅ | `senha` |
 | DSN (avançado) | ❌ | `ERP_DSN` (variável de ambiente) ou DSN direto |
 | Query SQL | ✅ | `SELECT * FROM clientes WHERE id = {id_cliente}` |
+| Consulta inteligente | ❌ | checkbox (default LIGADO) — análise automática sobre o schema real |
 
 Botões especiais:
 - **🔌 Testar Conexão**: valida driver/host/credenciais antes de salvar.
 - **🤖 Gerar Query com IA**: modal que usa um modelo cadastrado para gerar a
   query a partir de uma descrição em linguagem natural.
+
+**Consulta inteligente (análise automática — SQL):** quando a query fixa
+volta vazia E a pergunta pede análise/agregação ("quem alugou mais e
+menos", "quantos por categoria", "top 5", "total por..."), o agente
+monta o SELECT sozinho olhando o **schema real da fonte** (tabelas/views
++ colunas — nunca os dados) e executa:
+1. Descobre o schema por driver (information_schema / user_tab_columns),
+   priorizando a tabela/view usada na query do conector
+2. O LLM (modelo de roteamento) monta o SELECT no dialeto do banco
+3. **Validação de segurança**: somente SELECT de leitura — rejeita
+   DDL/DML (`;` separa múltiplos SELECTs legítimos, cada um validado),
+   comentários, UNION, INTO; força `LIMIT 50` quando faltar
+4. Executa e devolve os dados ao LLM final (fonte primária)
+
+É genérico por driver (MySQL, PostgreSQL, SQL Server, Oracle) — cada
+conector usa a própria conexão/schema. O checkbox "Consulta inteligente"
+(no cadastro/edição do conector SQL) liga/desliga por conector; desligado
+= comportamento antigo (só a query fixa).
 
 **Placeholders `{param}`:** a query/URL/body/args aceita placeholders que são
 substituídos automaticamente por valores extraídos da pergunta do usuário:
@@ -1055,6 +1074,15 @@ quando os dois existem.
 **Dados pessoais aparecem nas respostas?**
 Ative as máscaras LGPD (tela LGPD). A saída é mascarada; o trace preserva o
 original para auditoria (com retenção automática).
+
+**O agente só responde quando coloco um parâmetro (ex: id_cliente)?**
+Perguntas de ANÁLISE ("quem alugou mais e menos", "quantos por categoria",
+"top 5") agora montam a consulta sozinhas: a **consulta inteligente** do
+conector SQL descobre o schema real da fonte (tabelas/views + colunas) e
+o LLM gera o SELECT (somente leitura, com LIMIT e validação de segurança).
+O fluxo com parâmetros continua valendo para perguntas específicas
+("aluguel do cliente 30"). Desligável por conector (checkbox "Consulta
+inteligente" no cadastro/edição).
 
 ---
 

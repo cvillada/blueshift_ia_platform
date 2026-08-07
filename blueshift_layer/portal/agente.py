@@ -344,7 +344,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                             params[k] = v
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
-                somente_ids=somente_ids,
+                somente_ids=somente_ids, modelo=modelo_roteador,
             )
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]

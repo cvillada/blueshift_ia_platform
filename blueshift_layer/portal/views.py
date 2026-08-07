@@ -1391,6 +1391,7 @@ def conectores():
             config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
+            config["sql_analise"] = "1" if request.form.get("sql_analise") else "0"
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -1501,6 +1502,8 @@ def conectores():
             <button type="button" class="btn-ia" onclick="abrirModalQueryIA()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
           </label>
           <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;  (use &#123;id_cliente&#125;, &#123;email&#125;, &#123;data&#125;)"></textarea>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="sql_analise" value="1" checked style="width:auto;margin:0;vertical-align:middle"> Consulta inteligente (análise automática)</label>
+          <div class="muted" style="font-size:11px;margin-top:4px">Quando a query fixa voltar vazia e a pergunta pedir análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o SELECT sozinho olhando o schema real da fonte (somente leitura, com LIMIT).</div>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
         <div id="conn-finalidade" style="margin-top:8px">
@@ -1737,6 +1740,7 @@ def conector_editar(cid: int):
             config["dsn_env"] = request.form.get("sql_dsn_env", "").strip()
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
+            config["sql_analise"] = "1" if request.form.get("sql_analise") else "0"
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -1775,6 +1779,7 @@ def conector_editar(cid: int):
     sql_dsn_env = cfg.get("dsn_env", "")
     sql_dsn = cfg.get("dsn", "")
     sql_query = cfg.get("query", "")
+    sql_analise = cfg.get("sql_analise", "1") != "0"
     descricao = cfg.get("descricao", "")
 
     api_sel = {"api": "", "mcp": "", "sql": ""}
@@ -1850,6 +1855,8 @@ def conector_editar(cid: int):
                 <button type="button" class="btn-ia" onclick="abrirModalQueryIAEdit()" style="margin-left:8px;font-size:12px;padding:4px 10px">🤖 Gerar Query com IA</button>
               </label>
               <textarea name="sql_query" id="sql-query" rows="3" placeholder="Ex: SELECT * FROM clientes WHERE id = &#123;id_cliente&#125;" style="width:100%;box-sizing:border-box">{sql_query}</textarea>
+              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="sql_analise" value="1" {"checked" if sql_analise else ''} style="width:auto;margin:0;vertical-align:middle"> Consulta inteligente (análise automática)</label>
+              <div class="muted" style="font-size:11px;margin-top:4px">Quando a query fixa voltar vazia e a pergunta pedir análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o SELECT sozinho olhando o schema real da fonte (somente leitura, com LIMIT).</div>
             </div>
           </div>
         </div>
