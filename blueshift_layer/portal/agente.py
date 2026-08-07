@@ -525,15 +525,25 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     modelo_usado = modelo["modelo"]
     usou_fallback = False
 
-    # --- fallback: modelo secundário se o principal falhou ---
-    if not out["ok"] and agente.get("modelo_secundario_id") and agente["modelo_secundario_id"] != agente["modelo_id"]:
+    # --- fallback: modelo secundário se o principal FALHOU ou voltou VAZIO
+    # (modelos com reasoning — ex: deepseek — podem devolver content "")
+    _vazio = out["ok"] and not (out.get("content") or "").strip()
+    if (not out["ok"] or _vazio) and agente.get("modelo_secundario_id") and agente["modelo_secundario_id"] != agente["modelo_id"]:
         modelo2 = db.buscar_modelo(agente["modelo_secundario_id"])
         if modelo2:
             out2 = llm_client.chat(modelo2, mensagens)
-            if out2["ok"]:
+            if out2["ok"] and (out2.get("content") or "").strip():
                 out = out2
                 modelo_usado = modelo2["modelo"]
                 usou_fallback = True
+
+    # --- LLM devolveu VAZIO (principal e fallback): resposta amigavel em
+    # vez de "" — o usuario/sistema externo nunca recebe resposta em branco
+    if out["ok"] and not (out.get("content") or "").strip():
+        out["content"] = (
+            "Não consegui montar a resposta agora — o modelo de IA não "
+            "retornou texto. Por favor, tente a mesma pergunta em instantes."
+        )
 
     # Anexa a imagem do grafico gerado (o sistema garante — nao depende
     # do LLM final incluir a data URI na resposta).
