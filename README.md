@@ -46,6 +46,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Memória** | Persistente por usuário — banco vetorial local (TF-IDF + cosseno) |
 | **RAG** | Auto-alimentado por consultas reais + import CSV/PDF |
 | **Conectores** | Configuráveis: API REST, servidores MCP ou consultas SQL |
+| **Gateway OpenAI** | Chats externos (Open WebUI, LibreChat, apps) no protocolo padrão — porta 9003 |
 | **Skills IA** | Geração de skills com o próprio modelo cadastrado |
 | **Licenciamento** | Anual por empresa (não por token) |
 | **Stack** | Python puro, Flask, SQLite — sem dependências pesadas |
@@ -57,13 +58,25 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 ```
                     ┌─────────────────────┐
                     │   CLI (blueshift)    │
-                    │  init · portal · mcp │
+                    │  init · portal ·     │
+                    │  mcp · gateway       │
                     └──────────┬──────────┘
                                │
                     ┌──────────▼──────────┐
                     │  🌐 PORTAL (Flask)   │
                     │  create_app() :8080  │
                     └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  🔀 GATEWAY         │
+                    │  /v1/chat/completions│
+                    │  :9003 (OpenAI)     │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  💬 CHATS EXTERNOS  │
+                    │  Open WebUI, apps   │
+                    └────────────────────┘
                                │
           ┌────────────────────┼────────────────────┐
           ▼                    ▼                    ▼
@@ -154,6 +167,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Chat** | Teste do agente com RAG + LLM real | Login |
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
+| **Gateway** | Ativação do gateway OpenAI-compatível (canal + modo streaming/completa + limites de contexto) | Admin |
 | **LGPD** | Conformidade na saída: anonimizar LLM/RAG, aviso de privacidade, finalidade por conector, retenção de logs | Admin |
 | **Uso de Tokens** | Análise de consumo por cliente/modelo/origem | Admin |
 | **Observabilidade** | Dashboard IA: KPI, drift, custos, feedback, alertas | Admin |
@@ -320,6 +334,8 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome aparece na tela Modelos IA); vazio = principal do agente; recomendado `hermes-3-llama-3.1-8b` (local) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
 | `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
+| `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível |
+| `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`); sem ela, usa o host da requisição |
 | `BLUESHIFT_DEV` | 1 | Modo dev (licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |
 
@@ -343,6 +359,7 @@ blueshift portal --port 8080
 | `blueshift update` | Checa atualizações aprovadas |
 | `blueshift portal [--port 8080]` | Sobe o Portal do Cliente |
 | `blueshift mcp` | Sobe servidor MCP stdio (conectores) |
+| `blueshift gateway [--port 9003]` | Sobe o Gateway OpenAI-compatível (chats externos) |
 
 ### Exemplo de Uso da API de Canal
 
@@ -528,6 +545,40 @@ docker run -d --name blueshift-platform \
 > que os dados (clientes, usuarios, agentes, conectores, skills editadas, documentos RAG) sao preservados.
 > Para backup: `docker run --rm -v blueshift_data:/data -v $(pwd):/backup alpine tar czf /backup/blueshift_backup.tar.gz -C /data .`
 
+> **O compose sobe DOIS containers:** `blueshift-platform` (portal, :8090→8080)
+> e `blueshift-gateway` (gateway OpenAI-compatível, :9003) — o gateway
+> depende do portal e lê a configuração no mesmo volume `blueshift-data`.
+
+### 🔀 Gateway OpenAI-compatível (chats externos)
+
+O gateway expõe o protocolo padrão da OpenAI (`/v1/chat/completions` +
+`/v1/models`) para chats externos — **Open WebUI**, LibreChat, apps
+custom, OpenAI SDK/LangChain — e repassa ao agente via API do canal
+(token `bs_chan_*`).
+
+Para conectar o **Open WebUI** (container na mesma máquina):
+
+```bash
+# 1. No portal: Cadastros → Canais → crie o canal (ex: "API Vendas")
+#    apontando para o agente desejado (o token bs_chan_* é a API Key)
+# 2. No portal: Cadastros → Gateway → "Ativar gateway" (canal + modo:
+#    Resposta completa JSON ou Streaming SSE) — o gateway precisa estar
+#    ATIVO para responder
+# 3. No Open WebUI (Admin → Connections → OpenAI API):
+#      API URL: http://host.docker.internal:9003/v1
+#      API Key: o token do canal (qualquer gateway ativo autentica)
+#      Model:  agente:Agente Vendas  (o nome do agente)
+```
+
+- O `model` escolhe o agente; o token só valida a autenticação (qualquer
+  chave de canal com gateway ativo funciona — o Open WebUI usa uma
+  conexão = uma chave para vários modelos)
+- **Contexto da conversa:** o gateway repassa as mensagens anteriores
+  (limites configuráveis na tela: máx. mensagens + orçamento em tokens);
+  a memória/RAG gravam sempre a última pergunta/resposta real
+- Chat em outra máquina da rede: `http://IP_DO_SERVIDOR:9003/v1`
+- Sem Docker: `set -a; . ./.env; set +a` + `blueshift gateway --port 9003`
+
 ---
 
 ## 📁 Estrutura do Projeto
@@ -535,6 +586,7 @@ docker run -d --name blueshift-platform \
 ```
 blueshift_layer/                    ← Código principal da plataforma
 ├── cli.py                          ← Entry point CLI (blueshift)
+├── gateway.py                      ← Gateway OpenAI-compatível (:9003, /v1)
 ├── license_client.py               ← Validação de license key
 ├── license_server_mock.py          ← License Server mock (Flask, :9000)
 ├── installer.py                    ← Cria perfil do cliente
