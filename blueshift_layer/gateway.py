@@ -59,7 +59,7 @@ def _chamar_canal(token: str, pergunta: str, contexto: str = "") -> dict:
     contexto: mensagens anteriores da conversa (entram so no prompt do
     LLM; a memoria/trace gravam apenas a pergunta real).
     """
-    payload: dict = {"pergunta": pergunta}
+    payload: dict = {"pergunta": pergunta, "origem": "gateway"}
     if contexto:
         payload["contexto"] = contexto
     body = json.dumps(payload).encode("utf-8")

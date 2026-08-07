@@ -3830,8 +3830,23 @@ def api_agente(canal):
     usuario = (data.get("usuario") or f"canal:{canal['id']}")[:40]
     id_cliente = data.get("id_cliente") or ""
     contexto = (data.get("contexto") or "").strip()
+    origem = (data.get("origem") or "").strip()
     out = agente_mod.responder(a, pergunta, usuario, id_cliente=id_cliente,
                                contexto_extra=contexto)
+    # Feedback DEFAULT para chats externos (gateway/Open WebUI e outras
+    # plataformas): sem botao de avaliacao proprio, a interacao conta como
+    # 'util' (tipo 'gateway' — distinguivel do feedback manual/implicito na
+    # Observabilidade e no Teste A/B). A resposta gravada SEM a imagem.
+    if origem == "gateway" and out.get("ok") and out.get("trace_id"):
+        try:
+            db.salvar_feedback(
+                trace_id=out["trace_id"], agente_id=a.get("id"),
+                pergunta=pergunta,
+                resposta=agente_mod._limpar_imagens(out.get("content", "")),
+                feedback="util", tipo="gateway",
+            )
+        except Exception:  # noqa: BLE001 — feedback e best-effort
+            pass
     db.registrar_auditoria(
         f"canal:{canal['id']}", "sistema", "api_agente", alvo=a["nome"],
         cliente_id=canal["cliente_id"], ip=request.remote_addr, detalhe=pergunta[:80],

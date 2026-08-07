@@ -839,6 +839,10 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   agente; o token valida a autenticação. Token inválido ou de canal sem
   gateway ativo → 401. (O Open WebUI usa uma conexão = uma chave para
   vários modelos — qualquer chave de gateway ativo funciona para todos.)
+- **Feedback default**: interações vindas do gateway registram feedback
+  automático `util` com tipo `gateway` — entram na Observabilidade
+  (taxa de acerto) e no Teste A/B, distinguíveis do feedback
+  manual/implicito/api pela coluna tipo.
 - Endpoint exibido na tela: `http://<host>:9003/v1` (ou `GATEWAY_PUBLIC_URL`
   se definida). Chat externo em Docker na mesma máquina: use
   `http://host.docker.internal:9003/v1` (`host.docker.internal` é o caminho
