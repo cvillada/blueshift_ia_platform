@@ -220,12 +220,13 @@ def create_app() -> Flask:
         if gw is None:
             gw = gws[0]
 
-        # Auth: o token do chat externo precisa ser o token do canal vinculado
-        if token and token != gw["canal_token"]:
+        # Auth: o token precisa pertencer a um canal com gateway ATIVO
+        # (qualquer um). O Open WebUI usa UMA conexao (uma chave) para
+        # varios modelos — o model escolhe o agente; o token valida a
+        # autenticacao. Token de outro canal/gateway pausado -> 401.
+        tokens_validos = {g["canal_token"] for g in gws}
+        if not token or token not in tokens_validos:
             return jsonify({"error": {"message": "token invalido",
-                                      "type": "authentication_error"}}), 401
-        if not token:
-            return jsonify({"error": {"message": "Authorization (Bearer) obrigatorio",
                                       "type": "authentication_error"}}), 401
 
         # Chats externos (ex: Open WebUI) fazem uma chamada EXTRA para gerar o

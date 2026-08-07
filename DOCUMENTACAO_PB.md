@@ -798,8 +798,11 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   Limites configuráveis por gateway (tela): **máx. mensagens** (padrão
   6) e **orçamento em tokens** (padrão 400 — ~4 chars = 1 token; as
   mensagens mais RECENTES entram primeiro, as antigas são cortadas).
-- **Segurança**: o `Authorization` do chat externo precisa ser o token do
-  canal vinculado (`Bearer bs_chan_*`) — token errado → 401.
+- **Segurança**: o `Authorization` do chat externo precisa ser o token de
+  um canal com gateway ATIVO (`Bearer bs_chan_*`) — o `model` escolhe o
+  agente; o token valida a autenticação. Token inválido ou de canal sem
+  gateway ativo → 401. (O Open WebUI usa uma conexão = uma chave para
+  vários modelos — qualquer chave de gateway ativo funciona para todos.)
 - Endpoint exibido na tela: `http://<host>:9003/v1`.
 
 Exemplo de chamada (formato OpenAI):
