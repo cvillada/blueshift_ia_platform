@@ -4187,14 +4187,18 @@ def _endpoint_gateway() -> str:
     """Endpoint publico do gateway.
 
     Prioridade: env GATEWAY_PUBLIC_URL (ex: http://192.168.0.10:9003/v1 ou
-    http://gateway.empresa.com/v1) > host da requisicao atual (porta do
-    gateway).
+    http://gateway.empresa.com/v1) > host da requisicao atual. Quando o
+    host da requisicao e um tunel publico (nao expoe a porta do gateway),
+    mostra o caminho Docker do host (host.docker.internal) — o caso mais
+    comum de teste (chat externo em container na mesma maquina).
     """
     pub = os.environ.get("GATEWAY_PUBLIC_URL", "").strip().rstrip("/")
     if pub:
         return pub if pub.endswith("/v1") else pub + "/v1"
     host = request.host.split(":")[0] or "localhost"
     porta = os.environ.get("GATEWAY_PORT", "9003")
+    if any(m in host for m in ("ngrok", "trycloudflare", ".tunnel.")):
+        return f"http://host.docker.internal:{porta}/v1"
     return f"http://{host}:{porta}/v1"
 
 
