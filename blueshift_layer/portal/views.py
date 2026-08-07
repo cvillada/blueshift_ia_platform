@@ -4198,10 +4198,16 @@ def gateway():
         canal_id = request.form.get("canal_id") or None
         modo = request.form.get("modo", "completa")
         ativo = 1 if request.form.get("ativo") else 0
+        try:
+            max_msg = max(1, min(int(request.form.get("max_mensagens") or 6), 100))
+            max_tok = max(1, min(int(request.form.get("max_tokens") or 400), 8000))
+        except ValueError:
+            max_msg, max_tok = 6, 400
         if not nome or not canal_id:
             flash("Nome e canal são obrigatórios.", "warn")
             return redirect(url_for("portal.gateway"))
-        gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo)
+        gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo,
+                               max_mensagens=max_msg, max_tokens=max_tok)
         db.registrar_auditoria(_user()["login"], "admin", "criar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
         flash(f"Gateway '{nome}' ativado. Endpoint: {_endpoint_gateway()}", "ok")
@@ -4241,6 +4247,10 @@ def gateway():
           <option value="streaming">Streaming (efeito de digitação — SSE)</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" checked style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
+        <div class="form-row" style="margin-top:6px">
+          <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="6" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
+          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="400" min="1" max="8000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+        </div>
         <div style="margin-top:12px"><button class="btn" type="submit">Ativar gateway</button></div>
       </form>
     </div>"""
@@ -4263,7 +4273,14 @@ def gateway_editar(gid: int):
         canal_id = int(request.form.get("canal_id") or g["canal_id"])
         modo = request.form.get("modo") or g["modo"]
         ativo = 1 if request.form.get("ativo") else 0
-        db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo)
+        try:
+            max_msg = max(1, min(int(request.form.get("max_mensagens") or g.get("max_mensagens", 6)), 100))
+            max_tok = max(1, min(int(request.form.get("max_tokens") or g.get("max_tokens", 400)), 8000))
+        except ValueError:
+            max_msg = int(g.get("max_mensagens", 6))
+            max_tok = int(g.get("max_tokens", 400))
+        db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo,
+                             max_mensagens=max_msg, max_tokens=max_tok)
         db.registrar_auditoria(_user()["login"], "admin", "editar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
         flash(f"Gateway '{nome}' atualizado.", "ok")
@@ -4282,6 +4299,10 @@ def gateway_editar(gid: int):
           <option value="streaming" {"selected" if g['modo']=='streaming' else ''}>Streaming (SSE)</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''} style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
+        <div class="form-row" style="margin-top:6px">
+          <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="{g.get('max_mensagens', 6)}" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
+          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="{g.get('max_tokens', 400)}" min="1" max="8000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+        </div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
           <a class="btn ghost" href="/portal/gateway">Cancelar</a>

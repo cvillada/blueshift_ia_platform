@@ -783,17 +783,21 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 | Nome | ✅ | `Gateway Vendas (Open WebUI)` |
 | Canal vinculado | ✅ | `API Vendas` (o token autentica o chat externo) |
 | Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) |
+| Máx. mensagens de contexto | ❌ | `6` (últimas N mensagens enviadas ao agente) |
+| Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro) |
 | Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
 
 - **Streaming**: o canal devolve a resposta completa; o gateway a envia
   em chunks (SSE) — efeito de digitação no chat externo (streaming
   simulado; latência total igual).
 - **Contexto da conversa**: o gateway repassa as mensagens anteriores do
-  chat (últimas 6, truncadas em 300 chars cada) no campo `contexto` da
-  API — o LLM entende referências ("e o dele?") sem repetir o ID. O
-  trabalho de enviar o histórico é do sistema solicitante (Open WebUI já
-  o faz). A memória e o RAG gravam apenas a última pergunta/resposta
-  real (sem o contexto concatenado).
+  chat no campo `contexto` da API — o LLM entende referências ("e o
+  dele?") sem repetir o ID. O trabalho de enviar o histórico é do
+  sistema solicitante (Open WebUI já o faz). A memória e o RAG gravam
+  apenas a última pergunta/resposta real (sem o contexto concatenado).
+  Limites configuráveis por gateway (tela): **máx. mensagens** (padrão
+  6) e **orçamento em tokens** (padrão 400 — ~4 chars = 1 token; as
+  mensagens mais RECENTES entram primeiro, as antigas são cortadas).
 - **Segurança**: o `Authorization` do chat externo precisa ser o token do
   canal vinculado (`Bearer bs_chan_*`) — token errado → 401.
 - Endpoint exibido na tela: `http://<host>:9003/v1`.

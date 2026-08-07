@@ -343,6 +343,8 @@ def init_db() -> None:
                 nome        TEXT NOT NULL,                     -- ex: Gateway Vendas
                 canal_id    INTEGER NOT NULL REFERENCES canais(id) ON DELETE CASCADE,
                 modo        TEXT NOT NULL DEFAULT 'completa',  -- completa | streaming
+                max_mensagens INTEGER NOT NULL DEFAULT 6,      -- ultimas N mensagens de contexto
+                max_tokens  INTEGER NOT NULL DEFAULT 400,      -- orcamento de contexto (tokens aprox.)
                 ativo       INTEGER NOT NULL DEFAULT 1,
                 criado_em   TEXT NOT NULL,
                 atualizado_em TEXT NOT NULL
@@ -430,6 +432,10 @@ def _migrar_colunas() -> None:
         ],
         "canais": [
             ("webhook_headers", "TEXT DEFAULT '{}'"),
+        ],
+        "gateway_config": [
+            ("max_mensagens", "INTEGER DEFAULT 6"),
+            ("max_tokens", "INTEGER DEFAULT 400"),
         ],
     }
     with get_conn() as conn:
@@ -1515,13 +1521,15 @@ def atualizar_canal(canal_id: int, **campos) -> None:
 # --- Gateway OpenAI-compatível (chats externos: Open WebUI, LibreChat...) ----
 
 def criar_gateway(nome: str, canal_id: int, modo: str = "completa",
-                  ativo: int = 1) -> int:
+                  ativo: int = 1, max_mensagens: int = 6,
+                  max_tokens: int = 400) -> int:
     ts = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO gateway_config (nome, canal_id, modo, ativo, criado_em, atualizado_em)
-               VALUES (?,?,?,?,?,?)""",
-            (nome, canal_id, modo, ativo, ts, ts),
+            """INSERT INTO gateway_config (nome, canal_id, modo, max_mensagens,
+                                           max_tokens, ativo, criado_em, atualizado_em)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (nome, canal_id, modo, max_mensagens, max_tokens, ativo, ts, ts),
         )
         return cur.lastrowid
 

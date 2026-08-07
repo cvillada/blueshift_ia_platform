@@ -41,7 +41,8 @@ def _gateways_ativos() -> list[dict]:
     """Gateways ativos com canal+token+agente (para /v1/models e roteamento)."""
     with _con() as con:
         rows = con.execute(
-            """SELECT g.id, g.nome, g.modo, c.token AS canal_token,
+            """SELECT g.id, g.nome, g.modo, g.max_mensagens, g.max_tokens,
+                      c.token AS canal_token,
                       a.nome AS agente_nome, a.area AS agente_area
                FROM gateway_config g
                JOIN canais c ON c.id = g.canal_id
@@ -101,14 +102,19 @@ _MARCADORES_TITULO = [
 
 
 def _montar_contexto(messages: list[dict], max_msg: int = 6,
-                     max_chars: int = 300) -> str:
+                     max_tokens: int = 400, max_chars_msg: int = 400) -> str:
     """Concatena as mensagens ANTERIORES (antes da ultima) como contexto.
 
     O trabalho de mandar o contexto e do sistema solicitante (Open WebUI
-    ja envia o historico); o gateway repassa ao agente. Limita a N
-    mensagens e trunca cada uma (nao explodir tokens/latencia).
+    ja envia o historico); o gateway repassa ao agente. Limites
+    configuráveis por gateway (tela Gateway):
+      - max_msg: ultimas N mensagens
+      - max_tokens: orcamento TOTAL do contexto (aprox. 4 chars = 1 token)
+      - max_chars_msg: trunca cada mensagem individual
+    As mensagens MAIS RECENTES entram primeiro (corta as antigas) — são
+    as que importam para referencias ("e o dele?").
     """
-    partes = []
+    candidatas = []
     for m in messages[:-1][-max_msg:]:
         role = m.get("role")
         if role not in ("user", "assistant"):
@@ -116,10 +122,24 @@ def _montar_contexto(messages: list[dict], max_msg: int = 6,
         txt = (m.get("content") or "").strip()
         if not txt:
             continue
-        if len(txt) > max_chars:
-            txt = txt[:max_chars] + "..."
-        partes.append(f"{'usuario' if role == 'user' else 'assistente'}: {txt}")
-    return "\n".join(partes)
+        if len(txt) > max_chars_msg:
+            txt = txt[:max_chars_msg] + "..."
+        rotulo = "usuario" if role == "user" else "assistente"
+        candidatas.append(f"{rotulo}: {txt}")
+
+    # Orcamento em tokens (aprox. 4 chars/token): monta das MAIS RECENTES
+    # para as antigas e depois inverte (ordem cronologica no contexto).
+    orcamento_chars = max(max_tokens, 1) * 4
+    escolhidas: list[str] = []
+    total = 0
+    for linha in reversed(candidatas):
+        custo = len(linha)
+        if escolhidas and total + custo > orcamento_chars:
+            break
+        escolhidas.append(linha)
+        total += custo
+    escolhidas.reverse()
+    return "\n".join(escolhidas)
 
 
 def _eh_pedido_titulo(pergunta: str) -> bool:
@@ -231,8 +251,13 @@ def create_app() -> Flask:
                 return Response(gen_titulo(), mimetype="text/event-stream")
             return jsonify(_resposta_openai(titulo, modelo, gw["id"]))
 
-        out = _chamar_canal(gw["canal_token"], pergunta,
-                            contexto=_montar_contexto(messages))
+        out = _chamar_canal(
+            gw["canal_token"], pergunta,
+            contexto=_montar_contexto(
+                messages,
+                max_msg=int(gw.get("max_mensagens") or 6),
+                max_tokens=int(gw.get("max_tokens") or 400),
+            ))
         if not out["ok"]:
             return jsonify({"error": {"message": out.get("erro") or "falha no agente",
                                       "type": "server_error"}}), 502
