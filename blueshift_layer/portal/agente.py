@@ -586,6 +586,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             from . import mask as _mask
             out["content"] = _mask.aplicar_mascaras(out["content"], lgpd_cfg)
 
+    # --- Remove markdown de imagem inventado pelo LLM (so a data URI
+    # real do grafico e legitima; placeholders falsos quebram o chat) ---
+    if out["ok"]:
+        out["content"] = _limpar_markdown_imagem_falso(out["content"])
+
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
             "contexto": contexto, "ferramentas": ferramentas,
@@ -594,6 +599,18 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "tokens": out.get("tokens", {}),
             "tempo_ms": tempo_ms,
             }
+
+
+def _limpar_markdown_imagem_falso(texto: str) -> str:
+    """Remove markdowns de imagem que NAO sao a data URI real do grafico.
+
+    O LLM pequeno inventa placeholders de imagem com path inexistente
+    (ex: ![Graf](graficos/barra_...png)) mesmo com a instrucao de nao
+    incluir — o chat externo tenta carregar e mostra imagem quebrada.
+    A unica imagem legitima e a data URI anexada pelo sistema.
+    """
+    return re.sub(
+        r"!\[[^\]]*\]\((?!data:image/png;base64)[^)]*\)", "", texto or "")
 
 
 def _limpar_imagens(texto: str) -> str:
