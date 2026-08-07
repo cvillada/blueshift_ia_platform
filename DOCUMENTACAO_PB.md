@@ -1,7 +1,7 @@
 # 📘 Documentação BlueShift IA Platform (Portal BlueShift)
 
 > Documentação funcional completa do sistema — telas, campos, fluxos e API.
-> Fonte: código real (blueshift_layer/) em 2026-08-05. Versão: 0.9.2.
+> Fonte: código real (blueshift_layer/) em 2026-08-06. Versão: 0.9.3.
 > Exemplos de preenchimento são FICTÍCIOS (nunca dados reais de cliente).
 
 ---
