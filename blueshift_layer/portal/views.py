@@ -4184,10 +4184,37 @@ def canal_alternar(canal_id: int):
 # --------------------------------------------------------------------------- #
 
 def _endpoint_gateway() -> str:
-    """Endpoint publico do gateway (porta 9003) baseado no host do request."""
+    """Endpoint publico do gateway.
+
+    Prioridade: env GATEWAY_PUBLIC_URL (ex: http://192.168.0.10:9003/v1 ou
+    http://gateway.empresa.com/v1) > host da requisicao atual (porta do
+    gateway). O host do request so e confiavel quando o portal e acessado
+    pelo servidor real (localhost/IP) — via tunel (ngrok) ele nao vale.
+    """
+    pub = os.environ.get("GATEWAY_PUBLIC_URL", "").strip().rstrip("/")
+    if pub:
+        return pub if pub.endswith("/v1") else pub + "/v1"
     host = request.host.split(":")[0] or "localhost"
     porta = os.environ.get("GATEWAY_PORT", "9003")
     return f"http://{host}:{porta}/v1"
+
+
+def _endpoint_via_tunel() -> bool:
+    """True se o portal foi acessado via tunel (ngrok/trycloudflare/...)."""
+    host = request.host.split(":")[0] or ""
+    return any(m in host for m in ("ngrok", "trycloudflare", ".tunnel."))
+
+
+def _dica_endpoint_tunel() -> str:
+    """Aviso quando o endpoint derivado do request nao vale (acesso via tunel)."""
+    if not _endpoint_via_tunel():
+        return ""
+    return ('<div style="margin-top:8px;color:var(--warn)">⚠️ Você acessou o portal via '
+            'túnel (ngrok) — o endpoint acima só vale dentro do servidor/rede. Se o chat '
+            'externo está na MESMA máquina, use <code>http://localhost:9003/v1</code>; em '
+            'outra máquina da rede, use <code>http://IP_DO_SERVIDOR:9003/v1</code>. Para '
+            'fixar uma URL pública, defina a env <code>GATEWAY_PUBLIC_URL</code> '
+            '(ex: http://192.168.0.10:9003/v1).</div>')
 
 
 @bp.route("/gateway", methods=["GET", "POST"])
@@ -4256,7 +4283,8 @@ def gateway():
     </div>"""
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="muted">Gateway OpenAI-compatível: chats externos (Open WebUI, LibreChat, apps) falam o protocolo padrão e o gateway repassa ao agente via API do canal. Endpoint: <code>{_endpoint_gateway()}</code> — API Key = token do canal.</div>
+      <div class="muted">Gateway OpenAI-compatível: chats externos (Open WebUI, LibreChat, apps) falam o protocolo padrão e o gateway repassa ao agente via API do canal. Endpoint: <code>{_endpoint_gateway()}</code> — API Key = token do canal.
+      {_dica_endpoint_tunel()}</div>
     </div>{form}<h3 style="margin-top:18px">Gateways ativados</h3>{tabela}"""
     return templates.page("Gateway", content, active="gateway", user=_user())
 
