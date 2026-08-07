@@ -1045,6 +1045,8 @@ def agente_editar(aid: int):
         campos["modelo_secundario_id"] = mid2
         campos["skills"] = ",".join(request.form.getlist("skills"))
         campos["lgpd_ativado"] = 1 if request.form.get("lgpd_ativado") else 0
+        if request.form.get("status") in ("ativo", "pausado"):
+            campos["status"] = request.form["status"]
         db.atualizar_agente(aid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_agente", alvo=request.form.get("nome", a["nome"]),
                                cliente_id=a["cliente_id"], ip=request.remote_addr)

@@ -374,6 +374,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     import time as _time
     _t0 = _time.time()
     cliente_id = agente["cliente_id"]
+    # Agente pausado nao atende (portal, API e gateway passam por aqui).
+    if (agente.get("status") or "ativo") == "pausado":
+        return {"ok": False, "content": "", "model": None, "model_fallback": False,
+                "error": "Agente pausado — reative na tela Agentes para voltar a atender.",
+                "contexto": [], "ferramentas": []}
     modelo = db.buscar_modelo(agente["modelo_id"]) if agente.get("modelo_id") else None
     if not modelo:
         return {"ok": False, "content": "", "model": None, "model_fallback": False,
