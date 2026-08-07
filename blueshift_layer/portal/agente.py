@@ -546,13 +546,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         modelo=modelo_usado,
         modelo_fallback=usou_fallback,
         tokens=tok,
-        resposta=out.get("content", ""),
+        resposta=_limpar_imagens(out.get("content", "")),
         tempo_ms=tempo_ms,
         agente_id=agente.get("id"),
     )
 
     if out["ok"]:
-        db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {out['content']}",
+        db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {_limpar_imagens(out['content'])}",
                          tipo="conversa", area=area)
         detalhe = f"trace:{trace_id} | {pergunta[:60]}" + (f" | fallback->{modelo_usado}" if usou_fallback else "")
         db.registrar_uso_token(
@@ -594,6 +594,17 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             }
 
 
+def _limpar_imagens(texto: str) -> str:
+    """Remove data URIs de imagem da resposta antes de gravar (memoria/RAG/trace).
+
+    O grafico e anexado como base64 (~20KB) — nao pode poluir a base de
+    conhecimento, a memoria ou o trace. Vira um marcador curto.
+    """
+    return re.sub(
+        r"!\[[^\]]*\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)",
+        "[imagem do grafico]", texto or "")
+
+
 def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,
                          ferramentas: list[dict]) -> None:
     """Guarda o resultado dos conectores + resposta no RAG para consultas futuras.
@@ -616,7 +627,7 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
         res_str = str(res)[:300]
         blocos.append(f"[{fonte}.{f.get('tool','?')}] {res_str}")
 
-    texto = f"Pergunta: {pergunta[:200]}\nResposta: {resposta[:500]}\nDados: {' | '.join(blocos)}"
+    texto = f"Pergunta: {pergunta[:200]}\nResposta: {_limpar_imagens(resposta[:500])}\nDados: {' | '.join(blocos)}"
     if len(texto) < 30:
         return
 

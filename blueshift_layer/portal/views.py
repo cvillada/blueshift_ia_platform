@@ -2583,8 +2583,8 @@ def teste_ab():
                 nova_resp = out.get("content", "") if out.get("ok") else f"(erro: {out.get('error', 'falha na requisicao')})"
             resultados.append({
                 "pergunta": pergunta,
-                "original_resp": original,
-                "novo_resp": nova_resp,
+                "original_resp": agente_mod._limpar_imagens(original),
+                "novo_resp": agente_mod._limpar_imagens(nova_resp),
                 "modelo_orig": modelo_orig,
                 "modelo_novo": modelo_alvo["modelo"],
             })
