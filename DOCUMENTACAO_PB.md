@@ -518,6 +518,21 @@ conector usa a própria conexão/schema. O checkbox "Consulta inteligente"
 (no cadastro/edição do conector SQL) liga/desliga por conector; desligado
 = comportamento antigo (só a query fixa).
 
+**Gráficos nas respostas:** quando o usuário pede um gráfico ("faça um
+gráfico de pizza/barras/linha") e os conectores retornaram dados, o
+agente gera a imagem:
+1. O LLM especificador transforma os dados reais em um spec
+   `{tipo, titulo, dados}` (máx 20 pontos, só valores reais — nunca
+   inventa)
+2. O renderizador (matplotlib, embutido na imagem) gera o PNG
+3. A imagem é ANEXADA automaticamente à resposta (não depende do modelo
+   incluir) como `![](data:image/png;base64,...)` — renderiza no Open
+   WebUI e no teste de agente do portal
+4. **LGPD**: os rótulos do gráfico passam pela MESMA máscara do texto
+   (nomes/emails mascarados também na imagem)
+Falhas (sem dados, spec inválido, modelo indisponível) caem no fallback
+textual — o agente responde normalmente com a análise.
+
 **Placeholders `{param}`:** a query/URL/body/args aceita placeholders que são
 substituídos automaticamente por valores extraídos da pergunta do usuário:
 `{id_cliente}`, `{id_colab}`, `{id_pedido}`, `{email}`, `{data}` e qualquer
@@ -1083,6 +1098,14 @@ o LLM gera o SELECT (somente leitura, com LIMIT e validação de segurança).
 O fluxo com parâmetros continua valendo para perguntas específicas
 ("aluguel do cliente 30"). Desligável por conector (checkbox "Consulta
 inteligente" no cadastro/edição).
+
+**O agente pode gerar gráficos?**
+Sim — perguntas como "faça um gráfico de pizza/barras/linha" geram a
+imagem automaticamente quando há dados dos conectores (barras para
+comparação, pizza para proporções, linha para tendência). A imagem é
+anexada à resposta (renderiza no Open WebUI e no teste de agente) e os
+rótulos respeitam a máscara LGPD. Sem dados, o agente responde com a
+análise textual.
 
 ---
 

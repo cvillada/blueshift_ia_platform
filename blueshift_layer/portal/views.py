@@ -3987,7 +3987,8 @@ function testarAgente(){
     if(d.feedback_url){var m=d.feedback_url.match(/feedback\\/(\\d+)/);if(m)TESTER.traceId=m[1]}
     var h="";
     if(d.ok){
-      h+='<div style="margin-bottom:6px"><b>Resposta:</b></div><pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:0 0 10px">'+escHTML(d.resposta)+'</pre>';
+      var rp=escHTML(d.resposta).replace(/!\\[[^\\]]*\\]\\(data:image\\/png;base64,([A-Za-z0-9+/=]+)\\)/g,'<img src="data:image/png;base64,$1" style="max-width:100%;border-radius:8px;margin:6px 0">');
+      h+='<div style="margin-bottom:6px"><b>Resposta:</b></div><pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:0 0 10px">'+rp+'</pre>';
       h+='<div style="font-size:12px">Modelo: <b>'+escHTML(d.modelo||"-")+'</b> | Tempo: <b>'+(d.tempo_ms||0)+'ms</b> | Tokens: <b>'+((d.tokens&&d.tokens.total_tokens)||0)+'</b></div>';
       if(d.webhook)h+='<div style="font-size:12px;margin-top:4px">Webhook: <b>'+escHTML(d.webhook.enviado===true?"enviado (HTTP "+d.webhook.status+")":(d.webhook.motivo||d.webhook.erro||"falhou"))+'</b></div>';
       if(d.feedback_url)h+='<div style="font-size:12px;margin-top:4px">Feedback URL: <code>'+escHTML(d.feedback_url)+'</code></div>';

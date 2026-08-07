@@ -166,6 +166,76 @@ def _skills_text(skills_csv: str) -> str:
     return "\n".join(partes)
 
 
+def _pede_grafico(pergunta: str) -> bool:
+    """True se o usuario pediu um grafico/visualizacao."""
+    p = " " + pergunta.lower().strip()
+    return any(m in p for m in (
+        " grafico", " gráfico", " pizza", " barras", " barra", " linha de ",
+        " tendencia", " tendência", " visualiz", " chart", " graficamente",
+    ))
+
+
+def _resumo_dados(ferramentas: list[dict], max_linhas: int = 20) -> str:
+    """Resumo compacto dos dados dos conectores para o LLM especificador."""
+    blocos = []
+    for f in ferramentas:
+        if "erro" in f or not f.get("resultado"):
+            continue
+        res = f.get("resultado")
+        linhas = []
+        if isinstance(res, list):
+            for r in res:
+                # resultado da sql:analise vem em blocos {"sql", "linhas"}
+                if isinstance(r, dict) and "linhas" in r:
+                    linhas.extend(r["linhas"][:max_linhas])
+                else:
+                    linhas.append(r)
+        else:
+            linhas.append(res)
+        txt = "\n".join(str(x)[:200] for x in linhas[:max_linhas])
+        blocos.append(f"[{f.get('conector')}.{f.get('tool')}]\n{txt}")
+    return "\n".join(blocos)[:3000]
+
+
+def _especificar_grafico(pergunta: str, resumo: str, modelo: dict) -> str | None:
+    """LLM especificador: dados reais -> spec JSON {tipo, titulo, dados}."""
+    from . import llm_client
+    mensagens = [
+        {"role": "system", "content": (
+            "Voce transforma dados em especificacao de grafico. Responda APENAS "
+            "um JSON valido, sem markdown, sem explicacoes: "
+            "{\"tipo\": \"barras\"|\"pizza\"|\"linha\", \"titulo\": \"...\", "
+            "\"dados\": [{\"rotulo\": \"...\", \"valor\": 123}]}. "
+            "Use APENAS os valores dos DADOS fornecidos (nunca invente). "
+            "Maximo 20 pontos. Tipo: pizza para proporcoes, barras para "
+            "comparacao/ranking, linha para tendencia.")},
+        {"role": "user", "content": f"PEDIDO: {pergunta}\n\nDADOS:\n{resumo}\n\nJSON:"},
+    ]
+    out = llm_client.chat(modelo, mensagens, max_tokens=250, temperatura=0.0)
+    if not out.get("ok"):
+        return None
+    return (out.get("content") or "").strip() or None
+
+
+def _mascarar_spec_rotulos(spec: str, lgpd_cfg: dict) -> str:
+    """Aplica as mascaras LGPD nos ROTULOS do spec do grafico.
+
+    A imagem e saida — precisa respeitar a mesma politica de mascara do
+    texto (senao nomes/emails pessoais vazariam completos na imagem).
+    """
+    from . import mask as _mask_mod
+    try:
+        d = _json.loads(spec) if isinstance(spec, str) else spec
+        if not isinstance(d, dict):
+            return spec
+        for item in d.get("dados") or []:
+            if isinstance(item, dict) and item.get("rotulo"):
+                item["rotulo"] = _mask_mod.aplicar_mascaras(str(item["rotulo"]), lgpd_cfg)
+        return _json.dumps(d, ensure_ascii=False)
+    except Exception:  # noqa: BLE001 — mascara e best-effort
+        return spec
+
+
 def _placeholders_conectores(conectores: list[dict], ids: list[int] | None) -> set[str]:
     """Reune os placeholders {param} usados pelos conectores escolhidos."""
     import re as _re
@@ -406,6 +476,38 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "CONTEXTO DA CONVERSA (mensagens anteriores do usuario):\n"
             f"{contexto_extra}\n\nPERGUNTA ATUAL:\n{pergunta}"
         )
+    # ── Grafico: pedido + dados dos conectores -> especificador (LLM) ->  ──
+    # renderizador (PNG base64) -> imagem ANEXADA apos a resposta do LLM  ──
+    # (nao depende do modelo incluir: o sistema garante a imagem).         ──
+    grafico_md = ""
+    if _pede_grafico(pergunta):
+        try:
+            resumo_dados = _resumo_dados(ferramentas)
+            if resumo_dados:
+                spec_modelo = locals().get("modelo_roteador") or modelo
+                spec = _especificar_grafico(pergunta, resumo_dados, spec_modelo)
+                if spec:
+                    from . import grafico as grafico_mod
+                    # A imagem e saida: aplica a mesma politica de mascara
+                    # LGPD do texto (mask_nome/email/endereco nos rotulos).
+                    try:
+                        if agente.get("lgpd_ativado", 1):
+                            _lgpd = db.carregar_lgpd_config()
+                            if _lgpd.get("anonimizar_llm") == "1":
+                                spec = _mascarar_spec_rotulos(spec, _lgpd)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    b64 = grafico_mod.gerar_png_base64(spec)
+                    if b64:
+                        grafico_md = grafico_mod.marcar_grafico_md(b64)
+                        user_content += (
+                            "\n\nO usuario pediu um GRAFICO. Os dados e a imagem "
+                            "foram gerados pelo sistema (a imagem sera anexada "
+                            "automaticamente a sua resposta). Resuma os dados "
+                            "em 2-3 linhas e, se necessario, explique o grafico."
+                        )
+        except Exception:  # noqa: BLE001 — grafico e best-effort
+            pass
     mensagens = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
@@ -425,6 +527,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                 out = out2
                 modelo_usado = modelo2["modelo"]
                 usou_fallback = True
+
+    # Anexa a imagem do grafico gerado (o sistema garante — nao depende
+    # do LLM final incluir a data URI na resposta).
+    if grafico_md and "data:image/png;base64" not in (out.get("content") or ""):
+        out["content"] = (out.get("content") or "").rstrip() + "\n\n" + grafico_md
 
     tok = out.get("tokens") or {}
 

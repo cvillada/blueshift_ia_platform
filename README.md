@@ -211,6 +211,11 @@ SELECT sozinho a partir do **schema real da fonte** (tabelas/views + colunas),
 genérico por driver (MySQL/PostgreSQL/SQL Server/Oracle), com validação de
 segurança (somente SELECT de leitura + LIMIT) e checkbox por conector na tela.
 
+**Gráficos:** pedidos de gráfico (pizza/barras/linha) geram a imagem
+automaticamente a partir dos dados dos conectores (matplotlib embutido), anexada
+à resposta — renderiza no Open WebUI e no portal, com rótulos mascarados pela
+LGPD.
+
 ### 🧠 Base de Conhecimento (RAG)
 
 | Mecanismo | Descrição |
