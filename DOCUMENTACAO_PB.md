@@ -617,12 +617,18 @@ Ações: **editar**, **excluir**, **Exportar JSONL** (formato de fine-tuning;
 com anonimização LGPD se ativada). Colunas: acessos e último acesso.
 Filtros por Cliente, Área, Categoria, Fonte.
 
-### 5.13 Chat (/portal/chat)
+### 5.13 Chat de teste (/portal/chat)
 
-**Onde:** Inteligência → Chat.
+**Onde:** FORA do menu (ferramenta de debug — URL direta `/portal/chat`).
+A aba "Chat" foi removida do menu Inteligência (v0.9.5): o teste real de
+respostas é feito em **Agentes → testar** (pipeline completo: RAG +
+conectores + gráficos + feedback + rastreio). Este chat continua
+disponível por URL para isolar o contexto dinâmico (memória + RAG)
+com um modelo cru.
 
 **Propósito:** chat de teste com qualquer modelo cadastrado (sem pipeline de
-agente — LLM direto).
+agente — LLM direto, SEM conectores, SEM gráficos — perguntas de gráfico
+recebem resposta textual do modelo).
 
 | Campo | Obrigatório | Exemplo |
 |:------|:-----------:|:--------|

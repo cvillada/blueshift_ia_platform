@@ -269,7 +269,6 @@ def _nav(active: str, user: dict | None) -> str:
         ("Inteligência", "grupo_inteligencia", [
             ("memoria", "Memória", "/portal/memoria"),
             ("conhecimento", "Conhecimento", "/portal/conhecimento"),
-            ("chat", "Chat", "/portal/chat"),
             ("teste_ab", "Teste A/B", "/portal/teste-ab"),
             ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
         ]),

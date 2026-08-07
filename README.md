@@ -164,7 +164,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
 | Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
-| **Chat** | Teste do agente com RAG + LLM real | Login |
+| ~~Chat~~ | ~~Teste de modelo cru com RAG~~ — removido do menu (v0.9.5); o teste real é **Agentes → testar** (pipeline completo); rota `/portal/chat` continua só para debug | — |
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
 | **Gateway** | Ativação do gateway OpenAI-compatível (canal + modo streaming/completa + limites de contexto) | Admin |
