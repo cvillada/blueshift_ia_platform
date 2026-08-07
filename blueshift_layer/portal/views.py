@@ -2031,11 +2031,14 @@ def uso_tokens():
 # ---------------------------------------------------------------------------
 
 def _rastreio_link(a: dict) -> str:
-    """Retorna link Rastreio se a auditoria tiver trace_id no detalhe."""
+    """Retorna link Rastreio se a auditoria tiver trace_id no detalhe E o
+    trace ainda existir (traces removidos por limpeza/retencao nao mostram
+    o link — evita 'Trace nao encontrado' no popup)."""
     d = a.get("detalhe", "")
     if d.startswith("trace:"):
         tid = d.split("|")[0].replace("trace:", "").strip()
-        return f'<a href="#" onclick="abrirRastreio({tid});return false" style="font-size:12px">🔍 Rastreio</a>'
+        if tid.isdigit() and db.buscar_trace(int(tid)):
+            return f'<a href="#" onclick="abrirRastreio({tid});return false" style="font-size:12px">🔍 Rastreio</a>'
     return ""
 
 
@@ -3022,7 +3025,7 @@ def rastreio(tid: int):
     """Retorna os dados de trace como JSON para o modal."""
     trace = db.buscar_trace(tid)
     if not trace:
-        return jsonify({"ok": False, "erro": "Trace nao encontrado"}), 404
+        return jsonify({"ok": False, "erro": "Trace nao encontrado (removido por limpeza ou retencao)"}), 404
     return jsonify({"ok": True, "trace": trace})
 
 
