@@ -215,6 +215,10 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 
 - KPIs do topo: agentes, usuários e documentos da base de conhecimento da
   área selecionada; filtro **Área** (todas ou uma específica).
+- **Tokens por agente** nos cards: total de tokens consumidos no período
+  (formato compacto — `682k`), com seletor igual da Observabilidade
+  [`1d | 7d | 30d | 90d`]; fonte = `uso_tokens.agente_id` → `agentes.area`
+  (registros sem agente, chat de teste puro, ficam de fora).
 - **Cards de agentes** da área: nome, status (ativo/pausado), modelo e
   fallback, skills e ações:
   - **testar agente**: abre o chat de teste do agente (pipeline completo

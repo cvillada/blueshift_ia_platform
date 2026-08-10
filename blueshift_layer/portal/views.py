@@ -324,6 +324,15 @@ def monitorar():
 # AREAS — via db.listar_areas() (env BLUESHIFT_AREAS)
 
 
+def _fmt_tokens(n: int) -> str:
+    """Formato compacto de tokens: 682k / 1.2M."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}k"
+    return str(n)
+
+
 @bp.route("/workspace")
 @auth.login_required
 def workspace():
@@ -344,6 +353,12 @@ def workspace():
 
     # conhecimento do cliente (RAG já é por cliente); sem área no doc, mostra tudo
     docs = db.listar_documentos()
+
+    # tokens por agente (periodo igual da Observabilidade: 1d/7d/30d/90d)
+    dias = request.args.get("dias", 7, type=int)
+    if dias not in (1, 7, 30, 90):
+        dias = 7
+    tokens_por_agente = db.somar_tokens_por_agente(dias)
 
     # métricas da área
     n_agentes = len(agentes)
@@ -373,7 +388,7 @@ def workspace():
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <strong>{a['nome']}</strong>{templates.badge(a['status'])}</div>
-          <div class="muted" style="font-size:12px;margin:6px 0">modelo {a['modelo']} · skills [{a['skills'] or '-'}]</div>
+          <div class="muted" style="font-size:12px;margin:6px 0">modelo {a['modelo']} · skills [{a['skills'] or '-'}] · ⚡ {_fmt_tokens(tokens_por_agente.get(a['id'], 0))} tokens ({dias}d)</div>
           <div style="display:flex;gap:8px">
             <a class="btn ghost" href="/portal/agentes/{a['id']}/testar">testar agente</a>
             <button class="btn ghost" type="button" onclick='abrirFluxo({_fluxo})' title="Ver o fluxo de execução do agente">fluxo</button>
@@ -388,7 +403,11 @@ def workspace():
       <div class="kpi"><div class="label">Base de conhecimento</div><div class="value">{n_docs}</div><div class="sub">documentos</div></div>
     </div>"""
 
-    content = kpis + sel + ('<div class="grid grid-2" style="margin-top:16px">' + cards_agentes + "</div>"
+    content = kpis + sel + (
+        f'<div class="muted" style="margin:4px 0 10px;font-size:12px">Tokens por agente — últimos {dias} dias. '
+        f'[<a href="?area={area_sel}&dias=1">1d</a> | <a href="?area={area_sel}&dias=7">7d</a> | '
+        f'<a href="?area={area_sel}&dias=30">30d</a> | <a href="?area={area_sel}&dias=90">90d</a>]</div>'
+    ) + ('<div class="grid grid-2" style="margin-top:16px">' + cards_agentes + "</div>"
               if cards_agentes else
               '<div class="empty">Nenhum agente nesta área ainda.</div>')
     if not area_sel and papel != "admin":

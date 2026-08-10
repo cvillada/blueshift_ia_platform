@@ -1204,6 +1204,28 @@ def listar_uso_tokens(cliente_id: int | None = None, limite: int = 200) -> list[
             conn, "SELECT * FROM uso_tokens ORDER BY id DESC LIMIT ?", (limite,))]
 
 
+def somar_tokens_por_agente(dias: int | None = None) -> dict[int, int]:
+    """Total de tokens por agente (Workspace — cards da area).
+
+    dias=None = acumulado total; dias=N = somente os ultimos N dias.
+    Registros sem agente_id (chat de teste puro) ficam de fora.
+    """
+    with get_conn() as conn:
+        if dias:
+            corte = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+            rows = _rows(
+                conn,
+                "SELECT agente_id, SUM(total_tokens) AS t FROM uso_tokens "
+                "WHERE agente_id IS NOT NULL AND criado_em >= ? GROUP BY agente_id",
+                (corte,))
+        else:
+            rows = _rows(
+                conn,
+                "SELECT agente_id, SUM(total_tokens) AS t FROM uso_tokens "
+                "WHERE agente_id IS NOT NULL GROUP BY agente_id")
+    return {r["agente_id"]: r["t"] for r in rows}
+
+
 def agregar_uso_por_cliente(cliente_id: int | None = None) -> list[dict]:
     """Agrega tokens totais por cliente + modelo + origem."""
     sql = """SELECT cliente_id, modelo, origem,

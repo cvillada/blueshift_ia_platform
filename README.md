@@ -156,7 +156,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | Tela | Descrição | Acesso |
 |:-----|:----------|:-------|
 | **Monitorar** | Dashboard de saúde: clientes, agentes, modelos, tokens, conectores | Login |
-| **Workspace** | Painel por departamento com agentes e documentos da área | Login |
+| **Workspace** | Painel por departamento com agentes e documentos da área; cards com **tokens por agente** (1d/7d/30d/90d) | Login |
 | **Clientes** | Gerenciar e cadastrar clientes | Admin |
 | **Usuários** | CRUD de usuários com papéis (admin/gestor/usuario/sistema) e área | Admin |
 | **Agentes** | Agent Factory: montar agente com modelo + skills + conectores | Admin |
