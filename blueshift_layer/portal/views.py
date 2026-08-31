@@ -3696,6 +3696,13 @@ def modelo_editar(mid: int):
                                cliente_id=m["cliente_id"], ip=request.remote_addr)
         flash("Modelo atualizado.", "ok")
         return redirect(url_for("portal.modelos"))
+    # API Key: nunca renderiza a chave completa no HTML — so uma mascara
+    _tem_chave = bool(m.get("api_key"))
+    if _tem_chave:
+        _chave = m["api_key"]
+        _mascara = (_chave[:5] + "••••" + _chave[-4:]) if len(_chave) > 9 else "••••••••"
+    else:
+        _mascara = ""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Editar modelo #{mid}: {m['nome']}</h3>
@@ -3705,7 +3712,8 @@ def modelo_editar(mid: int):
         <label>Modelo</label><input name="modelo" value="{m['modelo']}">
         <label>Tipo</label>
           <select name="tipo"><option value="local" {"selected" if m['tipo']=='local' else ""}>Local</option><option value="hibrido" {"selected" if m['tipo']=='hibrido' else ""}>Híbrido</option></select>
-        <label>API Key</label><input name="api_key" value="{m.get('api_key') or ''}">
+        <label>API Key</label><input name="api_key" value="" placeholder="deixe em branco para manter a atual" autocomplete="off">
+        <div class="muted" style="font-size:11px;margin-top:4px">Chave atual: {_mascara or 'nenhuma (modelo local — sem chave)'}. Preencha apenas para trocar; vazio mantém a atual.</div>
         <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking (8192, 16384). Timeout: 180s.</div>
         <label>Temperatura</label><input name="temperatura" type="number" step="0.1" value="{m.get('temperatura') if m.get('temperatura') is not None else ''}" placeholder="0.3" style="width:200px">
