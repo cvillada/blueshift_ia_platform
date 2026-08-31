@@ -1683,11 +1683,23 @@ def seed_demo() -> None:
                                    inicio="2026-07-01", fim="2027-06-30", status="ativo")
             return
     cid = criar_cliente("xpto", "XPTO Seguros (Piloto)", "XPTO Seguro S/A", "ti@xpto.com.br")
-    criar_usuario(cid, "Administrador BlueShift", "admin", "admin123", "admin", "operacoes")
-    criar_usuario(cid, "Gestor Vendas", "gestor", "gestor123", "gestor", "vendas")
-    criar_usuario(cid, "Ana Suporte", "ana", "ana123", "usuario", "suporte")
-    criar_usuario(cid, "Carlos Financeiro", "carlos", "carlos123", "usuario", "financeiro")
-    criar_usuario(cid, "Beatriz RH", "bia", "bia123", "usuario", "rh")
+    # Senhas ALEATORIAS (nunca fixas no codigo) — impressas UMA vez no log do
+    # container (padrao GitLab/Jenkins). O seed e idempotente: so roda em
+    # banco vazio, entao as credenciais NAO mudam a cada boot.
+    _demo_credenciais = []
+    for _nome, _login, _papel, _area in [
+        ("Administrador BlueShift", "admin", "admin", "operacoes"),
+        ("Gestor Vendas", "gestor", "gestor", "vendas"),
+        ("Ana Suporte", "ana", "usuario", "suporte"),
+        ("Carlos Financeiro", "carlos", "usuario", "financeiro"),
+        ("Beatriz RH", "bia", "usuario", "rh"),
+    ]:
+        _senha = secrets.token_urlsafe(12)
+        criar_usuario(cid, _nome, _login, _senha, _papel, _area)
+        _demo_credenciais.append(f"{_login}: {_senha}")
+    print("[demo] credenciais de acesso demo (impressas UMA vez — guarde-as):")
+    for _linha in _demo_credenciais:
+        print(f"[demo]   {_linha}")
     # modelo de IA demo (LM Studio local do cliente) — criado ANTES dos agentes
     mid = criar_modelo(cid, "bonsai-8b", "http://127.0.0.1:1234", "bonsai-8b", tipo="local")
     aid_vendas = criar_agente(cid, "Agente Vendas", "vendas", "bonsai-8b", "vendas,suporte", "erp,crm", modelo_id=mid)
@@ -1695,9 +1707,9 @@ def seed_demo() -> None:
     criar_agente(cid, "Agente Financeiro", "financeiro", "bonsai-8b", "financeiro", "erp", modelo_id=mid)
     criar_agente(cid, "Agente RH", "rh", "bonsai-8b", "rh", "", modelo_id=mid)
     criar_agente(cid, "Agente Operações", "operacoes", "bonsai-8b", "operacoes", "erp", modelo_id=mid)
-    # canal de integracao real (API) apontando para o Agente Vendas
-    criar_canal(cid, "API Vendas (Webhook)", aid_vendas,
-                tipo="api", token="bs_chan_demo_vendas_123")
+    # canal de integracao real (API) apontando para o Agente Vendas —
+    # token ALEATORIO gerado automaticamente (nunca fixo no codigo)
+    criar_canal(cid, "API Vendas (Webhook)", aid_vendas, tipo="api")
     atualizar_health(cid, container="saudavel", modelo_local="ok", latencia_ms=42, tokens_hoje=18320, erros_24h=0)
     # contrato anual (info estatica, cobranca e fora da plataforma)
     criar_contrato(cid, valor_anual=120000.00, moeda="BRL", inicio="2026-07-01", fim="2027-06-30", status="ativo")

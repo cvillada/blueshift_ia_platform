@@ -4863,6 +4863,31 @@ def _ancorar_doc(html_txt: str) -> str:
     return _re.sub(r"<h([1-4])>(.*?)</h\1>", _rep, html_txt)
 
 
+@bp.route("/healthz")
+def healthz():
+    """Health check para load balancer / Docker HEALTHCHECK (publico, sem login).
+
+    Retorna 200 com o estado do banco; 503 se o SQLite nao responder.
+    Nao exige sessao nem CSRF (rota de infraestrutura, nao de negocio).
+    """
+    import time as _time
+    from .. import __version__ as _versao
+    _t0 = _time.time()
+    try:
+        with db.get_conn() as conn:
+            conn.execute("SELECT 1").fetchone()
+        banco, status = "ok", 200
+    except Exception:  # noqa: BLE001 - health nunca quebra com traceback
+        banco, status = "erro", 503
+    return jsonify({
+        "ok": banco == "ok",
+        "servico": "portal",
+        "banco": banco,
+        "tempo_ms": int((_time.time() - _t0) * 1000),
+        "versao": _versao,
+    }), status
+
+
 @bp.route("/docs")
 @auth.login_required
 def docs():
