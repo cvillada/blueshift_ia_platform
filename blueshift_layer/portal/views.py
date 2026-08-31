@@ -1677,18 +1677,21 @@ def conector_testar_conexao():
         if driver == "postgresql":
             import psycopg
             if dsn:
-                conn = psycopg.connect(dsn)
+                conn = psycopg.connect(dsn, connect_timeout=5)
             else:
                 conn = psycopg.connect(host=host or "127.0.0.1", port=port or "5432",
-                                       dbname=db_name, user=user, password=password)
+                                       dbname=db_name, user=user, password=password,
+                                       connect_timeout=5)
         elif driver == "mysql":
             import pymysql
             conn = pymysql.connect(host=host or "127.0.0.1", port=int(port or "3306"),
-                                   database=db_name, user=user, password=password, charset="utf8mb4")
+                                   database=db_name, user=user, password=password,
+                                   charset="utf8mb4", connect_timeout=5)
         elif driver == "sqlserver":
             import pymssql
             conn = pymssql.connect(server=host or "127.0.0.1", port=port or "1433",
-                                   database=db_name, user=user, password=password)
+                                   database=db_name, user=user, password=password,
+                                   timeout=5, login_timeout=5)
         else:
             return jsonify({"ok": False, "erro": f"Driver desconhecido: {driver}"})
         try:

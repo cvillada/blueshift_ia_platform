@@ -251,6 +251,8 @@ def _conectar_sql(config: dict):
     """Abre conexao com o banco do conector (PostgreSQL, MySQL, SQL Server, Oracle).
 
     Levanta ImportError (driver ausente) ou Exception (falha de conexao).
+    Cada driver recebe connect_timeout (5s) — conexao pendurada nao trava
+    o agente (B3 da auditoria).
     """
     driver = config.get("sql_driver", "postgresql")
     dsn = config.get("dsn", "") or os.environ.get(config.get("dsn_env", ""), "")
@@ -258,12 +260,13 @@ def _conectar_sql(config: dict):
     if driver == "postgresql":
         import psycopg
         if dsn:
-            return psycopg.connect(dsn)
+            return psycopg.connect(dsn, connect_timeout=5)
         return psycopg.connect(
             host=host, port=config.get("sql_port", "5432"),
             dbname=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
+            connect_timeout=5,
         )
     if driver == "mysql":
         import pymysql
@@ -273,6 +276,7 @@ def _conectar_sql(config: dict):
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
             charset="utf8mb4",
+            connect_timeout=5,
         )
     if driver == "sqlserver":
         import pymssql
@@ -281,6 +285,7 @@ def _conectar_sql(config: dict):
             database=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
+            timeout=5, login_timeout=5,
         )
     if driver == "oracle":
         import oracledb
@@ -290,8 +295,27 @@ def _conectar_sql(config: dict):
             service_name=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
+            connect_timeout=5,
         )
     raise ValueError(f"Driver SQL desconhecido: {driver}")
+
+
+def _com_timeout(fn, *args, timeout: int = 30):
+    """Executa fn com timeout. Retorna (ok, resultado|mensagem_erro).
+
+    Usa ThreadPoolExecutor com shutdown(wait=False): se a query travar, o
+    request responde em `timeout` s e a thread orfa termina sozinha quando
+    o driver expirar — nunca bloqueia o agente (B3 da auditoria).
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FT
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = pool.submit(fn, *args)
+        return True, fut.result(timeout=timeout)
+    except _FT:
+        return False, f"excedeu o limite de {timeout}s"
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _rodar_select(conn, sql: str, driver: str, limite: int = 50) -> list[dict]:
@@ -306,7 +330,7 @@ def _rodar_select(conn, sql: str, driver: str, limite: int = 50) -> list[dict]:
 
 
 def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
-    """Executa consulta SQL contra um banco configurado (PostgreSQL, MySQL ou SQL Server)."""
+    """Executa consulta SQL contra um banco configurado (PostgreSQL, MySQL, SQL Server)."""
     driver = config.get("sql_driver", "postgresql")
     query = config.get("query", "")
     if not query:
@@ -315,7 +339,7 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     # Substitui placeholders na query
     query = _aplicar_params(query, params)
 
-    try:
+    def _rodar():
         conn = _conectar_sql(config)
         try:
             rows = _rodar_select(conn, query, driver)
@@ -323,6 +347,12 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
             return {"tool": "sql:query", "args": query, "resultado": rows}
         finally:
             conn.close()
+
+    try:
+        ok, r = _com_timeout(_rodar)
+        if not ok:
+            return {"erro": f"SQL timeout ({driver}): {r}"}
+        return r
     except ImportError as e:
         nome_driver = {"postgresql": "psycopg[binary]", "mysql": "pymysql", "sqlserver": "pymssql", "oracle": "oracledb"}
         return {"erro": f"Driver {driver} nao instalado. Instale: pip install {nome_driver.get(driver, driver)}"}
@@ -459,7 +489,9 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
                            modelo: dict) -> dict:
     """Consulta inteligente: schema real -> SQL por IA -> validacao -> execucao."""
     driver = config.get("sql_driver", "postgresql")
-    schema = _descobrir_schema(config)
+    ok_schema, schema = _com_timeout(_descobrir_schema, config)
+    if not ok_schema:
+        return {"erro": f"Schema timeout ({driver}): {schema}"}
     if not schema or schema.startswith("(schema indisponivel"):
         return {"erro": "Schema da fonte indisponivel para consulta inteligente"}
     dialeto = {"postgresql": "PostgreSQL", "mysql": "MySQL",
@@ -470,7 +502,8 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
     sqls = _validar_sql_gerado(sql)
     if not sqls:
         return {"erro": "Consulta gerada rejeitada pela validacao de seguranca"}
-    try:
+
+    def _rodar():
         conn = _conectar_sql(config)
         try:
             blocos = []
@@ -481,6 +514,12 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
             return {"tool": "sql:analise", "args": sqls, "resultado": blocos}
         finally:
             conn.close()
+
+    try:
+        ok, r = _com_timeout(_rodar)
+        if not ok:
+            return {"erro": f"SQL timeout ({driver}): {r}"}
+        return r
     except Exception as e:
         return {"erro": f"Erro SQL ({driver}): {e}"}
 
