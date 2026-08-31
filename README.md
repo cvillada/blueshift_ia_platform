@@ -166,7 +166,6 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
 | **Docs** | Documentação completa (DOCUMENTACAO_PB.md) no menu lateral — mesma fonte do popup Ajuda | Login |
 | Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
-| ~~Chat~~ | ~~Teste de modelo cru com RAG~~ — removido do menu (v0.9.5); o teste real é **Agentes → testar** (pipeline completo); rota `/portal/chat` continua só para debug | — |
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
 | **Gateway** | Ativação do gateway OpenAI-compatível (canal + modo streaming/completa + limites de contexto) | Admin |
@@ -175,6 +174,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Observabilidade** | Dashboard IA: KPI, drift, custos, feedback, alertas | Admin |
 | **Teste A/B** | Reexecuta perguntas do feedback contra outro modelo e compara resultados com modelo juiz | Admin/Gestor |
 | **Auditoria** | Rastreabilidade LGPD + 🔍 Rastreio passo a passo | Admin |
+| **Arquivo Morto** | Snapshot selado do banco + corte manual (D-1 máx.) — controla o crescimento sem perder histórico (detalhes em [Limpeza e arquivo morto](#limpeza-e-arquivo-morto)) | Admin |
 | **Fine-Tuning** | Documentação sobre formatos (GGUF/MLX), hardware e passo a passo | Login |
 | **SSO (OIDC)** | Login federado (Azure AD, Okta, Keycloak, Google) | Admin |
 | **Atualizações** | Update via Git (tags) — versão do repo + rebuild com dados preservados | Admin |
@@ -245,6 +245,7 @@ LGPD.
 - **Rate limit**: login 5 tentativas/IP/min (bloqueio 15min) + API 100 req/token/min
 - **Login falho**: registrado em auditoria (usuário tentado + IP) — detecta brute-force
 - **CSRF**: token em todos os formulários do portal
+- **XSS**: escape (html.escape) em toda renderização de dados — nomes, descrições, contexto RAG e resultados de conectores
 - **Session hardening**: cookie HttpOnly + SameSite=Lax + timeout 30min + Secure (HTTPS)
 - **SQL injection**: whitelist de colunas + queries parametrizadas
 - **Path traversal**: nomes de skills validados como `isidentifier()`
@@ -267,7 +268,7 @@ LGPD.
 | **Anonimizar exportação RAG** | 12, 13 | Dados pessoais mascarados na exportação JSONL da base de conhecimento |
 | **Aviso de privacidade no login** | 9, 10 | Texto personalizável exibido no rodapé da tela de login |
 | **Finalidade do tratamento** | 26 | Campo obrigatório por conector quando ativado |
-| **Retenção automática de logs** | 15 | Limpeza periódica de auditoria (90d), tracing (180d) e memórias (365d) via thread daemon |
+| **Retenção automática de logs** | 15 | Limpeza periódica de auditoria (90d), tracing/uso_tokens (180d) e memórias (365d) via thread daemon — ou **Arquivo Morto** (snapshot + corte manual, sem perder histórico) |
 | **Teste A/B entre modelos** | — | Reexecuta perguntas do feedback com outro modelo e avalia via modelo juiz |
 
 Configuração em **Cadastros > 🛡️ LGPD** e **Teste A/B** no menu principal.
