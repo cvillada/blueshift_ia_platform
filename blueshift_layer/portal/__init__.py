@@ -113,10 +113,25 @@ def create_app() -> "Flask":
             return redirect(url_for("portal.monitorar"))
 
     @app.after_request
-    def _add_cors(response):
-        response.headers.setdefault("Access-Control-Allow-Origin", "*")
-        response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        response.headers.setdefault("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    def _add_headers(response):
+        # CORS aberto SOMENTE para a API de canal (integracao externa);
+        # o portal web nao precisa de CORS "*" (paginas servidas na mesma origem)
+        if request.path.startswith("/portal/api/"):
+            response.headers.setdefault("Access-Control-Allow-Origin", "*")
+            response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            response.headers.setdefault("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        # Headers de seguranca HTTP (M1 da auditoria 02/08)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # 'unsafe-inline' e necessario: o portal usa style/script inline nas
+        # f-strings; data: e para os graficos embutidos nas respostas
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'",
+        )
         return response
 
     @app.route("/")
