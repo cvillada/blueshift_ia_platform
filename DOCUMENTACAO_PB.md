@@ -60,8 +60,8 @@ Módulos principais (blueshift_layer/):
 | Arquivo | Responsabilidade |
 |:--------|:-----------------|
 | `portal/__init__.py` | App factory, CSRF global, CORS, retenção automática (LGPD) |
-| `portal/views.py` | Todas as rotas/telas do portal (58 rotas) |
-| `portal/db.py` | Acesso a dados (SQLite), migrações, seed demo, 23 tabelas |
+| `portal/views.py` | Todas as rotas/telas do portal (60+ rotas) |
+| `portal/db.py` | Acesso a dados (SQLite), migrações, seed demo, 24 tabelas |
 | `portal/auth.py` | RBAC (login_required, admin_required, api_key_required) + rate limit |
 | `portal/templates.py` | Layout (sidebar, temas claro/escuro/sistema), helpers HTML |
 | `portal/agente.py` | Orquestrador: conectores → RAG → LLM → resposta |
@@ -71,7 +71,7 @@ Módulos principais (blueshift_layer/):
 | `portal/sso.py` | Login federado OIDC |
 | `connector_pack/registry.py` | Execução de conectores (API/MCP/SQL) |
 | `license_client.py` | Validação de licença |
-| `update_client.py` / `update_server.py` | Canal de atualizações aprovadas |
+| `update_client.py` / `update_server.py` | Update via Git (tags) — update_client é o mecanismo; update_server é legado (mock de canal HTTP, não usado na tela) |
 
 ---
 
@@ -111,6 +111,12 @@ Ou via docker-compose (com `BLUESHIFT_AREAS` e `TZ=America/Sao_Paulo`):
 docker compose up -d --build
 ```
 
+> **Update via Git:** o compose monta o repositório (padrão: o próprio
+> diretório do compose; em produção, um clone em `/opt/blueshift/repo`)
+> e o `docker.sock` do host no container do portal — a tela
+> Configurações → Atualizações lê a versão do repo e dispara o rebuild
+> (dados preservados).
+
 Acesso: `http://localhost:8090/portal/login`
 
 ### 3.3 Variáveis de ambiente
@@ -120,10 +126,10 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_PORTAL_DB` | `data/portal.db` | Caminho do banco SQLite |
 | `BLUESHIFT_PORTAL_SECRET` | aleatório | Secret key das sessões |
 | `BLUESHIFT_PORTAL_SECURE` | vazio | `1/true` → cookie Secure (HTTPS) |
-| `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | Áreas disponíveis |
+| `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** das áreas — depois a tela Cadastros → Áreas domina (banco) |
 | `BLUESHIFT_LICENSE` | vazio | Chave de ativação da instalação (validada no boot) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
-| `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
+| `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Diretório do clone git (Update via Git — tela Atualizações) |
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente; recomendado modelo local rápido (hermes-3-llama-3.1-8b) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`) — sem ela, usa o host da requisição. Chat externo em Docker na mesma máquina: `http://host.docker.internal:9003/v1` |
@@ -153,8 +159,8 @@ Tabela de permissões por rota (resumo):
 
 | Tela | Acesso |
 |:-----|:-------|
-| Monitorar, Workspace, Usuários, Agentes, Skills, Uso de Tokens, Memória, Conhecimento, Chat, Teste A/B, Fine-Tuning | login_required |
-| Clientes (novo/editar/suspender), Usuários (novo/editar/suspender), Agentes (novo/editar/excluir), Skills (novo/editar/excluir/gerar-ia/indexar-rag), Conectores (tudo), Modelos (tudo), Canais (tudo), Auditoria, Observabilidade, Alertas, LGPD, SSO config, Atualizações, Rastreio, Exportar JSONL | admin_required |
+| Monitorar, Workspace, Docs, Usuários, Agentes, Skills, Uso de Tokens, Memória, Conhecimento, Chat, Teste A/B, Fine-Tuning | login_required |
+| Clientes (novo/editar/suspender), Usuários (novo/editar/suspender), Áreas (tudo), Agentes (novo/editar/excluir), Skills (novo/editar/excluir/gerar-ia/indexar-rag), Conectores (tudo), Modelos (tudo), Canais (tudo), Auditoria, Observabilidade, Alertas, LGPD, SSO config, Atualizações, Rastreio, Exportar JSONL | admin_required |
 | API `/api/v1/agente`, `/api/v1/feedback/<id>` | token do canal (Bearer) |
 
 ---
@@ -178,7 +184,7 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 | E-mail de contato | ❌ | `ti@empresa.com.br` | |
 | Nome do admin | ✅ | `Administrador Inicial` | |
 | Login do admin | ✅ | `admin` | |
-| Senha do admin | ✅ | `••••••` | Mínimo 6 caracteres |
+| Senha do admin | ✅ | `••••••` | Mínimo 8 caracteres |
 
 **Login normal** (quando já existe admin):
 
@@ -267,6 +273,30 @@ Ações admin-only. Auditoria registra criar/editar/alternar cliente.
 
 Ações na lista: **editar**, **suspender/reativar** (link de texto; quando
 suspenso, o usuário não consegue logar). Auditoria registra as ações.
+
+### 5.5-A Áreas (/portal/areas)
+
+**Onde:** Cadastros → Áreas.
+
+**Propósito:** cadastro dos departamentos da empresa (vendas, suporte,
+financeiro, RH, operações...). As áreas alimentam o Workspace, os agentes,
+os conectores, os documentos RAG e o campo "Área" dos usuários.
+
+| Campo | Obrigatório | Exemplo | Dica |
+|:------|:-----------:|:--------|:-----|
+| Nome | ✅ | `vendas` | Minúsculas, sem espaços (padrão de identificador) |
+
+- **Fonte dos dados:** o cadastro vive no BANCO (tabela `areas`). A
+  variável `BLUESHIFT_AREAS` do ambiente serve apenas como **seed inicial**
+  do primeiro boot — depois disso a tela domina (criar/renomear/excluir
+  não exige rebuild nem mexer em `.env`).
+- A lista mostra a **contagem de uso** (usuários, conectores e documentos
+  da área).
+- **Renomear/excluir não altera registros existentes** — eles mantêm o
+  texto da área no registro; apenas os seletores passam a usar o nome novo
+  (ou deixam de oferecer a área excluída). Excluir todas as áreas faz o
+  sistema voltar ao seed padrão (nunca fica vazio).
+- Auditoria registra criar/editar/excluir área.
 
 ### 5.6 Agentes (/portal/agentes)
 
@@ -375,6 +405,7 @@ respondeu (online) ou não (offline). Detalhe de cada campo abaixo.
 | Tipo | ✅ | `local` = servidor interno (sem chave) · `hibrido` = externo na nuvem (com chave) | `local` / `hibrido` |
 | API Key | ❌ | Chave de autenticação — **obrigatória para externo** (OpenRouter/DeepSeek/OpenAI); deixe VAZIA para local | `sk-or-v1-...` |
 | Max tokens | ❌ | Limite máximo de tokens da resposta (padrão 4096) | `4096` |
+| Temperatura | ❌ | Criatividade da resposta (0.0 = determinístico, 1.0 = criativo; padrão 0.3). O roteador de conectores e o extrator de parâmetros usam 0.0 sempre | `0.3` |
 | Preço input (R$/1M tokens) | ❌ | Custo de entrada — alimenta o Cost Intelligence | `0.15` |
 | Preço output (R$/1M tokens) | ❌ | Custo de saída — alimenta o Cost Intelligence | `0.60` |
 
@@ -569,6 +600,9 @@ aba 1. Agente com pergunta + resposta/modelo/tokens/webhook; aba 2. Feedback
 com trace_id automático e 👍/👎), **editar**, **nova chave** (regenera token —
 o anterior para de funcionar na hora), **revogar/reativar**.
 
+A lista "Canais cadastrados" exibe a coluna **ID** (primeira coluna) — útil
+para identificar o canal em auditoria/tracing.
+
 **⚠️ Nunca use a chave de licença da plataforma como token de canal.**
 
 **Webhook de saída com autenticação:** muitos webhooks reais (Slack, Zapier,
@@ -578,6 +612,15 @@ n8n, sistemas corporativos) exigem uma chave secreta. Preencha o campo
 O sistema envia esses headers no POST da resposta (junto com o
 `Content-Type: application/json`). Evite colocar a chave na URL
 (`?secret=...`) — ela vaza em logs.
+
+**Anti-SSRF no webhook (segurança):** a URL do webhook de saída é validada
+com `ipaddress` (não prefixos literais) e por resolução de DNS. São
+bloqueados endereços internos/não públicos: 10/8, 172.16/12, 192.168/16,
+CGNAT (100.64/10), loopback, link-local (inclui 169.254.169.254 — metadata
+de nuvem AWS/GCP), multicast, IPv6 ULA/link-local, e hostnames que
+RESOLVEM para IP interno (DNS rebinding). A validação vale no **criar**,
+no **editar** e no **momento do envio** (URL cadastrada antes da correção
+também é bloqueada).
 
 ### 5.11 Memória (/portal/memoria)
 
@@ -772,17 +815,33 @@ recomendado, dados via export JSONL, serviço BlueShift). Não executa treino �
 
 **Onde:** Configurações → Atualizações.
 
-**Propósito:** canal de atualizações aprovadas da plataforma. Mostra a versão
-instalada e se há nova versão disponível no canal (`update_server` na porta
-9001). Admin-only.
+**Propósito:** update da plataforma a partir do **Git** (tags de versão).
+Mostra a versão instalada (tag do repo) e se há tag nova disponível no
+remoto. Admin-only.
+
+**Como funciona:**
+- O servidor mantém um **clone fixo** do repositório (padrão
+  `/opt/blueshift/repo` — variável `BLUESHIFT_REPO_DIR`; no compose o repo
+  é montado no container junto com o `docker.sock` do host)
+- Versão instalada = `git describe --tags` do repo (ex: `v0.9.3`)
+- Versão disponível = tags do remoto (`git ls-remote`), ordenadas por
+  versão; a mais recente diferente da instalada aparece como atualização
+- **Aplicar atualização** roda `update.sh <tag>` em background:
+  `git fetch` + `git checkout <tag>` + `docker compose up -d --build`
+  (dados preservados — volumes intactos). O portal reinicia ao concluir;
+  log em `/opt/blueshift/update.log`
+- Em dev (`BLUESHIFT_DEV=1`) o botão faz **dry-run** (mostra o comando,
+  não derruba o ambiente); se o remoto for inacessível (repo privado sem
+  credencial), usa as tags locais como referência
+- Se o repo não existir, a tela avisa "repo não encontrado" (sem quebrar)
 
 **Card "Configuração de ambiente":** exibe as configurações ativas da
 instalação:
 - **Modelo de roteamento configurado** — o `BLUESHIFT_ROUTER_MODEL`
   resolvido (nome + ID, ou "(não encontrado)" se a env apontar um modelo
   inexistente; vazio = modelo principal de cada agente);
-- **Áreas configuradas** — a lista do `BLUESHIFT_AREAS` (ou o padrão do
-  sistema). Cada linha mostra a variável de ambiente de origem.
+- **Áreas configuradas** — a lista do cadastro Cadastros → Áreas (banco;
+  a env `BLUESHIFT_AREAS` serve só como seed inicial do primeiro boot).
 
 ### 5.22 SSO (OIDC) (/portal/sso/config)
 
@@ -867,11 +926,27 @@ Exemplo de chamada (formato OpenAI):
 
 ```bash
 curl -X POST http://localhost:9003/v1/chat/completions \
-  -H "Authorization: Bearer bs_chan_xxx" \
+  -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
   -d '{"model": "agente:Agente Vendas",
        "messages": [{"role": "user", "content": "Qual o saldo do cliente C001?"}]}'
 ```
+
+### 5.24 Docs (/portal/docs) — documentação no menu lateral
+
+**Onde:** item fixo **Docs** na sidebar (abaixo de Configurações, fora de
+submenu).
+
+**Propósito:** documentação completa da plataforma renderizada como página.
+
+- Renderiza o **mesmo `DOCUMENTACAO_PB.md`** que alimenta o popup Ajuda (❓
+  no topo) — um único arquivo serve os dois; edite o `.md` para atualizar
+  ambos (montado por volume no Docker, sem rebuild).
+- Índice de seções no topo com navegação por âncora (clique e vai direto
+  à seção).
+- Conversão markdown→HTML própria (stdlib puro): tabelas, blocos de
+  código, listas e links renderizados; todo conteúdo é escapado (seguro).
+- Acesso: qualquer usuário autenticado (`login_required`).
 
 ---
 
@@ -1010,7 +1085,12 @@ Detalhes:
 | Sessão | HttpOnly, SameSite=Lax, timeout 30 min, Secure condicional |
 | XSS | `templates.h()` (html.escape) nos valores dinâmicos |
 | Path traversal | Skills validam nome com `isidentifier()` |
-| Webhook SSRF | Bloqueia localhost, 10.x, 172.16.x, 192.168.x |
+| Webhook SSRF | Anti-SSRF com `ipaddress` (is_global): bloqueia privado, CGNAT, link-local/metadata de nuvem, loopback, IPv6 ULA/link-local + DNS rebinding (resolve o hostname); validado no criar, editar e no momento do envio |
+| Headers HTTP | X-Content-Type-Options, X-Frame-Options: DENY, Referrer-Policy, Content-Security-Policy; CORS "*" só nas rotas /portal/api/* |
+| API Key de modelo | Nunca renderizada no HTML (máscara no editar; campo vazio = mantém atual) |
+| Senha mínima | 8 caracteres (criar/editar usuário e setup inicial) |
+| Login falho | Registrado em auditoria (usuário tentado + IP) — detecta brute-force |
+| Health check | Rota pública `/portal/healthz` (200/503 + estado do banco) para load balancer / HEALTHCHECK |
 | MCP traceback | Mensagem genérica (sem detalhes de exceção) |
 | Erros LLM | Mensagem amigável, sem stack trace |
 
@@ -1018,12 +1098,13 @@ Detalhes:
 
 ## 10. Banco de Dados (SQLite)
 
-23 tabelas principais:
+24 tabelas principais:
 
 | Tabela | Conteúdo |
 |:-------|:---------|
 | clientes | Empresas contratantes |
 | usuarios | Usuários do portal (papel, área, ativo) |
+| areas | Áreas/departamentos (cadastro no banco; env BLUESHIFT_AREAS só seed inicial) |
 | agentes | Agentes por área (modelo principal/secundário, skills) |
 | conectores | Fontes externas (config JSON, área, finalidade) |
 | health | Saúde do container por cliente |

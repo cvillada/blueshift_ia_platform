@@ -4687,11 +4687,16 @@ def atualizacoes():
 # --------------------------------------------------------------------------- #
 
 def _caminho_doc() -> str:
-    """Localiza o DOCUMENTACAO_PB.md (repo local ou /opt/blueshift no Docker)."""
+    """Localiza o DOCUMENTACAO_PB.md (repo local ou /opt/blueshift no Docker).
+
+    Prioriza o arquivo dentro do repo montado (compose monta o clone em
+    /opt/blueshift/repo) — fonte unica que funciona em dev e producao.
+    """
     from pathlib import Path
     candidatos = [
+        Path("/opt/blueshift/repo/DOCUMENTACAO_PB.md"),                 # repo montado (Docker)
         Path(__file__).resolve().parent.parent.parent / "DOCUMENTACAO_PB.md",  # repo local
-        Path("/opt/blueshift/DOCUMENTACAO_PB.md"),                            # container
+        Path("/opt/blueshift/DOCUMENTACAO_PB.md"),                      # copia da imagem (fallback)
     ]
     for c in candidatos:
         if c.exists():

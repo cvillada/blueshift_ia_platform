@@ -159,10 +159,12 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Workspace** | Painel por departamento com agentes e documentos da área; cards com **tokens por agente** (1d/7d/30d/90d) | Login |
 | **Clientes** | Gerenciar e cadastrar clientes | Admin |
 | **Usuários** | CRUD de usuários com papéis (admin/gestor/usuario/sistema) e área | Admin |
+| **Áreas** | Cadastro de departamentos (banco; env `BLUESHIFT_AREAS` só seed inicial) | Admin |
 | **Agentes** | Agent Factory: montar agente com modelo + skills + conectores | Admin |
 | **Skills** | Catálogo de skills por área (SKILL.md) | Login |
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
+| **Docs** | Documentação completa (DOCUMENTACAO_PB.md) no menu lateral — mesma fonte do popup Ajuda | Login |
 | Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
 | ~~Chat~~ | ~~Teste de modelo cru com RAG~~ — removido do menu (v0.9.5); o teste real é **Agentes → testar** (pipeline completo); rota `/portal/chat` continua só para debug | — |
 | **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
@@ -175,7 +177,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Auditoria** | Rastreabilidade LGPD + 🔍 Rastreio passo a passo | Admin |
 | **Fine-Tuning** | Documentação sobre formatos (GGUF/MLX), hardware e passo a passo | Login |
 | **SSO (OIDC)** | Login federado (Azure AD, Okta, Keycloak, Google) | Admin |
-| **Atualizações** | Update Channel da plataforma | Admin |
+| **Atualizações** | Update via Git (tags) — versão do repo + rebuild com dados preservados | Admin |
 
 ### 🤖 Agentes (Agent Factory)
 
@@ -238,16 +240,20 @@ LGPD.
 
 ### 🔐 Segurança e Controle de Acesso
 
-- **Senhas com hash**: scrypt (salt 16 bytes, N=16384) — sem plaintext no banco
+- **Senhas com hash**: scrypt (salt 16 bytes, N=16384) — sem plaintext no banco; **mínimo 8 caracteres** (criar/editar usuário e setup inicial)
 - **RBAC**: hierarquia `admin > gestor > usuario > sistema`
 - **Rate limit**: login 5 tentativas/IP/min (bloqueio 15min) + API 100 req/token/min
+- **Login falho**: registrado em auditoria (usuário tentado + IP) — detecta brute-force
 - **CSRF**: token em todos os formulários do portal
 - **Session hardening**: cookie HttpOnly + SameSite=Lax + timeout 30min + Secure (HTTPS)
 - **SQL injection**: whitelist de colunas + queries parametrizadas
 - **Path traversal**: nomes de skills validados como `isidentifier()`
-- **Webhook URL**: bloqueio de IPs internos (localhost, 10.x, 192.168.x)
+- **Webhook URL (anti-SSRF)**: validação com `ipaddress` (bloqueia privado, CGNAT, link-local/metadata de nuvem, loopback, IPv6 interno) + resolução de DNS (DNS rebinding); vale no criar, editar e no momento do envio
+- **Headers HTTP**: X-Content-Type-Options, X-Frame-Options: DENY, Referrer-Policy e Content-Security-Policy em todas as respostas
+- **API Key de modelo**: nunca renderizada no HTML (máscara no editar)
 - **SSO (OIDC)**: login federado opcional (mantém login local)
-- **CORS**: headers configurados (Allow-Origin: \*)
+- **CORS**: headers configurados (Allow-Origin: \\*) — **somente nas rotas `/portal/api/*`** (páginas web não precisam)
+- **Health check**: rota pública `/portal/healthz` para load balancer / HEALTHCHECK
 - **Auditoria LGPD**: toda ação sensível é registrada
 - **Canais com token**: cada canal de integração tem chave própria (regenerável)
 - **Debug mode desligado**: sem tracebacks em produção
@@ -340,11 +346,11 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 | Variável | Padrão | Efeito |
 |:---------|:-------|:-------|
 | `BLUESHIFT_LICENSE` | vazio | Chave de ativação (validada no boot) |
-| `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | Áreas do Workspace |
+| `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** das áreas — depois a tela Cadastros → Áreas domina (banco) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo (setup inicial) |
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome aparece na tela Modelos IA); vazio = principal do agente; recomendado `hermes-3-llama-3.1-8b` (local) |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
-| `BLUESHIFT_UPDATE_URL` | localhost:9001 | Canal de atualização aprovado |
+| `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Clone git do repo (Update via Git — tela Atualizações) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`); sem ela, usa o host da requisição |
 | `BLUESHIFT_DEV` | 1 | Modo dev (licença BS-DEV-*) |
@@ -529,9 +535,16 @@ Acesse `http://localhost:8080/portal` (login: `admin` / `admin123`).
 
 > **Modelos de IA não vêm embutidos.** Após subir a plataforma, cadastre os modelos na tela **Modelos IA** — local (vLLM/LM Studio/Ollama) ou externo (DeepSeek/OpenRouter/OpenAI).
 >
-> **Áreas personalizadas:** edite a variável `BLUESHIFT_AREAS` no `docker-compose.yml` para customizar as áreas da empresa. Padrão: `vendas,suporte,financeiro,rh,operacoes`.
+> **Áreas personalizadas:** cadastre as áreas na tela **Cadastros → Áreas**
+> (banco). A variável `BLUESHIFT_AREAS` no `docker-compose.yml` serve apenas
+> como seed inicial do primeiro boot.
 >
 > **MCP com Node.js:** para servidores MCP locais que dependem de Node.js (npm/npx), o container já inclui Node 20 e npm.
+>
+> **Update via Git:** o compose monta o repositório (padrão: o próprio
+> diretório; produção: clone em `/opt/blueshift/repo`) e o `docker.sock`
+> do host no portal. A tela **Atualizações** mostra a versão do repo e
+> aplica a tag nova com `docker compose up -d --build` (dados preservados).
 
 ### Manual
 
@@ -601,8 +614,8 @@ blueshift_layer/                    ← Código principal da plataforma
 ├── license_client.py               ← Validação de license key
 ├── license_server_mock.py          ← License Server mock (Flask, :9000)
 ├── installer.py                    ← Cria perfil do cliente
-├── update_client.py                ← Update Channel
-├── update_server.py                ← Update Channel mock (Flask, :9001)
+├── update_client.py                ← Update via Git (tags) — versão + apply
+├── update_server.py                ← Update Channel mock legado (Flask, :9001)
 ├── config/
 │   └── default_config.yaml         ← Config padrão do container
 ├── portal/                         ← 🌐 Portal do Cliente (Flask)
