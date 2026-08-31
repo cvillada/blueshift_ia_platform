@@ -54,6 +54,12 @@ services:
       - blueshift-models:/opt/blueshift/models
       # DOCUMENTACAO_PB.md editavel sem rebuild (dev): edita no host, vale no proximo F5
       - ./DOCUMENTACAO_PB.md:/opt/blueshift/DOCUMENTACAO_PB.md
+      # Update via Git (A4): clone fixo do repo (le versao + checkout da tag)
+      # + docker.sock do host (o portal dispara o rebuild por ele).
+      # Default "." = o proprio diretorio do compose (dev: o projeto local;
+      # producao: clone em /opt/blueshift/repo). BLUESHIFT_REPO_DIR sobrescreve.
+      - ${BLUESHIFT_REPO_DIR:-.}:/opt/blueshift/repo
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # Gateway OpenAI-compativel — chats externos (Open WebUI, LibreChat, apps)
   # falam o protocolo padrao /v1/chat/completions e o gateway repassa ao

@@ -10,6 +10,18 @@ RUN pip install --no-cache-dir -e .
 # Node.js para servidores MCP via stdio (ex: airbnb mcp-server)
 RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
 
+# git + docker CLI p/ Update via Git (A4): o portal le a versao do repo
+# e dispara o rebuild pelo docker.sock do host (montado no compose)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates curl gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
 # Entrypoint sobe o License Server mock junto com o comando principal
 COPY docker/entrypoint.sh /opt/blueshift/docker/entrypoint.sh
 RUN chmod +x /opt/blueshift/docker/entrypoint.sh

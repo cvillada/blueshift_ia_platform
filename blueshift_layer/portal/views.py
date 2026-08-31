@@ -4663,21 +4663,19 @@ def atualizacoes():
     </div>"""
     content = f"""
     <div class="card" style="max-width:680px">
-      <h3 style="margin-top:0">Update Channel (canal aprovado)</h3>
-      <p class="muted">Versão instalada da camada BlueShift: <b>{__version__}</b></p>
-      <p>Canal: <code>{update_client.UPDATE_URL}</code></p>
-      <hr style="border-color:var(--line-soft)">
-      {'<p class="muted">Nenhuma atualização disponível no canal.</p>' if not info.get('disponivel') else ''}
-      {'<div class="badge ok">Nova versão disponível: ' + str(info.get('disponivel_version')) + '</div>' if info.get('disponivel') else ''}
-      {f'<p><b>Notas:</b> {info.get("notes","")}</p>' if info.get('notes') else ''}
-      {f'<p class="muted">Aprovado por: {info.get("aprovado_por")} em {info.get("publicado_em")}</p>' if info.get('aprovado_por') else ''}
-      {f'<p class="muted">Pacote: <code>{info.get("url")}</code></p>' if info.get('url') else ''}
+      <h3 style="margin-top:0">Update via Git (canal de atualização)</h3>
+      <p class="muted">Versão instalada: <b>{templates.h(str(info.get('atual', '')))}</b>
+        {('<span class="badge ok">repo ok</span>' if info.get('repo_ok') else '<span class="badge bad">repo não encontrado</span>')}</p>
+      <p class="muted" style="font-size:12px">Repo: <code>{templates.h(str(info.get('repo', '')))}</code></p>
+      {'<p class="muted">Nenhuma atualização disponível no remoto (ou sem acesso ao repositório).</p>' if not info.get('disponivel') else ''}
+      {'<div class="badge ok">Nova versão disponível: ' + templates.h(str(info.get('disponivel_version'))) + '</div>' if info.get('disponivel') else ''}
+      {f'<p class="muted" style="font-size:12px">Tags no remoto: {templates.h(", ".join(map(str, info.get("todas", []))))}</p>' if info.get('todas') else ''}
       {('<form method="post"><div style="margin-top:12px"><button class="btn" type="submit">Aplicar atualização</button></div></form>') if info.get('disponivel') else ''}
     </div>
     <div class="card muted" style="font-size:13px">
-      O Update Channel é consultado em <code>BLUESHIFT_UPDATE_URL</code> (default: canal mock em
-      <code>localhost:9001</code>). Em produção aponta para o backend real da BlueShift. O install
-      é feito via <code>pip install blueshift-layer==versao</code> (dry-run em dev).
+      O update puxa a tag aprovada do repositório Git e recria os containers
+      (<code>docker compose up -d --build</code>) — dados preservados (volumes intactos).
+      O processo roda em background e o portal reinicia ao concluir.
     </div>
     {card_licenca}
     {card_ambiente}
