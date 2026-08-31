@@ -269,7 +269,6 @@ def _nav(active: str, user: dict | None) -> str:
         ("Inteligência", "grupo_inteligencia", [
             ("memoria", "Memória", "/portal/memoria"),
             ("conhecimento", "Conhecimento", "/portal/conhecimento"),
-            ("docs", "Docs", "/portal/docs"),
             ("teste_ab", "Teste A/B", "/portal/teste-ab"),
             ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
         ]),
@@ -312,6 +311,11 @@ def _nav(active: str, user: dict | None) -> str:
         {sub_html}
       </div>
     </div>"""
+
+    # Item fixo fora de submenu (abaixo de Configuracoes) — Docs, como o Nei pediu
+    links += ('<a class="navlink" href="/portal/docs" title="Documentação">'
+              f'<span class="nav-icon">{ICONS.get("docs", chr(0x2753))}</span>'
+              '<span class="nav-label">Docs</span></a>')
 
     links += ('<hr style="border-color:var(--line-soft);margin:8px 0 4px">'
               '<a class="navlink" href="#" onclick="abrirAjuda();return false" title="Ajuda (documentação)">'
