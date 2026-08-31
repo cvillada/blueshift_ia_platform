@@ -678,6 +678,19 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 
 ---
 
+## 🧪 Testes
+
+Suíte de fumaça (sem pytest — cada arquivo roda direto, com SQLite temporário):
+
+```bash
+./bp-venv/bin/python tests/test_smoke.py      # rotas e fluxos principais
+./bp-venv/bin/python tests/test_fallback.py   # fallback de modelo
+./bp-venv/bin/python tests/test_mcp.py        # conectores MCP
+./bp-venv/bin/python tests/test_portal.py     # portal: login, CRUD, SSO, LGPD, WAL
+```
+
+Os testes usam `BLUESHIFT_PORTAL_DB` em diretório temporário — nunca tocam o banco real do volume.
+
 ## 💻 Hardware Recomendado
 
 ### Gargalos da plataforma

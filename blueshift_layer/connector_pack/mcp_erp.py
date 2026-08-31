@@ -2,7 +2,7 @@
 """Conector ERP real (BlueShift) — servidor MCP sobre um Postgres de exemplo.
 
 Substitui o stub anterior. Conecta-se a um banco Postgres (demo: erp_demo em
-localhost:5433 via docker-compose em erp_demo/). Em producao, aponte as variaveis
+localhost:5433 via docker-compose LOCAL, fora do repo — nao versionado). Em producao, aponte as variaveis
 de ambiente para o Postgres real do cliente.
 
 Tools expostas via MCP (FastMCP / stdio):
