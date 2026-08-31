@@ -4669,10 +4669,9 @@ def atualizacoes():
       <p class="muted" style="font-size:12px">Repo: <code>{templates.h(str(info.get('repo', '')))}</code></p>
       {'<p class="muted">Nenhuma atualização disponível no remoto (ou sem acesso ao repositório).</p>' if not info.get('disponivel') else ''}
       {'<div class="badge ok">Nova versão disponível: ' + templates.h(str(info.get('disponivel_version'))) + '</div>' if info.get('disponivel') else ''}
-      {f'<p class="muted" style="font-size:12px">Tags no remoto: {templates.h(", ".join(map(str, info.get("todas", []))))}</p>' if info.get('todas') else ''}
       {('<form method="post"><div style="margin-top:12px"><button class="btn" type="submit">Aplicar atualização</button></div></form>') if info.get('disponivel') else ''}
     </div>
-    <div class="card muted" style="font-size:13px">
+    <div class="card muted" style="max-width:680px;font-size:13px">
       O update puxa a tag aprovada do repositório Git e recria os containers
       (<code>docker compose up -d --build</code>) — dados preservados (volumes intactos).
       O processo roda em background e o portal reinicia ao concluir.
