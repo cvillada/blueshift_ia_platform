@@ -75,8 +75,8 @@ def login():
         adm_senha = request.form.get("admin_senha", "")
         if not (emp_nome and emp_codigo and adm_nome and adm_login and adm_senha):
             flash("Preencha todos os campos obrigatórios (*).", "warn")
-        elif len(adm_senha) < 6:
-            flash("Senha do administrador deve ter ao menos 6 caracteres.", "warn")
+        elif len(adm_senha) < 8:
+            flash("Senha do administrador deve ter ao menos 8 caracteres.", "warn")
         else:
             try:
                 cid = db.criar_cliente(emp_codigo, emp_nome, emp_razao or emp_nome, emp_email)
@@ -108,6 +108,11 @@ def login():
             flash("Bem-vindo ao Portal BlueShift.", "ok")
             return redirect(url_for("portal.monitorar"))
         flash("Login ou senha inválidos.", "bad")
+        # M4: trilha de tentativa falha (detecta brute-force junto com rate limit)
+        db.registrar_auditoria(
+            login_ or "(vazio)", "sistema", "login_falho",
+            alvo=login_, ip=request.remote_addr or "", detalhe="tentativa de login invalida",
+        )
     if _user():
         return redirect(url_for("portal.monitorar"))
     # Aviso de privacidade (LGPD)
@@ -134,7 +139,7 @@ def login():
           <div><label>Nome do admin *</label><input name="admin_nome" placeholder="Nome completo"></div>
           <div><label>Login do admin *</label><input name="admin_login" placeholder="admin"></div>
         </div>
-        <label>Senha do admin *</label><input name="admin_senha" type="password" placeholder="mínimo 6 caracteres">
+        <label>Senha do admin *</label><input name="admin_senha" type="password" placeholder="mínimo 8 caracteres">
         <div style="margin-top:16px">
           <button class="btn" type="submit">Criar empresa e acessar</button>
         </div>
@@ -619,6 +624,8 @@ def usuario_novo():
         senha = request.form.get("senha", "").strip()
         if not (cid and nome and login and senha):
             flash("Cliente, nome, login e senha são obrigatórios.", "warn")
+        elif len(senha) < 8:
+            flash("Senha deve ter ao menos 8 caracteres.", "warn")
         else:
             db.criar_usuario(cid, nome, login, senha,
                              request.form.get("papel", "usuario"),
@@ -674,7 +681,11 @@ def usuario_editar(uid: int):
         area = request.form.get("area", "").strip()
         if area is not None: campos["area"] = area
         senha = request.form.get("senha", "").strip()
-        if senha: campos["senha"] = db._hash_senha(senha)
+        if senha:
+            if len(senha) < 8:
+                flash("Nova senha deve ter ao menos 8 caracteres.", "warn")
+                return redirect(url_for("portal.usuario_editar", uid=uid))
+            campos["senha"] = db._hash_senha(senha)
         if campos: db.atualizar_usuario(uid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_usuario", alvo=u["nome"], ip=request.remote_addr)
         flash("Usuário atualizado.", "ok")
