@@ -26,21 +26,26 @@ def _resolver_host(base_url: str) -> str:
 
 
 def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
-         temperatura: float = 0.3) -> dict:
+         temperatura: float | None = None) -> dict:
     """Envia chat completion. Retorna dict {ok, content, model, error}.
 
     Se o modelo tiver `max_tokens` configurado (na tela Modelos IA), usa esse valor.
     Senao usa o padrao (4096). Timeout de 180s para modelos com thinking/reasoning.
+    `temperatura`: se None, usa a configurada no modelo (tela Modelos IA, padrao
+    0.3). Chamadas internas que exigem determinismo passam 0.0 explicito
+    (roteador de conectores / extrator de parametros).
     """
     base = _resolver_host(modelo["base_url"]).rstrip("/")
     url = f"{base}/v1/chat/completions"
     # usa max_tokens configurado no modelo, ou padrao 4096
     mt = max_tokens or modelo.get("max_tokens") or 4096
+    # temperatura: chamada explicita vence; senao usa a do modelo cadastrado
+    temp = temperatura if temperatura is not None else float(modelo.get("temperatura") or 0.3)
     payload = {
         "model": modelo["modelo"],
         "messages": mensagens,
         "max_tokens": mt,
-        "temperature": temperatura,
+        "temperature": temp,
         "stream": False,
     }
     headers = {"Content-Type": "application/json"}

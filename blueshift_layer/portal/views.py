@@ -3578,12 +3578,23 @@ def modelos():
         base_url = request.form.get("base_url", "").strip()
         modelo = request.form.get("modelo", "").strip()
         if cid and nome and base_url and modelo:
+            temp_raw = (request.form.get("temperatura") or "").strip()
+            temperatura = None
+            if temp_raw:
+                try:
+                    temperatura = float(temp_raw)
+                    if not (0.0 <= temperatura <= 2.0):
+                        raise ValueError
+                except ValueError:
+                    flash("Temperatura inválida — use um número entre 0.0 e 2.0.", "warn")
+                    return redirect(url_for("portal.modelos"))
             db.criar_modelo(cid, nome, base_url, modelo,
                             preco_input=float(request.form.get("preco_input", 0) or 0),
                             preco_output=float(request.form.get("preco_output", 0) or 0),
                             tipo=request.form.get("tipo", "local"),
                             api_key=request.form.get("api_key") or None,
-                            max_tokens=request.form.get("max_tokens") or None)
+                            max_tokens=request.form.get("max_tokens") or None,
+                            temperatura=temperatura)
             db.registrar_auditoria(_user()["login"], _user()["papel"], "cadastrar_modelo",
                                    alvo=nome, cliente_id=cid, ip=request.remote_addr)
             flash("Modelo de IA cadastrado.", "ok")
@@ -3595,20 +3606,22 @@ def modelos():
     body = ""
     for m in rows:
         badge = templates.badge("online" if m["online"] else "offline")
+        _temp_td = m.get("temperatura") if m.get("temperatura") is not None else '<span class="muted">0.3</span>'
         body += f"""<tr>
           <td class="muted" style="font-size:12px">{m['id']}</td>
           <td><b>{m['nome']}</b></td>
           <td>{templates.badge(m['tipo'])}</td>
           <td class="muted">{m['base_url']}</td>
           <td class="muted">{m['modelo']}</td>
+          <td>{_temp_td}</td>
           <td>{badge}</td>
           <td class="row-actions">
             <a href="/portal/modelos/{m['id']}/editar">editar</a>
             <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {m['nome']}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Status</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=6 class="empty">Nenhum modelo cadastrado.</td></tr>'}</tbody></table>"""
+    tabela = f"""<table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Temperatura</th><th>Status</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum modelo cadastrado.</td></tr>'}</tbody></table>"""
     content = f"""
     <div class="muted" style="margin-bottom:14px">
       Cadastro de LLMs por cliente (OpenAI-compatible: LM Studio, vLLM, Ollama). O chat de teste usa estes modelos.
@@ -3628,6 +3641,8 @@ def modelos():
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
         <label>Max tokens</label><input name="max_tokens" type="number" value="4096" placeholder="4096" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking/reasoning (ex: 8192, 16384). Timeout: 180s.</div>
+        <label>Temperatura</label><input name="temperatura" type="number" step="0.1" value="0.3" placeholder="0.3" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Criatividade da resposta (0.0 = determinístico, 1.0 = criativo). Padrão: 0.3. O roteador de conectores e o extrator de parâmetros usam 0.0 sempre.</div>
         <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="0.15" placeholder="0.15" style="width:200px">
         <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="0.60" placeholder="0.60" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>
@@ -3657,6 +3672,19 @@ def modelo_editar(mid: int):
         max_tok = request.form.get("max_tokens") or None
         if max_tok is not None:
             campos["max_tokens"] = int(max_tok)
+        temp_raw = (request.form.get("temperatura") or "").strip()
+        if temp_raw:
+            try:
+                temp_v = float(temp_raw)
+                if not (0.0 <= temp_v <= 2.0):
+                    raise ValueError
+                campos["temperatura"] = temp_v
+            except ValueError:
+                flash("Temperatura inválida — use um número entre 0.0 e 2.0.", "warn")
+                return redirect(url_for("portal.modelo_editar", mid=mid))
+        else:
+            # campo vazio = volta ao padrao do sistema (0.3)
+            campos["temperatura"] = None
         preco_i = request.form.get("preco_input") or None
         if preco_i is not None:
             campos["preco_input"] = float(preco_i)
@@ -3680,6 +3708,8 @@ def modelo_editar(mid: int):
         <label>API Key</label><input name="api_key" value="{m.get('api_key') or ''}">
         <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking (8192, 16384). Timeout: 180s.</div>
+        <label>Temperatura</label><input name="temperatura" type="number" step="0.1" value="{m.get('temperatura') if m.get('temperatura') is not None else ''}" placeholder="0.3" style="width:200px">
+        <div class="muted" style="font-size:11px;margin-top:4px">Criatividade da resposta (0.0 = determinístico, 1.0 = criativo). Vazio = padrão 0.3. O roteador de conectores e o extrator de parâmetros usam 0.0 sempre.</div>
         <label>Preço input (R$ / 1M tokens)</label><input name="preco_input" type="number" step="0.01" value="{m.get('preco_input') or 0.15}" style="width:200px">
         <label>Preço output (R$ / 1M tokens)</label><input name="preco_output" type="number" step="0.01" value="{m.get('preco_output') or 0.60}" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Usado para calcular custos no dashboard de observabilidade.</div>

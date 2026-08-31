@@ -410,6 +410,7 @@ def _migrar_colunas() -> None:
         ],
         "modelos": [
             ("max_tokens", "INTEGER"),
+            ("temperatura", "REAL"),
         ],
         "conectores": [
             ("area", "TEXT DEFAULT ''"),
@@ -1387,13 +1388,14 @@ def contar_documentos(cliente_id: int | None = None) -> list[dict]:
 # --- Modelos de IA (cadastro de LLMs por cliente) --------------------------
 
 def criar_modelo(cliente_id, nome, base_url, modelo, tipo="local", api_key=None, ativo=1, max_tokens=None,
-                 preco_input=0.0, preco_output=0.0) -> int:
+                 temperatura=None, preco_input=0.0, preco_output=0.0) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, ativo,
+            """INSERT INTO modelos (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, temperatura, ativo,
                preco_input, preco_output, criado_em)
-               VALUES (?,?,?,?,?,?,?,1,?,?,?)""",
-            (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, preco_input, preco_output, now_iso()),
+               VALUES (?,?,?,?,?,?,?,?,1,?,?,?)""",
+            (cliente_id, nome, base_url, modelo, tipo, api_key, max_tokens, temperatura,
+             preco_input, preco_output, now_iso()),
         )
         return cur.lastrowid
 
