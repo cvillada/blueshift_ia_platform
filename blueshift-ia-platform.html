@@ -160,7 +160,7 @@ svg{width:100%;min-width:1050px;display:block}
       <li>Admin cadastra usuários, áreas, agentes e conectores</li>
       <li>Monitoramento de uso, saúde dos modelos e dos conectores MCP</li>
       <li>Novos modelos fine-tuned liberados periodicamente</li>
-      <li>Atualização via pull de container seguro</li>
+      <li>Atualização via tela Atualizações (git pull + rebuild, dados preservados)</li>
       <li>Suporte técnico incluso</li>
       <li><b>Modelo:</b> licença <b>anual</b> por empresa (não por token)</li>
     </ul>
@@ -405,7 +405,7 @@ svg{width:100%;min-width:1050px;display:block}
     <ul>
       <li>Cliente cadastra seus próprios endpoints (vLLM / LM Studio / Ollama / OpenAI / Claude / DeepSeek)</li>
       <li><b>Fine-tuning:</b> serviço opcional — entregamos o modelo ajustado para rodar local</li>
-      <li>Atualizações periódicas de modelo via Update Channel</li>
+      <li>Atualizações da plataforma via tela Atualizações (git + rebuild)</li>
       <li>Suporte a 7B, 14B, 70B (depende da GPU do cliente)</li>
     </ul>
   </div>
@@ -490,7 +490,7 @@ svg{width:100%;min-width:1050px;display:block}
   </div>
   <div class="card">
     <h3>"Como atualiza os modelos?"</h3>
-    <p style="color:#94a3b8;font-size:0.75rem;line-height:1.6">Via pull de container seguro. A gente disponibiliza a nova imagem, o cliente autoriza, e o modelo novo sobe sem parar a operação. Zero risco de vazamento.</p>
+    <p style="color:#94a3b8;font-size:0.75rem;line-height:1.6">Pela tela de Atualizações do portal: a plataforma puxa a versão nova do repositório (tag) e recria os containers — dados preservados, operação não para. O cliente autoriza e acompanha pelo log. Zero risco de vazamento.</p>
   </div>
   <div class="card">
     <h3>"O que é MCP (Model Context Protocol)?"</h3>

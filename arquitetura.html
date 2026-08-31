@@ -284,12 +284,12 @@ h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-grad
 <div class="diagram">
 <pre>
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ USUÁRIO  │    │  RAG     │    │CONECTORES│    │   LLM    │    │ RESPOSTA │
-│ Pergunta │───▶│ Memória+ │───▶│  API/    │───▶│  Modelo  │───▶│  JSON    │
-│          │    │ Knowledge│    │ MCP/SQL  │    │  de IA   │    │          │
-│ "Status  │    │ (TF-IDF) │    │ c/ params│    │          │    │ "Cliente │
-│  C001?"  │    │          │    │ extraídos│    │          │    │  ativo"  │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+│ USUÁRIO  │    │CONECTORES│    │   RAG    │    │   LLM    │    │ RESPOSTA │
+│ Pergunta │───▶│  API/    │───▶│ Memória+ │───▶│  Modelo  │───▶│  JSON    │
+│          │    │ MCP/SQL  │    │ Knowledge│    │  de IA   │    │          │
+│ "Status  │    │ c/ params│    │ (TF-IDF) │    │          │    │ "Cliente │
+│  C001?"  │    │ extraídos│    │ comple-  │    │          │    │  ativo"  │
+└──────────┘    └──────────┘    │ mentar   │    └──────────┘    └──────────┘
       │              │               │               │
       │         ┌────┴────┐          │               │
       │         │ db.py   │          │               │
@@ -318,9 +318,9 @@ h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-grad
 <div class="flow">
 <span class="flow-step">1️⃣ Pergunta do usuário</span>
 <span class="flow-arrow">→</span>
-<span class="flow-step db">2️⃣ RAG (TF-IDF)</span>
+<span class="flow-step conn">2️⃣ Conectores da área (roteamento IA)</span>
 <span class="flow-arrow">→</span>
-<span class="flow-step conn">3️⃣ Conectores da área</span>
+<span class="flow-step db">3️⃣ RAG complementar (TF-IDF)</span>
 <span class="flow-arrow">→</span>
 <span class="flow-step llm">4️⃣ LLM + contexto</span>
 <span class="flow-arrow">→</span>
@@ -402,7 +402,12 @@ h1{font-size:1.75rem;font-weight:800;margin-bottom:.25rem;background:linear-grad
 
 <div class="dep-card">
 <h3>modelos</h3>
-<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Endpoint:</strong> <span>base_url + modelo</span> <strong>max_tokens</strong></div>
+<div class="deps"><strong>FK:</strong> <span>cliente_id</span> <strong>Endpoint:</strong> <span>base_url + modelo</span> <strong>max_tokens</strong> <strong>temperatura</strong></div>
+</div>
+
+<div class="dep-card">
+<h3>areas</h3>
+<div class="deps"><strong>Cadastro:</strong> <span>departamentos (banco)</span> <strong>Seed:</strong> <span>BLUESHIFT_AREAS (1º boot)</span></div>
 </div>
 
 <div class="dep-card">
@@ -442,7 +447,8 @@ blueshift_layer/
 ├── cli.py                  ← Entry point 'blueshift'
 ├── license_client.py       ← Valida chave no License Server
 ├── installer.py            ← Cria perfil do cliente
-├── update_client.py        ← Update Channel
+├── update_client.py        ← Update via Git (tags) — versão + apply
+├── update_server.py        ← Canal HTTP legado (mock, não usado na tela)
 ├── config/
 │   └── default_config.yaml
 ├── portal/                 ← 🌐 Portal do Cliente (Flask)
