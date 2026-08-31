@@ -226,6 +226,7 @@ def _nav(active: str, user: dict | None) -> str:
     ICONS = {
         "monitorar": "\U0001f4ca", "workspace": "\U0001f3e2",
         "clientes": "\U0001f465", "usuarios": "\U0001f464",
+        "areas": "\U0001f3e2",
         "agentes": "\U0001f916", "skills": "\u2699\ufe0f",
         "modelos": "\U0001f9e0", "conectores": "\U0001f50c",
         "alertas_config": "\U0001f514",
@@ -259,6 +260,7 @@ def _nav(active: str, user: dict | None) -> str:
             # modelos/skills -> agentes (monta) -> conectores/canais (entrega)
             ("clientes", "Clientes", "/portal/clientes"),
             ("usuarios", "Usuários", "/portal/usuarios"),
+            ("areas", "Áreas", "/portal/areas"),
             ("modelos", "Modelos IA", "/portal/modelos"),
             ("skills", "Skills", "/portal/skills"),
             ("agentes", "Agentes", "/portal/agentes"),

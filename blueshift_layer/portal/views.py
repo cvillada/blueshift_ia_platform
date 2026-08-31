@@ -731,6 +731,116 @@ def usuario_suspender(uid: int):
     return redirect(url_for("portal.usuarios"))
 
 
+# ---------------------------------------------------------------------------
+# AREAS (departamentos — cadastro no banco; seed inicial via BLUESHIFT_AREAS)
+# ---------------------------------------------------------------------------
+
+@bp.route("/areas", methods=["GET", "POST"])
+@auth.admin_required
+def areas():
+    """Tela de cadastro de areas (departamentos). Admin-only."""
+    if request.method == "POST":
+        nome = (request.form.get("nome", "") or "").strip().lower()
+        if not nome:
+            flash("Nome da área é obrigatório.", "warn")
+        elif not nome.isidentifier():
+            flash("Nome da área deve ser minúsculas, sem espaços (ex: vendas).", "warn")
+        else:
+            try:
+                db.criar_area(nome)
+                db.registrar_auditoria(_user()["login"], "admin", "criar_area", alvo=nome,
+                                       ip=request.remote_addr or "")
+                flash(f"Área '{nome}' criada.", "ok")
+            except ValueError as e:
+                flash(str(e), "warn")
+        return redirect(url_for("portal.areas"))
+    rows = db.listar_areas_detalhadas()
+    body = ""
+    for a in rows:
+        uso = f"{a['usuarios']} usuário(s) · {a['conectores']} conector(es) · {a['docs']} doc(s)"
+        body += f"""<tr>
+          <td><b>{a['nome']}</b></td>
+          <td class="muted">{uso}</td>
+          <td class="row-actions">
+            <a href="/portal/areas/{a['id']}/editar">editar</a>
+            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {a['nome']}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
+          </td></tr>"""
+    tabela = f"""<table><thead><tr><th>Área</th><th>Uso</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=3 class="empty">Nenhuma área cadastrada.</td></tr>'}</tbody></table>"""
+    content = f"""
+    <div class="muted" style="margin-bottom:14px">
+      Áreas = departamentos da empresa (Workspace, agentes, conectores, documentos e usuários).
+      Cadastradas no banco; o <code>BLUESHIFT_AREAS</code> do ambiente serve só como seed inicial
+      do primeiro boot — depois a tela domina.
+    </div>
+    <div class="card" style="max-width:480px;margin-bottom:16px">
+      <h3 style="margin-top:0">Nova área</h3>
+      <form method="post">
+        {templates.csrf_field()}<label>Nome</label>
+        <input name="nome" placeholder="ex: vendas" style="text-transform:lowercase">
+        <div class="muted" style="font-size:11px;margin-top:4px">Minúsculas, sem espaços (padrão de identificador).</div>
+        <div style="margin-top:12px"><button class="btn" type="submit">Criar</button></div>
+      </form>
+    </div>
+    <div class="card">{tabela}</div>"""
+    return templates.page("Áreas", content, active="areas", user=_user())
+
+
+@bp.route("/areas/<int:aid>/editar", methods=["GET", "POST"])
+@auth.admin_required
+def area_editar(aid: int):
+    """Renomeia uma area."""
+    with db.get_conn() as conn:
+        row = db._one(conn, "SELECT * FROM areas WHERE id=?", (aid,))
+    if not row:
+        flash("Área não encontrada.", "bad")
+        return redirect(url_for("portal.areas"))
+    if request.method == "POST":
+        nome = (request.form.get("nome", "") or "").strip().lower()
+        if not nome:
+            flash("Nome da área é obrigatório.", "warn")
+        elif not nome.isidentifier():
+            flash("Nome da área deve ser minúsculas, sem espaços (ex: vendas).", "warn")
+        else:
+            try:
+                db.renomear_area(aid, nome)
+                db.registrar_auditoria(_user()["login"], "admin", "editar_area",
+                                       alvo=f"{row['nome']} -> {nome}", ip=request.remote_addr or "")
+                flash(f"Área renomeada para '{nome}'.", "ok")
+                return redirect(url_for("portal.areas"))
+            except ValueError as e:
+                flash(str(e), "warn")
+    content = f"""
+    <div class="card" style="max-width:480px">
+      <h3 style="margin-top:0">Editar área: {row['nome']}</h3>
+      <form method="post">
+        {templates.csrf_field()}<label>Nome</label>
+        <input name="nome" value="{row['nome']}" style="text-transform:lowercase">
+        <div class="muted" style="font-size:11px;margin-top:4px">Renomear não altera registros existentes com a área antiga (eles mantêm o texto).</div>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn" type="submit">Salvar</button>
+          <a class="btn ghost" href="/portal/areas">Cancelar</a>
+        </div>
+      </form>
+    </div>"""
+    return templates.page(f"Editar área {row['nome']}", content, active="areas", user=_user())
+
+
+@bp.route("/areas/<int:aid>/excluir")
+@auth.admin_required
+def area_excluir(aid: int):
+    """Exclui uma area do cadastro (registros existentes mantem o texto)."""
+    with db.get_conn() as conn:
+        row = db._one(conn, "SELECT * FROM areas WHERE id=?", (aid,))
+    if not row:
+        flash("Área não encontrada.", "bad")
+        return redirect(url_for("portal.areas"))
+    db.excluir_area(aid)
+    db.registrar_auditoria(_user()["login"], "admin", "excluir_area", alvo=row["nome"],
+                           ip=request.remote_addr or "")
+    flash(f"Área '{row['nome']}' excluída do cadastro.", "ok")
+    return redirect(url_for("portal.areas"))
+
 
 # ---------------------------------------------------------------------------
 # AGENTES (Agent Factory: gerenciar + cadastrar)
@@ -4548,7 +4658,7 @@ def atualizacoes():
         <div><span class="muted">Modelo de roteamento de conectores:</span> <b>{templates.h(_router_txt)}</b>
           <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_ROUTER_MODEL</code> (id ou nome — o nome é o que aparece na tela Modelos IA)</div></div>
         <div style="margin-top:6px"><span class="muted">Áreas configuradas:</span> {templates.h(_areas_txt)}
-          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_AREAS</code> — departamentos do Workspace</div></div>
+          <div class="muted" style="font-size:11px">cadastro em <a href="/portal/areas">Cadastros → Áreas</a> (banco) — a variável <code>BLUESHIFT_AREAS</code> serve só como seed inicial do primeiro boot</div></div>
       </div>
     </div>"""
     content = f"""

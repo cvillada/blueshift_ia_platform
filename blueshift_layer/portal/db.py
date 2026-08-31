@@ -103,6 +103,12 @@ def init_db() -> None:
                 criado_em   TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS areas (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome        TEXT NOT NULL UNIQUE,
+                criado_em   TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS agentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
@@ -601,12 +607,72 @@ def deletar_agente(aid: int) -> None:
 _AREAS = ["vendas", "suporte", "financeiro", "rh", "operacoes"]
 
 
-def listar_areas() -> list[str]:
-    """Retorna lista de areas configuradas via env BLUESHIFT_AREAS ou padrao."""
+def _areas_seed() -> list[str]:
+    """Areas do seed inicial: env BLUESHIFT_AREAS ou padrao fixo."""
     raw = os.environ.get("BLUESHIFT_AREAS", "").strip()
     if raw:
         return [a.strip() for a in raw.split(",") if a.strip()]
     return list(_AREAS)
+
+
+def _seed_areas_na_tabela() -> None:
+    """Popula a tabela areas com o seed inicial SE estiver vazia (idempotente).
+
+    O env BLUESHIFT_AREAS e apenas o seed de primeiro boot — depois disso o
+    BANCO domina (criar/renomear/excluir na tela Areas). Nunca sobrescreve.
+    """
+    with get_conn() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM areas").fetchone()[0]
+        if n == 0:
+            ts = now_iso()
+            for a in _areas_seed():
+                conn.execute("INSERT OR IGNORE INTO areas (nome, criado_em) VALUES (?,?)", (a, ts))
+
+
+def listar_areas() -> list[str]:
+    """Retorna as areas cadastradas no BANCO (seed inicial: env BLUESHIFT_AREAS)."""
+    _seed_areas_na_tabela()
+    with get_conn() as conn:
+        rows = conn.execute("SELECT nome FROM areas ORDER BY id").fetchall()
+        return [r[0] for r in rows]
+
+
+def listar_areas_detalhadas() -> list[dict]:
+    """Areas do banco com contagem de uso (usuarios, conectores, docs RAG)."""
+    _seed_areas_na_tabela()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT a.id, a.nome,
+                      (SELECT COUNT(*) FROM usuarios u WHERE u.area = a.nome)   AS usuarios,
+                      (SELECT COUNT(*) FROM conectores c WHERE c.area = a.nome) AS conectores,
+                      (SELECT COUNT(*) FROM knowledge k WHERE k.area = a.nome)  AS docs
+               FROM areas a ORDER BY a.id"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def criar_area(nome: str) -> None:
+    """Cadastra uma area nova. Levanta ValueError se ja existir."""
+    with get_conn() as conn:
+        try:
+            conn.execute("INSERT INTO areas (nome, criado_em) VALUES (?,?)", (nome, now_iso()))
+        except Exception:  # noqa: BLE001 - UNIQUE violation
+            raise ValueError(f"Área '{nome}' já existe.") from None
+
+
+def renomear_area(aid: int, nome: str) -> None:
+    """Renomeia uma area. Levanta ValueError se o nome novo ja existir."""
+    with get_conn() as conn:
+        dup = conn.execute("SELECT id FROM areas WHERE nome=? AND id!=?", (nome, aid)).fetchone()
+        if dup:
+            raise ValueError(f"Área '{nome}' já existe.")
+        conn.execute("UPDATE areas SET nome=? WHERE id=?", (nome, aid))
+
+
+def excluir_area(aid: int) -> None:
+    """Remove uma area do cadastro (registros existentes mantem o texto)."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM areas WHERE id=?", (aid,))
 
 
 def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online", finalidade="") -> int:
