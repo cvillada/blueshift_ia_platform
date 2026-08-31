@@ -290,10 +290,10 @@ def monitorar():
         cards += f"""
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong>{c['nome']}</strong>
+            <strong>{templates.h(c['nome'])}</strong>
             {templates.badge(c['status'])}
           </div>
-          <div class="muted" style="font-size:12px;margin:4px 0 10px">código: {c['codigo']} · {n_ag} agente(s) · {chamadas_reais} chamada(s) LLM</div>
+          <div class="muted" style="font-size:12px;margin:4px 0 10px">código: {templates.h(c['codigo'])} · {n_ag} agente(s) · {chamadas_reais} chamada(s) LLM</div>
           <div class="grid grid-2" style="gap:10px">
             <div><div class="muted" style="font-size:11px">Container</div>{templates.badge(h.get('container','-'))}</div>
             <div><div class="muted" style="font-size:11px">Modelo local</div>{templates.badge(h.get('modelo_local','-'))}</div>
@@ -392,8 +392,8 @@ def workspace():
         cards_agentes += f"""
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong>{a['nome']}</strong>{templates.badge(a['status'])}</div>
-          <div class="muted" style="font-size:12px;margin:6px 0">modelo {a['modelo']} · skills [{a['skills'] or '-'}] · ⚡ {_fmt_tokens(tokens_por_agente.get(a['id'], 0))} tokens ({dias}d)</div>
+            <strong>{templates.h(a['nome'])}</strong>{templates.badge(a['status'])}</div>
+          <div class="muted" style="font-size:12px;margin:6px 0">modelo {templates.h(a['modelo'])} · skills [{templates.h(a['skills'] or '-')}] · ⚡ {_fmt_tokens(tokens_por_agente.get(a['id'], 0))} tokens ({dias}d)</div>
           <div style="display:flex;gap:8px">
             <a class="btn ghost" href="/portal/agentes/{a['id']}/testar">testar agente</a>
             <button class="btn ghost" type="button" onclick='abrirFluxo({_fluxo})' title="Ver o fluxo de execução do agente">fluxo</button>
@@ -439,9 +439,9 @@ def clientes():
         n_user = len(db.listar_usuarios(c["id"]))
         n_age = len(db.listar_agentes(c["id"]))
         body += f"""<tr>
-          <td><b>{c['nome']}</b><div class="muted" style="font-size:12px">{c['empresa'] or ''}</div></td>
-          <td>{c['codigo']}</td>
-          <td>{c['email'] or '-'}</td>
+          <td><b>{templates.h(c['nome'])}</b><div class="muted" style="font-size:12px">{templates.h(c['empresa'] or '')}</div></td>
+          <td>{templates.h(c['codigo'])}</td>
+          <td>{templates.h(c['email'] or '-')}</td>
           <td>{templates.badge(c['status'])}</td>
           <td>{n_user} usu · {n_age} agentes</td>
           <td class="row-actions">
@@ -482,7 +482,7 @@ def cliente_novo():
                                    ip=request.remote_addr)
             flash(f"Cliente '{nome}' cadastrado.", "ok")
             return redirect(url_for("portal.clientes"))
-    content = """
+    content = f"""
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Cadastrar cliente</h3>
       <form method="post">
@@ -539,12 +539,12 @@ def cliente_editar(cid: int):
       <h3 style="margin-top:0">Editar cliente #{cid}</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
-          <div><label>Código</label><input name="codigo" value="{c['codigo']}"></div>
-          <div><label>Nome</label><input name="nome" value="{c['nome']}"></div>
+          <div><label>Código</label><input name="codigo" value="{templates.h(c['codigo'])}"></div>
+          <div><label>Nome</label><input name="nome" value="{templates.h(c['nome'])}"></div>
         </div>
         <div class="form-row">
-          <div><label>Empresa</label><input name="empresa" value="{c['empresa'] or ''}"></div>
-          <div><label>Email</label><input name="email" value="{c['email'] or ''}"></div>
+          <div><label>Empresa</label><input name="empresa" value="{templates.h(c['empresa'] or '')}"></div>
+          <div><label>Email</label><input name="email" value="{templates.h(c['email'] or '')}"></div>
         </div>
         <div class="form-row">
           <div><label>Plano de licença</label>
@@ -592,11 +592,11 @@ def usuarios():
     body = ""
     for u in rows:
         body += f"""<tr>
-          <td><b>{u['nome']}</b></td>
-          <td>{u['login']}</td>
+          <td><b>{templates.h(u['nome'])}</b></td>
+          <td>{templates.h(u['login'])}</td>
           <td>{templates.badge(u['papel'])}</td>
-          <td>{u['area'] or '-'}</td>
-          <td>{clientes.get(u['cliente_id'], '?')}</td>
+          <td>{templates.h(u['area'] or '-')}</td>
+          <td>{templates.h(clientes.get(u['cliente_id'], '?'))}</td>
           <td>{templates.badge('ativo' if u['ativo'] else 'suspenso')}</td>
           <td class="row-actions">
             <a href="/portal/usuarios/{u['id']}/editar">editar</a>
@@ -694,11 +694,11 @@ def usuario_editar(uid: int):
     papel_opts = "".join(f'<option value="{p}" {"selected" if p==u["papel"] else ""}>{p.title()}</option>' for p in ["admin","gestor","usuario","sistema"])
     content = f"""
     <div class="card" style="max-width:600px">
-      <h3 style="margin-top:0">Editar usuário: {u['nome']}</h3>
+      <h3 style="margin-top:0">Editar usuário: {templates.h(u['nome'])}</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
-          <div><label>Nome</label><input name="nome" value="{u['nome']}"></div>
-          <div><label>Login</label><input name="login" value="{u['login']}"></div>
+          <div><label>Nome</label><input name="nome" value="{templates.h(u['nome'])}"></div>
+          <div><label>Login</label><input name="login" value="{templates.h(u['login'])}"></div>
         </div>
         <div class="form-row">
           <div><label>Nova senha</label><input name="senha" type="password" placeholder="Deixar em branco p/ manter"></div>
@@ -759,11 +759,11 @@ def areas():
     for a in rows:
         uso = f"{a['usuarios']} usuário(s) · {a['conectores']} conector(es) · {a['docs']} doc(s)"
         body += f"""<tr>
-          <td><b>{a['nome']}</b></td>
+          <td><b>{templates.h(a['nome'])}</b></td>
           <td class="muted">{uso}</td>
           <td class="row-actions">
             <a href="/portal/areas/{a['id']}/editar">editar</a>
-            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {a['nome']}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {templates.h(a['nome'])}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
     tabela = f"""<table><thead><tr><th>Área</th><th>Uso</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=3 class="empty">Nenhuma área cadastrada.</td></tr>'}</tbody></table>"""
@@ -812,10 +812,10 @@ def area_editar(aid: int):
                 flash(str(e), "warn")
     content = f"""
     <div class="card" style="max-width:480px">
-      <h3 style="margin-top:0">Editar área: {row['nome']}</h3>
+      <h3 style="margin-top:0">Editar área: {templates.h(row['nome'])}</h3>
       <form method="post">
         {templates.csrf_field()}<label>Nome</label>
-        <input name="nome" value="{row['nome']}" style="text-transform:lowercase">
+        <input name="nome" value="{templates.h(row['nome'])}" style="text-transform:lowercase">
         <div class="muted" style="font-size:11px;margin-top:4px">Renomear não altera registros existentes com a área antiga (eles mantêm o texto).</div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
@@ -857,19 +857,19 @@ def agentes():
         modelo_sec_txt = ""
         if sec:
             m2 = db.buscar_modelo(sec)
-            modelo_sec_txt = f" → fallback: {m2['nome']}" if m2 else ""
+            modelo_sec_txt = f" → fallback: {templates.h(m2['nome'])}" if m2 else ""
         body += f"""<tr>
-          <td><b>{a['nome']}</b></td>
-          <td>{a['area'] or '-'}</td>
-          <td>{a['modelo']}{modelo_sec_txt}</td>
-          <td>{a['skills'] or '-'}</td>
-          <td><a href="/portal/conectores?area={a['area'] or ''}" class="muted" style="font-size:12px;text-decoration:none">{a['area'] and '🔌 ver' or '-'}</a></td>
+          <td><b>{templates.h(a['nome'])}</b></td>
+          <td>{templates.h(a['area'] or '-')}</td>
+          <td>{templates.h(a['modelo'])}{modelo_sec_txt}</td>
+          <td>{templates.h(a['skills'] or '-')}</td>
+          <td><a href="/portal/conectores?area={templates.h(a['area'] or '')}" class="muted" style="font-size:12px;text-decoration:none">{a['area'] and '🔌 ver' or '-'}</a></td>
           <td>{templates.badge(a['status'])}</td>
-          <td>{clientes.get(a['cliente_id'], '?')}</td>
+          <td>{templates.h(clientes.get(a['cliente_id'], '?'))}</td>
           <td class="row-actions">
             <a href="/portal/agentes/{a['id']}/testar">testar</a>
             <a href="/portal/agentes/{a['id']}/editar">editar</a>
-            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {a['nome']}?')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {templates.h(a['nome'])}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
@@ -954,16 +954,16 @@ def agente_testar(aid: int):
     ctx_html = ""
     if contexto:
         ctx_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Contexto RAG recuperado:</b><ul style=\"margin:6px 0 0 18px\">" + \
-            "".join(f"<li>{c['texto'][:140]}</li>" for c in contexto) + "</ul></div>"
+            "".join(f"<li>{templates.h(c['texto'][:140])}</li>" for c in contexto) + "</ul></div>"
     fer_html = ""
     if ferramentas:
         itens = []
         for f in ferramentas:
             if "erro" in f:
-                itens.append(f"<li><b>{f.get('conector','?')}</b>: erro {f['erro']}</li>")
+                itens.append(f"<li><b>{templates.h(f.get('conector','?'))}</b>: erro {templates.h(f['erro'])}</li>")
             else:
-                itens.append(f"<li><b>{f.get('conector')}.{f.get('tool')}</b> {f.get('args')} → "
-                             f"<code>{f.get('resultado')}</code></li>")
+                itens.append(f"<li><b>{templates.h(f.get('conector'))}.{templates.h(f.get('tool'))}</b> {templates.h(f.get('args'))} → "
+                             f"<code>{templates.h(f.get('resultado'))}</code></li>")
         fer_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Dados de sistema (conectores externos executados):</b><ul style=\"margin:6px 0 0 18px\">" + \
             "".join(itens) + "</ul></div>"
     area = a["area"] or ""
@@ -991,13 +991,13 @@ def agente_testar(aid: int):
       </script>'''
     content = f"""
     <div class="muted" style="margin-bottom:10px">
-      Teste do agente <b>{a['nome']}</b> (área {area or 'geral'}) — modelo <b>{a['modelo']}</b>,
-      skills [{a['skills'] or '-'}], {conn_info}.
+      Teste do agente <b>{templates.h(a['nome'])}</b> (área {templates.h(area or 'geral')}) — modelo <b>{templates.h(a['modelo'])}</b>,
+      skills [{templates.h(a['skills'] or '-')}], {conn_info}.
     </div>
     <div class="card" style="max-width:760px">
       <form method="post" id="form-agente-test">
         {templates.csrf_field()}<label>Pergunta para o agente</label>
-        <textarea name="pergunta" rows="3" placeholder="Ex: qual o status do cliente 123?">{request.form.get("pergunta","")}</textarea>
+        <textarea name="pergunta" rows="3" placeholder="Ex: qual o status do cliente 123?">{templates.h(request.form.get("pergunta",""))}</textarea>
         <div style="margin-top:12px"><button class="btn btn-spin" id="btn-enviar-agente" type="submit">Enviar ao agente</button></div>
       </form>
       <script>
@@ -1009,7 +1009,7 @@ def agente_testar(aid: int):
       {fb_script}
       {ctx_html}
       {fer_html}
-      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {a["nome"]}:</b><div style="margin:8px 0 0">{_resposta_html(resposta)}</div>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
+      {f'<div class="card" style="margin-top:14px;background:var(--deep)"><b>🤖 {templates.h(a["nome"])}:</b><div style="margin:8px 0 0">{_resposta_html(resposta)}</div>{badge_lgpd}{badge_fallback}<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="btn-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(true)">👍 Util</button><button class="btn ghost" id="btn-nao-util" style="font-size:12px;padding:4px 10px" onclick="enviarFeedback(false)">👎 Nao util</button><span id="feedback-msg" style="font-size:11px;margin-left:8px"></span>{badge_rastreio}</div></div>' if resposta else ''}
       {f'<div class="badge warn" style="margin-top:12px">⚠️ {erro}</div>' if erro else ''}
     </div>
     <div style="margin-top:14px"><a class="btn ghost" href="/portal/agentes">← Voltar</a></div>
@@ -1107,13 +1107,13 @@ def agente_novo():
             flash(f"Agente '{nome}' criado.", "ok")
             return redirect(url_for("portal.agentes"))
     opts = _opts_cliente()
-    mopts = "".join(f'<option value="{m["id"]}">{m["nome"]} ({m["modelo"]})</option>' for m in modelos) \
+    mopts = "".join(f'<option value="{m["id"]}">{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
     skopts = "".join(
         f'<tr><td style="white-space:nowrap;padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="skills" value="{s["name"]}" style="width:auto;margin:0;vertical-align:middle"> '
-        f'<b>{s["name"]}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{s.get("description","")}</span>'
+        f'<input type="checkbox" name="skills" value="{templates.h(s["name"])}" style="width:auto;margin:0;vertical-align:middle"> '
+        f'<b>{templates.h(s["name"])}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{templates.h(s.get("description",""))}</span>'
         f'</label></td></tr>'
         for s in skills_disp
     ) or '<tr><td class="muted">nenhuma skill no catálogo</td></tr>'
@@ -1192,24 +1192,24 @@ def agente_editar(aid: int):
                                cliente_id=a["cliente_id"], ip=request.remote_addr)
         flash("Agente atualizado.", "ok")
         return redirect(url_for("portal.agentes"))
-    mopts = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_id") else ""}>{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
-    mopts2 = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_secundario_id") else ""}>{m["nome"]} ({m["modelo"]})</option>' for m in modelos)
+    mopts = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
+    mopts2 = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_secundario_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
     skopts = "".join(
         f'<tr><td style="padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="skills" value="{s["name"]}" style="width:auto;margin:0;vertical-align:middle" {"checked" if s["name"] in skills_sel else ""}> '
-        f'<b>{s["name"]}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{s.get("description","")}</span>'
+        f'<input type="checkbox" name="skills" value="{templates.h(s["name"])}" style="width:auto;margin:0;vertical-align:middle" {"checked" if s["name"] in skills_sel else ""}> '
+        f'<b>{templates.h(s["name"])}</b>'
+        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{templates.h(s.get("description",""))}</span>'
         f'</label></td></tr>'
         for s in skills_disp
     )
     copts = ""
-    areas_opts = "".join(f'<option value="{ar}" {"selected" if ar==a.get("area") else ""}>{ar}</option>' for ar in ["vendas","suporte","financeiro","rh","operacoes"])
+    areas_opts = "".join(f'<option value="{templates.h(ar)}" {"selected" if ar==a.get("area") else ""}>{templates.h(ar)}</option>' for ar in ["vendas","suporte","financeiro","rh","operacoes"])
     content = f"""
     <div class="card" style="max-width:700px">
-      <h3 style="margin-top:0">Editar agente #{aid}: {a['nome']}</h3>
+      <h3 style="margin-top:0">Editar agente #{aid}: {templates.h(a['nome'])}</h3>
       <form method="post">
         {templates.csrf_field()}<div class="form-row">
-          <div><label>Nome do agente</label><input name="nome" value="{a['nome']}"></div>
+          <div><label>Nome do agente</label><input name="nome" value="{templates.h(a['nome'])}"></div>
           <div><label>Área</label><select name="area"><option value="">--</option>{areas_opts}</select></div>
         </div>
         <div class="form-row">
@@ -2228,10 +2228,10 @@ def auditoria():
         cliente = clientes.get(a["cliente_id"], "-") if a["cliente_id"] else "-"
         body += f"""<tr>
           <td class="muted">{a['criado_em']}</td>
-          <td><b>{a['usuario']}</b></td>
+          <td><b>{templates.h(a['usuario'])}</b></td>
           <td>{templates.badge(a['papel'])}</td>
-          <td>{a['acao']}</td>
-          <td>{a['alvo'] or '-'}</td>
+          <td>{templates.h(a['acao'])}</td>
+          <td>{templates.h(a['alvo'] or '-')}</td>
           <td>{cliente}</td>
           <td class="muted">{a['ip'] or '-'}</td>
           <td style="font-size:12px">{_rastreio_link(a)}</td>
@@ -3417,7 +3417,7 @@ def conhecimento():
         acessos_txt = f"{d.get('acessos',0)} acesso(s)" if d.get('acessos', 0) else "0 acesso"
         ultimo = f" · último: {d.get('ultimo_acesso','-')[:10]}" if d.get('ultimo_acesso') else ""
         body += f"""<tr>
-          <td><b>{d['titulo']}</b><br><span class="muted" style="font-size:11px">{d.get('fonte','manual')}</span></td>
+          <td><b>{templates.h(d['titulo'])}</b><br><span class="muted" style="font-size:11px">{templates.h(d.get('fonte','manual'))}</span></td>
           <td>{templates.badge(d.get('area') or '-')}</td>
           <td>{templates.badge(d['categoria'])}</td>
           <td class="muted">{preview}</td>
@@ -3733,10 +3733,10 @@ def modelos():
         _temp_td = m.get("temperatura") if m.get("temperatura") is not None else '<span class="muted">0.3</span>'
         body += f"""<tr>
           <td class="muted" style="font-size:12px">{m['id']}</td>
-          <td><b>{m['nome']}</b></td>
+          <td><b>{templates.h(m['nome'])}</b></td>
           <td>{templates.badge(m['tipo'])}</td>
-          <td class="muted">{m['base_url']}</td>
-          <td class="muted">{m['modelo']}</td>
+          <td class="muted">{templates.h(m['base_url'])}</td>
+          <td class="muted">{templates.h(m['modelo'])}</td>
           <td>{_temp_td}</td>
           <td>{badge}</td>
           <td class="row-actions">
@@ -3926,16 +3926,16 @@ def chat():
     ctx_html = ""
     if contexto:
         ctx_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Contexto RAG recuperado:</b><ul style=\"margin:6px 0 0 18px\">" + \
-            "".join(f"<li>{c['texto'][:140]}</li>" for c in contexto) + "</ul></div>"
+            "".join(f"<li>{templates.h(c['texto'][:140])}</li>" for c in contexto) + "</ul></div>"
     fer_html = ""
     if ferramentas:
         itens = []
         for f in ferramentas:
             if "erro" in f:
-                itens.append(f"<li><b>{f.get('conector','?')}</b>: erro {f['erro']}</li>")
+                itens.append(f"<li><b>{templates.h(f.get('conector','?'))}</b>: erro {templates.h(f['erro'])}</li>")
             else:
-                itens.append(f"<li><b>{f.get('conector')}.{f.get('tool')}</b> {f.get('args')} → "
-                             f"<code>{f.get('resultado')}</code></li>")
+                itens.append(f"<li><b>{templates.h(f.get('conector'))}.{templates.h(f.get('tool'))}</b> {templates.h(f.get('args'))} → "
+                             f"<code>{templates.h(f.get('resultado'))}</code></li>")
         fer_html = "<div class=\"muted\" style=\"margin:10px 0;font-size:13px\"><b>Dados de sistema (conectores MCP executados):</b><ul style=\"margin:6px 0 0 18px\">" + \
             "".join(itens) + "</ul></div>"
     content = f"""
@@ -4130,10 +4130,10 @@ def canais():
                         if c["ativo"] else "")
         body += f"""<tr>
           <td><b>{c['id']}</b></td>
-          <td><b>{c['nome']}</b></td>
+          <td><b>{templates.h(c['nome'])}</b></td>
           <td>{c['tipo']}</td>
           <td>{ag}</td>
-          <td style="max-width:260px"><code style="font-size:11px">{c['token']}</code>
+          <td style="max-width:260px"><code style="font-size:11px">{templates.h(c['token'])}</code>
             <button class="btn-copy" onclick="navigator.clipboard.writeText('{c['token']}')" title="Copiar chave">📋</button>
           </td>
           <td>{templates.badge(st)}</td>
@@ -4469,9 +4469,9 @@ def gateway():
     for g in rows:
         st = "ativo" if g["ativo"] else "pausado"
         body += f"""<tr>
-          <td><b>{g['nome']}</b></td>
-          <td>{g.get('canal_nome','-')}</td>
-          <td>{g.get('agente_nome','-')} <span class="muted">({g.get('agente_area','')})</span></td>
+          <td><b>{templates.h(g['nome'])}</b></td>
+          <td>{templates.h(g.get('canal_nome','-'))}</td>
+          <td>{templates.h(g.get('agente_nome','-'))} <span class="muted">({templates.h(g.get('agente_area',''))})</span></td>
           <td>{templates.badge(g['modo'])}</td>
           <td>{templates.badge(st)}</td>
           <td style="max-width:220px"><code style="font-size:11px">{_endpoint_gateway()}</code></td>
