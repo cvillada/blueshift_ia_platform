@@ -233,6 +233,7 @@ def _nav(active: str, user: dict | None) -> str:
         "canais": "\U0001f4e1", "gateway": "\U0001f500", "memoria": "\U0001f4be",
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
+        'arquivo_morto': '\U0001f5c4\ufe0f',
         'observabilidade': '\U0001f4ca', 'teste_ab': '\U0001f91d', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
         'fine_tuning': '\U0001f9e9', 'docs': '\U0001f4d6',
         "lgpd": "\U0001f6e1\ufe0f",
@@ -278,6 +279,7 @@ def _nav(active: str, user: dict | None) -> str:
             ("observabilidade", "Observabilidade", "/portal/observabilidade"),
             ("auditoria", "Auditoria", "/portal/auditoria"),
             ("uso_tokens", "Uso de Tokens", "/portal/uso-tokens"),
+            ("arquivo_morto", "Arquivo Morto", "/portal/arquivo-morto"),
         ]),
         ("Configurações", "grupo_config", [
             ("alertas_config", "Alertas", "/portal/alertas-config"),

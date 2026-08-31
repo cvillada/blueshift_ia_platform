@@ -394,6 +394,15 @@ def init_db() -> None:
                 criado_em       TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_teste_ab_criado ON teste_ab(criado_em);
+            CREATE TABLE IF NOT EXISTS arquivo_morto_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                executado_em TEXT NOT NULL,      -- quando a rotina rodou
+                corte_em    TEXT NOT NULL,       -- data de corte usada (criado_em <= corte)
+                arquivo     TEXT NOT NULL,       -- snapshot gerado (arquivo_morto_<exec>_<corte>.db)
+                tabelas     TEXT NOT NULL DEFAULT '{}',  -- JSON: {tabela: registros movidos}
+                status      TEXT NOT NULL DEFAULT 'ok',  -- ok | erro
+                detalhe     TEXT NOT NULL DEFAULT ''
+            );
             """
         )
     # Migração idempotente: garante colunas novas em DBs já existentes
@@ -879,6 +888,152 @@ def limpar_dados_antigos() -> dict[str, int]:
         resultado["memories"] = cur.rowcount
 
     return resultado
+
+
+# --- Arquivo morto (snapshot + corte manual, somente admin) -------------------
+#
+# Fluxo: VACUUM INTO gera uma copia fisica INTEGRA do banco (o snapshot, selado
+# — o sistema nunca mais grava nele), DEPOIS os registros com criado_em <= corte
+# saem do banco quente. Se a copia falhar, nada e apagado. Corte maximo = D-1 a
+# meia-noite (o dia corrente nunca e afetado). Backup fisico do portal.db e
+# responsabilidade do cliente (volume); o snapshot e o arquivo morto.
+# Apenas admin executa (rota admin_required).
+
+# Tabelas de LOG que arquivam por IDADE pura (criado_em <= corte).
+_TABELAS_IDADE = ["tracing", "uso_tokens", "auditoria", "memories", "feedback", "teste_ab"]
+# knowledge arquiva por FONTE + USO: so importadas (csv/pdf/etc) e sem uso
+# recente (acessos=0 ou ultimo_acesso <= corte). manual/skill = regras, nunca.
+_FONTES_KNOWLEDGE_NOBRES = ("manual", "skill")
+
+
+def _dir_arquivo_morto() -> Path:
+    """Diretorio dos snapshots: <pasta do portal.db>/arquivo_morto (volume)."""
+    d = db_path().parent / "arquivo_morto"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def normalizar_corte(data_str: str) -> str:
+    """Converte 'YYYY-MM-DD' (input date) em 'YYYY-MM-DD 00:00:00' validando
+    que nao corta o dia corrente (maximo = ontem a meia-noite)."""
+    try:
+        dia = datetime.strptime(data_str.strip(), "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Data de corte inválida — use o formato AAAA-MM-DD.") from None
+    ontem = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    if dia > ontem:
+        raise ValueError("Data de corte não pode ser hoje nem futura — o máximo é ontem (D-1) à meia-noite.")
+    return dia.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def contar_arquivaveis(corte_iso: str) -> dict:
+    """Conta (sem apagar) os registros que seriam arquivados com o corte dado."""
+    cont = {}
+    with get_conn() as conn:
+        for t in _TABELAS_IDADE:
+            cont[t] = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {t} WHERE criado_em <= ?", (corte_iso,)
+            ).fetchone()["n"]
+        cont["knowledge"] = conn.execute(
+            """SELECT COUNT(*) AS n FROM knowledge
+               WHERE fonte NOT IN (?, ?) AND (acessos = 0 OR ultimo_acesso IS NULL OR ultimo_acesso <= ?)""",
+            (*_FONTES_KNOWLEDGE_NOBRES, corte_iso),
+        ).fetchone()["n"]
+    return cont
+
+
+def executar_arquivo_morto(data_corte: str) -> dict:
+    """Gera o snapshot (banco inteiro) e limpa o quente ate a data de corte.
+
+    Snapshot: data/arquivo_morto/arquivo_morto_<execucao>_<corte>.db
+    (primeira data = execucao, segunda = corte). Corte maximo = D-1 meia-noite.
+    Ordem segura: copia primeiro; so apaga se a copia existir.
+    """
+    corte = normalizar_corte(data_corte)
+    agora = datetime.now()
+    nome = (f"arquivo_morto_{agora.strftime('%Y_%m_%d')}_"
+            f"{corte[:10].replace('-', '_')}.db")
+    destino = _dir_arquivo_morto() / nome
+    if destino.exists():
+        raise ValueError(
+            f"Snapshot de hoje com este corte já existe ({nome}). "
+            "Execute com outro corte ou aguarde outro dia — nada foi apagado.")
+
+    # 1) Snapshot: VACUUM INTO nao aceita placeholder — escapa o path (gerado
+    #    internamente, mas escapar e barato e elimina qualquer surpresa).
+    caminho_escape = str(destino).replace("'", "''")
+    con = sqlite3.connect(str(db_path()))
+    try:
+        con.execute(f"VACUUM INTO '{caminho_escape}'")
+    finally:
+        con.close()
+    if not destino.exists():
+        raise RuntimeError("Falha ao gerar o snapshot (VACUUM INTO não criou o arquivo).")
+
+    # 2) DELETE no quente (mesma transacao): so chega aqui se a copia existe.
+    movidos = {}
+    try:
+        with get_conn() as conn:
+            for t in _TABELAS_IDADE:
+                cur = conn.execute(f"DELETE FROM {t} WHERE criado_em <= ?", (corte,))
+                movidos[t] = cur.rowcount
+            cur = conn.execute(
+                """DELETE FROM knowledge
+                   WHERE fonte NOT IN (?, ?) AND (acessos = 0 OR ultimo_acesso IS NULL OR ultimo_acesso <= ?)""",
+                (*_FONTES_KNOWLEDGE_NOBRES, corte),
+            )
+            movidos["knowledge"] = cur.rowcount
+    except Exception:
+        raise
+    return {
+        "ok": True,
+        "arquivo": nome,
+        "corte": corte,
+        "tamanho_bytes": destino.stat().st_size,
+        "movidos": movidos,
+    }
+
+
+def registrar_arquivo_morto(corte: str, arquivo: str, tabelas: dict, status="ok", detalhe="") -> None:
+    """Grava a execucao no log (o que foi feito + data de corte usada)."""
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO arquivo_morto_log (executado_em, corte_em, arquivo, tabelas, status, detalhe)
+               VALUES (?,?,?,?,?,?)""",
+            (now_iso(), corte, arquivo,
+             json.dumps(tabelas, ensure_ascii=False), status, detalhe),
+        )
+
+
+def listar_arquivo_morto_log(limite: int = 20) -> list[dict]:
+    with get_conn() as conn:
+        return [dict(r) for r in _rows(
+            conn, "SELECT * FROM arquivo_morto_log ORDER BY id DESC LIMIT ?", (limite,))]
+
+
+def listar_snapshots() -> list[dict]:
+    """Snapshots existentes: nome, tamanho, data de execucao e de corte (do nome)."""
+    out = []
+    for p in sorted(_dir_arquivo_morto().glob("arquivo_morto_*.db"), reverse=True):
+        nome = p.name
+        exec_dt = corte_dt = ""
+        partes = nome.replace(".db", "").split("_")
+        # arquivo_morto_AAAA_MM_DD_AAAA_MM_DD.db -> indices 2..4 (exec) e 5..7 (corte)
+        if len(partes) == 8:
+            exec_dt = f"{partes[2]}-{partes[3]}-{partes[4]}"
+            corte_dt = f"{partes[5]}-{partes[6]}-{partes[7]}"
+        out.append({"nome": nome, "tamanho_bytes": p.stat().st_size,
+                    "execucao": exec_dt, "corte": corte_dt})
+    return out
+
+
+def contar_tabelas_atuais() -> dict:
+    """Estado atual do quente: registros por tabela (card da tela)."""
+    cont = {}
+    with get_conn() as conn:
+        for t in _TABELAS_IDADE + ["knowledge"]:
+            cont[t] = conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
+    return cont
 
 
 # --- Feedback (avaliacao de respostas do agente) -------------------------------

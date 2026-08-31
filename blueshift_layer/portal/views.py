@@ -5045,3 +5045,187 @@ def docs():
     corpo = _ancorar_doc(_md_para_html(md))
     content = indice + f'<div class="card doc-body" style="line-height:1.65">{corpo}</div>'
     return templates.page("Docs", content, active="docs", user=_user())
+
+
+# --------------------------------------------------------------------------- #
+# ARQUIVO MORTO (snapshot + corte) — somente admin                             #
+# --------------------------------------------------------------------------- #
+
+_LABEL_TABELAS = {
+    "tracing": "Tracing (perguntas/respostas)",
+    "uso_tokens": "Uso de tokens",
+    "auditoria": "Auditoria",
+    "memories": "Memórias",
+    "feedback": "Feedback",
+    "teste_ab": "Teste A/B",
+    "knowledge": "Conhecimento importado (sem uso recente)",
+}
+
+
+@bp.route("/arquivo-morto", methods=["GET", "POST"])
+@auth.admin_required
+def arquivo_morto():
+    """Gera o snapshot do banco (nome com data de EXECUCAO + data de CORTE) e
+    limpa o quente ate o corte. Corte maximo = D-1 a meia-noite (o dia corrente
+    nunca e afetado). Duplo clique: 1o POST mostra as contagens para confirmar;
+    2o POST (confirmar=1) executa de fato. Somente admin."""
+    from datetime import datetime, timedelta
+
+    hoje = datetime.now()
+    padrao = (hoje - timedelta(days=1)).strftime("%Y-%m-%d")  # D-1 (input date)
+
+    preview = None
+    erro = None
+    if request.method == "POST":
+        data = (request.form.get("corte") or "").strip()
+        try:
+            if request.form.get("confirmar") == "1":
+                res = db.executar_arquivo_morto(data)
+                total = sum(res["movidos"].values()) if res.get("movidos") else 0
+                db.registrar_arquivo_morto(res["corte"], res["arquivo"], res["movidos"])
+                # Auditoria (acao sensivel: move/apaga dados — admin-only)
+                _u = _user() or {}
+                db.registrar_auditoria(
+                    _u.get("login", "?"), _u.get("papel", "admin"), "arquivo_morto",
+                    alvo=res["arquivo"], ip=request.remote_addr or "",
+                    detalhe=f"corte={res['corte']}; movidos={total}",
+                )
+                flash(f"Arquivo morto gerado: {res['arquivo']} ({total} registros movidos).", "ok")
+                return redirect(url_for("portal.arquivo_morto"))
+            # 1o POST: so conta e mostra a confirmacao
+            corte_iso = db.normalizar_corte(data)
+            contagens = db.contar_arquivaveis(corte_iso)
+            preview = {"corte": data, "contagens": contagens}
+        except ValueError as e:
+            erro = str(e)
+        except Exception as e:  # noqa: BLE001
+            erro = f"Falha ao gerar o arquivo morto: {e}"
+            # Falha tambem e auditada (e registrada no log da tela)
+            try:
+                corte_falho = db.normalizar_corte(data) if data else ""
+                db.registrar_arquivo_morto(corte_falho, "", {}, status="erro", detalhe=str(e)[:300])
+                _u = _user() or {}
+                db.registrar_auditoria(
+                    _u.get("login", "?"), _u.get("papel", "admin"), "arquivo_morto",
+                    alvo="(falha)", ip=request.remote_addr or "",
+                    detalhe=f"corte={data or '-'}; erro={str(e)[:200]}",
+                )
+            except Exception:  # noqa: BLE001 — auditoria e best-effort
+                pass
+
+    # ── Form (data de corte) ──
+    valor_corte = preview["corte"] if preview else (request.form.get("corte") or padrao)
+    form_html = f"""
+    <div class="card" style="max-width:680px">
+      <h3 style="margin-top:0">Arquivo morto</h3>
+      <p class="muted" style="font-size:13px">Gera um snapshot selado do banco
+      (<code>arquivo_morto_&lt;execução&gt;_&lt;corte&gt;.db</code> no volume,
+      pasta <code>data/arquivo_morto/</code>) e limpa do banco quente os registros
+      com <code>criado_em ≤ corte</code>. O dia corrente <b>nunca</b> é afetado
+      (corte máximo = ontem à meia-noite). Somente <b>admin</b> executa.</p>
+      <form method="post">
+        {templates.csrf_field()}
+        <label>Data de corte (registros até esta data são arquivados)</label>
+        <input type="date" name="corte" value="{valor_corte}" max="{padrao}" required>
+        <div style="margin-top:14px">
+          <button class="btn" type="submit">Arquivar</button>
+        </div>
+      </form>
+      {f'<div class="badge bad" style="margin-top:10px">{templates.h(erro)}</div>' if erro else ''}
+    </div>"""
+
+    # ── Confirmacao (contagens antes de executar) ──
+    conf_html = ""
+    if preview:
+        linhas = "".join(
+            f"<tr><td>{_LABEL_TABELAS.get(t, t)}</td>"
+            f"<td style='text-align:right'>{n}</td></tr>"
+            for t, n in sorted(preview["contagens"].items(), key=lambda x: -x[1]) if n
+        )
+        if not linhas:
+            linhas = ("<tr><td colspan='2' class='muted'>Nenhum registro até o corte informado.</td></tr>")
+        nome_arq = (f"arquivo_morto_{hoje.strftime('%Y_%m_%d')}_"
+                    f"{preview['corte'].replace('-', '_')}.db")
+        conf_html = f"""
+    <div class="card" style="max-width:680px;margin-top:14px;border-color:var(--red,#d9534f)">
+      <h3 style="margin-top:0;color:var(--red,#d9534f)">Confirmar arquivamento</h3>
+      <p class="muted" style="font-size:13px">Serão <b>removidos do banco quente</b>
+      os registros com corte em <b>{preview['corte']}</b> e copiados para o snapshot:</p>
+      <table class="tabela" style="width:100%">
+        <tr><th>Tabela</th><th style="text-align:right">Registros</th></tr>
+        {linhas}
+      </table>
+      <p class="muted" style="font-size:12px;margin-top:8px">Snapshot gerado:
+      <code>{nome_arq}</code> (cópia íntegra do banco inteiro, selada — o sistema
+      nunca mais grava nela). Regras manuais e skills (<code>knowledge</code>
+      fonte manual/skill) <b>não</b> são afetadas.</p>
+      <form method="post" style="margin-top:10px">
+        {templates.csrf_field()}
+        <input type="hidden" name="corte" value="{preview['corte']}">
+        <input type="hidden" name="confirmar" value="1">
+        <button class="btn" type="submit" style="background:var(--red,#d9534f)">Confirmar arquivamento</button>
+        <a class="btn ghost" href="{url_for('portal.arquivo_morto')}">Cancelar</a>
+      </form>
+    </div>"""
+
+    # ── Estado atual ──
+    atuais = db.contar_tabelas_atuais()
+    linhas_estado = "".join(
+        f"<tr><td>{_LABEL_TABELAS.get(t, t)}</td><td style='text-align:right'>{n}</td></tr>"
+        for t, n in atuais.items()
+    )
+    estado_html = f"""
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Estado atual (banco quente)</h3>
+      <table class="tabela" style="width:100%">
+        <tr><th>Tabela</th><th style="text-align:right">Registros</th></tr>
+        {linhas_estado}
+      </table>
+    </div>"""
+
+    # ── Snapshots existentes ──
+    snaps = db.listar_snapshots()
+    if snaps:
+        linhas_snaps = "".join(
+            f"<tr><td><code>{templates.h(s['nome'])}</code></td>"
+            f"<td style='text-align:right'>{s['tamanho_bytes']/1024:.0f} KB</td>"
+            f"<td style='text-align:center'>{s['execucao']}</td>"
+            f"<td style='text-align:center'>{s['corte']}</td></tr>"
+            for s in snaps
+        )
+        snaps_html = f"""
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Snapshots (arquivo morto)</h3>
+      <table class="tabela" style="width:100%">
+        <tr><th>Arquivo</th><th style="text-align:right">Tamanho</th><th style="text-align:center">Execução</th><th style="text-align:center">Corte</th></tr>
+        {linhas_snaps}
+      </table>
+      <p class="muted" style="font-size:11px;margin-top:8px">Pasta <code>data/arquivo_morto/</code> no volume. Backup físico do banco principal é responsabilidade do cliente.</p>
+    </div>"""
+    else:
+        snaps_html = ""
+
+    # ── Historico de execucoes ──
+    logs = db.listar_arquivo_morto_log(10)
+    if logs:
+        linhas_log = "".join(
+            f"<tr><td>{templates.h(l['executado_em'])}</td>"
+            f"<td>{templates.h(l['corte_em'])}</td>"
+            f"<td><code>{templates.h(l['arquivo'])}</code></td>"
+            f"<td style='text-align:right'>{sum((json.loads(l['tabelas']) or {}).values())}</td>"
+            f"<td>{'✅ ok' if l['status'] == 'ok' else '⚠️ ' + templates.h(l['detalhe'][:60])}</td></tr>"
+            for l in logs
+        )
+        log_html = f"""
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Histórico de execuções</h3>
+      <table class="tabela" style="width:100%">
+        <tr><th>Execução</th><th>Corte</th><th>Arquivo</th><th style="text-align:right">Movidos</th><th>Status</th></tr>
+        {linhas_log}
+      </table>
+    </div>"""
+    else:
+        log_html = ""
+
+    content = form_html + conf_html + estado_html + snaps_html + log_html
+    return templates.page("Arquivo Morto", content, active="arquivo_morto", user=_user())

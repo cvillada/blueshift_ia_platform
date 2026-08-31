@@ -816,6 +816,26 @@ Cada chamada de agente grava ~3 linhas: `tracing` + `uso_tokens` + `auditoria`. 
 
 SQLite em modo **WAL** com índices em `criado_em` (tracing/feedback/auditoria) lê e filtra esse volume sem problema — point lookup + range por data. O limite real do SQLite **não é tamanho, é multi-writer**: 2+ processos gravando o mesmo arquivo. O desenho atual (1 portal + gateway stateless de leitura) não cruza esse limite. Se um dia houver 2+ réplicas do portal, **aí sim** PostgreSQL passa a fazer sentido — estudo de migração escopado, não reescrita.
 
+### Limpeza e arquivo morto
+
+Existem duas formas de controlar o crescimento — manuais e com critérios diferentes:
+
+**1. Arquivo morto (tela Arquivo Morto, menu Operação — somente admin):** gera um snapshot selado do banco (`data/arquivo_morto/arquivo_morto_<execução>_<corte>.db` — primeira data = execução, segunda = corte) e remove do banco quente os registros com `criado_em <= corte`. Corte máximo = **ontem à meia-noite** (o dia corrente nunca é afetado). O fluxo pede confirmação mostrando as contagens antes de executar; a cópia é feita antes do DELETE (falha na cópia = nada é apagado). Backup físico do banco principal é responsabilidade do cliente (volume).
+
+| Tabela | Campo do corte | Critério |
+|:-------|:---------------|:---------|
+| tracing | criado_em | idade (≤ corte) |
+| uso_tokens | criado_em | idade (≤ corte) |
+| auditoria | criado_em | idade (≤ corte) |
+| memories | criado_em | idade (≤ corte) |
+| feedback | criado_em | idade (≤ corte) |
+| teste_ab | criado_em | idade (≤ corte) |
+| knowledge | acessos / ultimo_acesso | fonte importada (csv/pdf/...) **e** sem uso recente (`acessos = 0` ou `ultimo_acesso ≤ corte`) — fontes `manual` e `skill` (regras) nunca são afetadas |
+
+Nunca entram: `metricas_diarias` (agregado perpétuo) e dados mestres (clientes, usuarios, agentes, modelos, skills, conectores, canais, áreas, api_keys, configs). Cada execução — sucesso **ou falha** — fica no histórico da tela (execução, corte, arquivo, movidos) **e na Auditoria** (menu Operação, `acao=arquivo_morto`: usuário, corte, arquivo, total movido). Snapshot duplicado no mesmo dia/corte é rejeitado (nada é sobrescrito).
+
+**2. Limpeza automática (tela LGPD):** opcional (`retencao_auto`), roda a cada hora e faz **DELETE físico** com retenções configuráveis (auditoria 90d, tracing/uso_tokens 180d, memórias 365d). Desligada por padrão — só ativa se o cliente quiser descartar sem snapshot.
+
 ---
 
 ## 📄 Licença
