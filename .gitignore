@@ -8,3 +8,4 @@ blueshift_profile_*/
 .DS_Store
 *.egg-info/
 erp_demo/
+tests/
