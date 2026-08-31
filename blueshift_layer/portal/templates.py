@@ -171,7 +171,7 @@ function fecharFluxo(){var p=document.getElementById("fluxo-popup");if(p)p.style
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">BlueShift <span>IA Platform</span></div>
+  <div class="brand">CL <span>Agents</span></div>
   <div class="topbar-sub">Portal do Cliente</div>
   <div class="theme-wrap">
     <button class="theme-btn" id="theme-btn" onclick="toggleTemaMenu(event)" title="Tema (claro/escuro/sistema)"><span id="theme-icon">🌙</span></button>
