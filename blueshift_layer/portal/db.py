@@ -62,6 +62,10 @@ def get_conn():
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
+    # WAL (Write-Ahead Log): leituras concorrentes nao bloqueiam escritas —
+    # o gateway le o MESMO arquivo do volume enquanto o portal grava. E
+    # propriedade persistente do banco; ativar por conexao e idempotente.
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
@@ -222,6 +226,11 @@ def init_db() -> None:
                 tipo        TEXT NOT NULL DEFAULT 'manual',  -- 'manual', 'implicito', 'api'
                 criado_em   TEXT NOT NULL
             );
+
+            -- Indices de retencao/volume: DELETE por criado_em (limpeza LGPD)
+            -- e filtros por data (dashboard) sem full-scan em tabelas grandes.
+            CREATE INDEX IF NOT EXISTS idx_tracing_criado ON tracing(criado_em);
+            CREATE INDEX IF NOT EXISTS idx_feedback_criado ON feedback(criado_em);
 
             CREATE TABLE IF NOT EXISTS metricas_diarias (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -845,12 +854,16 @@ def limpar_dados_antigos() -> dict[str, int]:
     """
     cfg = carregar_lgpd_config()
     if cfg.get("retencao_auto") != "1":
-        return {"auditoria": 0, "tracing": 0, "memories": 0}
+        return {"auditoria": 0, "tracing": 0, "uso_tokens": 0, "memories": 0}
 
     resultado = {}
     ts_auditoria = (datetime.now() - timedelta(days=int(cfg.get("retencao_auditoria", "90")))).isoformat()
     ts_tracing = (datetime.now() - timedelta(days=int(cfg.get("retencao_tracing", "180")))).isoformat()
     ts_memorias = (datetime.now() - timedelta(days=int(cfg.get("retencao_memorias", "365")))).isoformat()
+    # uso_tokens segue a retencao do tracing (180d): o historico FINO de tokens
+    # expira, mas os totais diarios ficam preservados em metricas_diarias
+    # (agregado, sem retencao) — custos/billing nao perdem nada.
+    ts_uso = ts_tracing
 
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM auditoria WHERE criado_em < ?", (ts_auditoria,))
@@ -858,6 +871,9 @@ def limpar_dados_antigos() -> dict[str, int]:
 
         cur = conn.execute("DELETE FROM tracing WHERE criado_em < ?", (ts_tracing,))
         resultado["tracing"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM uso_tokens WHERE criado_em < ?", (ts_uso,))
+        resultado["uso_tokens"] = cur.rowcount
 
         cur = conn.execute("DELETE FROM memories WHERE criado_em < ?", (ts_memorias,))
         resultado["memories"] = cur.rowcount

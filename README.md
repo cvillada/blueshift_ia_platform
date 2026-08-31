@@ -682,15 +682,17 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 
 ### Gargalos da plataforma
 
-| Componente | Limite | Causa |
-|:-----------|:-------|:------|
-| **SQLite** | ~50 escritas concorrentes | Single-writer (lock de tabela) |
+| Componente | Limite real | Causa |
+|:-----------|:------------|:------|
+| **LLM local** | 2-60s por chamada | Modelo/hardware — **o gargalo principal** (GPU via vLLM resolve) |
+| **SQLite (WAL)** | 1 escrita por vez; leituras concorrentes liberadas | Single-writer — irrelevante na prática: ~3 escritas minúsculas por chamada de agente |
+| **Portal (Werkzeug, threaded)** | Requisições concorrentes (I/O do LLM libera o GIL) | Servidor dev; para carga extrema, waitress/gunicorn (ver Tier 3) |
 | **TF-IDF** (memória) | ~100k docs / ~500MB RAM | Índice carregado em RAM |
-| **Flask** (threaded) | ~20 req/s concorrentes | GIL + threads síncronas |
-| **LLM local** | 2-60s por chamada | Dependente do modelo/hardware |
 | **Busca vetorial** | O(n) = 50-200ms p/ 10k docs | Força bruta (cosseno), sem índice |
 
 ### Tiers
+
+Os tiers são **orientativos para dimensionar a instalação do cliente**. "Acessos simultâneos" é a capacidade de **KV cache** do servidor LLM (vLLM) com o modelo indicado em Q4 e contexto médio de referência — quem passa do limite **entra na fila nativa do vLLM** (espera, não falha). Fórmula e tabela completa na seção [Capacidade de acessos simultâneos](#capacidade-de-acessos-simultaneos-kv-cache).
 
 #### 🟢 TIER 1 — Pequeno (até 10 usuários, 1k docs, 500 queries/dia)
 
@@ -700,7 +702,10 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 | **RAM** | 8 GB |
 | **Disco** | 50 GB SSD |
 | **SO** | Linux (Ubuntu 22.04 / Debian 12) |
-| **Modelo LLM** | até 3B params (Q4, ~2GB RAM) |
+| **GPU** | Não (opcional: RTX 4060 8GB) |
+| **Modelo LLM** | até 3B params (Q4, ~2GB RAM, CPU) |
+| **Acessos simultâneos** | 1-2 (CPU; com GPU 8GB: 1-2 @ 8K ctx) |
+| **Registros/dia** | ~1,5k (3 por query) — SQLite WAL + retenção LGPD: folga total |
 | **Custo estimado** | ~R$ 80/mês (VPS) |
 
 #### 🟡 TIER 2 — Médio (até 50 usuários, 10k docs, 5k queries/dia)
@@ -711,7 +716,10 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 | **RAM** | 16 GB |
 | **Disco** | 200 GB SSD |
 | **SO** | Linux (Ubuntu 22.04 / Debian 12) |
-| **Modelo LLM** | até 8B params (Q4_K_M, ~5GB RAM) |
+| **GPU** | RTX 4060 8GB (opcional, p/ vLLM) |
+| **Modelo LLM** | até 8B params (Q4_K_M, ~5GB VRAM) |
+| **Acessos simultâneos** | ~1-2 @ 8K ctx (8B Q4 em GPU 8GB); CPU: 1 |
+| **Registros/dia** | ~15k — SQLite WAL + índices + retenção: folga |
 | **Custo estimado** | ~R$ 250/mês (VPS) |
 
 #### 🟠 TIER 3 — Grande (até 200 usuários, 50k docs, 20k queries/dia)
@@ -722,15 +730,15 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 | **RAM** | 32 GB |
 | **Disco** | 500 GB SSD NVMe |
 | **SO** | Linux (Ubuntu 22.04 / Debian 12) |
-| **GPU** | NVIDIA RTX 4060+ (opcional, p/ vLLM) |
-| **Modelo LLM** | até 14B params (Q4, ~9GB RAM) |
+| **GPU** | NVIDIA RTX 4080/3090 24GB (recomendado, p/ vLLM) |
+| **Modelo LLM** | até 14B params (Q4, ~9GB VRAM) |
+| **Acessos simultâneos** | ~3 @ 32K ctx (8B Q4); ~1 @ 32K (14B Q4) — excedente na fila do vLLM |
+| **Registros/dia** | ~60k — SQLite WAL + índices + retenção: aguenta |
 | **Custo estimado** | ~R$ 800/mês (dedicated server) |
 
 **O que precisa mudar neste tier:**
-- Flask → **Gunicorn + workers** (4-8 workers)
-- TF-IDF O(n) → **ChromaDB** (HNSW index) ou SQLite FTS5
-- SQLite → **PostgreSQL** (já tem suporte via psycopg)
-- Adicionar **Redis** para cache de RAG
+- **Nada na plataforma** — o salto é o modelo sair de CPU para **vLLM em GPU** (24GB+). SQLite já opera em WAL com índices de retenção.
+- Opcional: servidor **waitress/gunicorn** para throughput HTTP acima do Werkzeug dev (1 processo threaded).
 
 #### 🔴 TIER 4 — Enterprise (500+ usuários, 200k docs, 100k queries/dia)
 
@@ -740,29 +748,73 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 | **RAM** | 64 GB |
 | **Disco** | 1 TB NVMe |
 | **SO** | Linux (Ubuntu 22.04 / Debian 12) |
-| **GPU** | 1-2x NVIDIA RTX 4090 / A4000+ |
-| **Modelo LLM** | até 70B params (via vLLM com GPU) |
+| **GPU** | NVIDIA RTX Pro 6000 128GB (ou 2x 24GB) |
+| **Modelo LLM** | até 70B params (Q4, ~41GB VRAM, via vLLM) |
+| **Acessos simultâneos** | ~25 @ 32K (8B Q4) / ~6 @ 32K (70B Q4); ~6 @ 128K (8B) — excedente na fila do vLLM |
+| **Registros/dia** | ~300k — teto do desenho atual: ~18M linhas de tracing (180d) indexadas; SQLite WAL aguenta |
 | **Custo estimado** | ~R$ 3.000+/mês (servidor dedicado) |
 
 **O que precisa mudar neste tier:**
-- Flask puro → **FastAPI** + async
-- TF-IDF → **ChromaDB / Qdrant / pgvector**
-- SQLite → **PostgreSQL + pgvector**
-- LLM em CPU → **vLLM** em GPU (50x mais rápido)
-- Cache → **Redis**
-- Fila → **Celery / RQ** para tarefas async
-- Monitor → **Prometheus + Grafana**
+- **Único cenário que justifica PostgreSQL**: 2+ réplicas do portal gravando no mesmo banco (multi-writer). O desenho atual (1 portal + gateway stateless de leitura) não cruza esse limite — se o TI do cliente exigir, é estudo de migração escopado, não reescrita da camada de dados.
+- Fila de tarefas async (Celery/RQ) só se houver webhook de saída em volume com retry persistente — hoje a entrega é síncrona com retry (3x, backoff) e a alternativa leve é thread em background.
 
 ### Resumo
 
-| Tier | CPU | RAM | Disco | GPU | Usuários | Custo/mês |
-|:----:|:---:|:---:|:-----:|:---:|:--------:|:---------:|
-| 🟢 1 | 2 vCPU | 8 GB | 50 GB | Não | 10 | ~R$ 80 |
-| 🟡 2 | 4 vCPU | 16 GB | 200 GB | Opc. | 50 | ~R$ 250 |
-| 🟠 3 | 8 vCPU | 32 GB | 500 GB | Rec. | 200 | ~R$ 800 |
-| 🔴 4 | 16 vCPU | 64 GB | 1 TB | Sim | 500+ | ~R$ 3.000+ |
+| Tier | CPU | RAM | Disco | GPU (VRAM) | Acessos simultâneos* | Usuários | Registros/dia | Custo/mês |
+|:----:|:---:|:---:|:-----:|:----------:|:--------------------:|:--------:|:-------------:|:---------:|
+| 🟢 1 | 2 vCPU | 8 GB | 50 GB | Não | 1-2 (CPU) | 10 | ~1,5k | ~R$ 80 |
+| 🟡 2 | 4 vCPU | 16 GB | 200 GB | RTX 4060 (8GB, opc.) | 1-2 @ 8K | 50 | ~15k | ~R$ 250 |
+| 🟠 3 | 8 vCPU | 32 GB | 500 GB | RTX 4080/3090 (24GB) | ~3 @ 32K | 200 | ~60k | ~R$ 800 |
+| 🔴 4 | 16 vCPU | 64 GB | 1 TB | RTX Pro 6000 (128GB) | ~25 @ 32K | 500+ | ~300k | ~R$ 3.000+ |
+
+\* Acessos simultâneos = requisições que a GPU atende **ao mesmo tempo** (KV cache, modelo 8B Q4, fp16). Excedente **espera na fila do vLLM** — não falha.
 
 > **Nota:** o maior gargalo não é o hardware — é o **LLM local** sem GPU. Um modelo 8B em CPU gera 5-15 tok/s. Uma resposta de 300 tokens leva 20-60 segundos. Para produção com muitos usuários, **GPU é essencial** (via vLLM).
+
+### Capacidade de acessos simultâneos (KV cache)
+
+Cada conversa ativa consome memória de **KV cache** na GPU. A conta (fp16):
+
+```
+KV por token = 2 × camadas × KV heads × head_dim × 2 bytes
+Slots        = (VRAM − pesos − overhead) / (KV por token × contexto médio)
+```
+
+Custo de contexto por modelo (fp16):
+
+| Modelo | KV/token | 8K ctx | 32K ctx | 128K ctx |
+|:-------|:---------|:-------|:--------|:---------|
+| 8B (Llama 3.1) | 128 KB | 1,0 GB | 4,2 GB | 16,8 GB |
+| 14B (Qwen 2.5) | 192 KB | 1,5 GB | 6,3 GB | 25,2 GB |
+| 32B (Qwen 2.5) | 256 KB | 2,1 GB | 8,4 GB | 33,6 GB |
+| 70B (Llama 3.3) | 320 KB | 2,6 GB | 10,5 GB | 42,0 GB |
+
+Slots simultâneos por GPU (modelo Q4, KV em fp16, overhead ~10% VRAM + 2GB, valores arredondados):
+
+| GPU (VRAM) | 8B | 14B | 32B | 70B |
+|:-----------|:---|:----|:----|:----|
+| RTX 4060 (8GB) | 1 @ 8K | — | — | — |
+| RTX 4060 Ti (16GB) | 7 @ 8K / 1 @ 32K | 2 @ 8K | — | — |
+| RTX 4080/3090 (24GB) | 13 @ 8K / 3 @ 32K | 6 @ 8K / 1 @ 32K | — | — |
+| RTX Pro 6000 (128GB) | 103 @ 8K / 25 @ 32K / 6 @ 128K | 66 @ 8K / 16 @ 32K / 4 @ 128K | 44 @ 8K / 11 @ 32K / 2 @ 128K | 27 @ 8K / 6 @ 32K / 1 @ 128K |
+
+Exemplo (RTX Pro 6000 128GB): 100 requisições chegando juntas, modelo 8B Q4 — ~25 atendem em paralelo com contexto médio 32K e ~75 esperam na fila do vLLM; com contexto 128K cheio, ~6 atendem. O vLLM **não rejeita** — enfileira e atende conforme os slots liberam (limite de fila configurável).
+
+Multiplicadores: KV cache em **FP8 dobra os slots**; contexto 32K (típico de RAG) rende 4-5x mais que 128K cheio. Modelo 70B Q4 **não cabe** em GPU de 24GB — só os pesos usam ~41GB.
+
+### Capacidade de registros (SQLite)
+
+Cada chamada de agente grava ~3 linhas: `tracing` + `uso_tokens` + `auditoria`. Com a retenção LGPD ativa (Configurações → LGPD; desligada por padrão), as tabelas são estáveis:
+
+| Tabela | Retenção padrão | Tier 4 (100k queries/dia) |
+|:-------|:----------------|:--------------------------|
+| auditoria | 90 dias | ~9M linhas máx |
+| tracing | 180 dias | ~18M linhas máx |
+| uso_tokens | 180 dias (segue tracing) | ~18M linhas máx |
+| metricas_diarias | sem retenção (agregado diário) | ~365 linhas/ano por agente+modelo |
+| memories | 365 dias | conforme uso |
+
+SQLite em modo **WAL** com índices em `criado_em` (tracing/feedback/auditoria) lê e filtra esse volume sem problema — point lookup + range por data. O limite real do SQLite **não é tamanho, é multi-writer**: 2+ processos gravando o mesmo arquivo. O desenho atual (1 portal + gateway stateless de leitura) não cruza esse limite. Se um dia houver 2+ réplicas do portal, **aí sim** PostgreSQL passa a fazer sentido — estudo de migração escopado, não reescrita.
 
 ---
 

@@ -1,17 +1,37 @@
 #!/usr/bin/env python3
 """Teste de fumaça do Portal do Cliente BlueShift (Camada 4)."""
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from datetime import datetime, timedelta
+
 # forca SQLite temporario para nao poluir o data/ do projeto
 _tmp = tempfile.mkdtemp()
 os.environ["BLUESHIFT_PORTAL_DB"] = str(Path(_tmp) / "portal_test.db")
 
 from blueshift_layer.portal import create_app, db as portal_db
+
+
+def _login(client, login="admin", senha="admin123"):
+    """Loga um usuario do SEED. O seed demo gera senha ALEATORIA (seguranca) —
+    o teste zera para uma senha conhecida antes (autenticar migra
+    plaintext->hash automaticamente, db.py:566)."""
+    with portal_db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM usuarios WHERE login=? ORDER BY id LIMIT 1", (login,)).fetchone()
+    portal_db.atualizar_usuario(row["id"], senha=senha)
+    return client.post("/portal/login", data={"login": login, "senha": senha},
+                       follow_redirects=False)
+
+
+def _login_admin(client):
+    """Loga como admin (seed: senha aleatoria)."""
+    return _login(client)
 
 
 def test_app_factory():
@@ -28,8 +48,7 @@ def test_login_admin():
     r = client.get("/portal/monitorar", follow_redirects=False)
     assert r.status_code == 302
     # login correto
-    r = client.post("/portal/login", data={"login": "admin", "senha": "admin123"},
-                    follow_redirects=False)
+    r = _login_admin(client)
     assert r.status_code == 302
 
 
@@ -52,7 +71,7 @@ def test_crud_agente_e_usuario():
 def test_rotas_protegidas_renderizam():
     app = create_app()
     client = app.test_client()
-    client.post("/portal/login", data={"login": "admin", "senha": "admin123"})
+    _login_admin(client)
     for rota in ["/portal/monitorar", "/portal/clientes", "/portal/usuarios",
                  "/portal/agentes", "/portal/conectores", "/portal/canais",
                  "/portal/gateway", "/portal/skills", "/portal/observabilidade",
@@ -223,8 +242,7 @@ def test_workspace_filtra_por_area():
     app = create_app()
     c = app.test_client()
     # login admin
-    r = c.post("/portal/login", data={"login": "admin", "senha": "admin123"},
-               follow_redirects=False)
+    r = _login_admin(c)
     assert r.status_code == 302
     # admin sem filtro deve enxergar agentes de várias áreas (seed cria 5)
     html = c.get("/portal/workspace").data.decode()
@@ -237,8 +255,7 @@ def test_workspace_filtra_por_area():
     assert "Agente Vendas" not in html_rh
     # login gestor (area vendas) — não pode trocar de área
     c.post("/portal/logout")
-    c.post("/portal/login", data={"login": "gestor", "senha": "gestor123"},
-            follow_redirects=False)
+    _login(c, "gestor", "gestor123")
     html_gestor = c.get("/portal/workspace").data.decode()
     assert "Agente Vendas" in html_gestor
     # gestor tentando forçar area=rh via URL não deve ver Agente RH
@@ -251,15 +268,17 @@ def test_sso_fluxo_dev():
     app = create_app()
     c = app.test_client()
     # login local continua funcionando
-    r = c.post("/portal/login", data={"login": "admin", "senha": "admin123"},
-               follow_redirects=False)
+    r = _login_admin(c)
     assert r.status_code == 302
     c.get("/portal/logout")
-    # admin liga SSO em modo dev com auto_criar
-    c.post("/portal/login", data={"login": "admin", "senha": "admin123"},
-           follow_redirects=True)
+    # admin liga SSO em modo dev com auto_criar (form exige _csrf_token)
+    _login_admin(c)
+    _html = c.get("/portal/sso/config").data.decode()
+    _m = re.search(r'name="_csrf_token" value="([^"]+)"', _html)
+    assert _m, "form SSO sem _csrf_token"
     c.post("/portal/sso/config", data={"ativo": "on", "dev_mode": "on",
-                                        "auto_criar": "on"})
+                                        "auto_criar": "on",
+                                        "_csrf_token": _m.group(1)})
     # fluxo SSO: /sso/login -> mock_authorize -> callback -> logado
     r = c.get("/portal/sso/login", follow_redirects=True)
     assert r.status_code == 200
@@ -277,6 +296,36 @@ def test_sso_fluxo_dev():
     assert len(aus) >= 1, "login_sso nao auditado"
 
 
+def test_wal_e_indices():
+    """WAL ativo (leituras nao bloqueiam escritas) + indices de retencao."""
+    with portal_db.get_conn() as conn:
+        modo = conn.execute("PRAGMA journal_mode").fetchone()[0]
+    assert modo == "wal", f"journal_mode deveria ser wal, veio {modo}"
+    with portal_db.get_conn() as conn:
+        idx = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert {"idx_tracing_criado", "idx_feedback_criado"} <= idx
+
+
+def test_retencao_uso_tokens():
+    """uso_tokens segue a retencao do tracing na limpeza LGPD (historico fino
+    expira; metricas_diarias agregadas preservam custos/billing)."""
+    portal_db.salvar_lgpd_config("retencao_auto", "1")
+    portal_db.salvar_lgpd_config("retencao_tracing", "30")
+    cid = portal_db.criar_cliente("retencao", "Cliente Retencao")
+    portal_db.registrar_uso_token(cid, "modelo-x", 100, 40, 60)
+    antigo = (datetime.now() - timedelta(days=31)).strftime("%Y-%m-%d %H:%M:%S")
+    with portal_db.get_conn() as conn:
+        conn.execute("UPDATE uso_tokens SET criado_em=? WHERE cliente_id=?", (antigo, cid))
+    res = portal_db.limpar_dados_antigos()
+    assert res["uso_tokens"] == 1, res
+    with portal_db.get_conn() as conn:
+        n = conn.execute("SELECT COUNT(*) AS n FROM uso_tokens WHERE cliente_id=?",
+                         (cid,)).fetchone()["n"]
+    assert n == 0
+    portal_db.salvar_lgpd_config("retencao_auto", "0")
+
+
 if __name__ == "__main__":
     test_app_factory()
     test_login_admin()
@@ -290,4 +339,6 @@ if __name__ == "__main__":
     test_agent_factory_real()
     test_workspace_filtra_por_area()
     test_sso_fluxo_dev()
+    test_wal_e_indices()
+    test_retencao_uso_tokens()
     print("PORTAL SMOKE TESTS PASSOU")

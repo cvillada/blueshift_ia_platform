@@ -78,7 +78,8 @@ def create_app() -> "Flask":
                 if total:
                     app.logger.info(
                         f"[lgpd] retencao: {result['auditoria']} auditoria + "
-                        f"{result['tracing']} tracing + {result['memories']} memorias removidos"
+                        f"{result['tracing']} tracing + {result['uso_tokens']} uso_tokens + "
+                        f"{result['memories']} memorias removidos"
                     )
             except Exception:
                 pass  # falha silenciosa — best-effort

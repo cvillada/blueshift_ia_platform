@@ -502,6 +502,7 @@ def form_sso_config(cfg: dict) -> str:
       IdP mock interno para testar o fluxo sem um provedor real. O <b>login local
       continua ativo</b> normalmente.</p>
       <form method="post">
+        {csrf_field()}
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {ativo} style="width:auto;margin:0;vertical-align:middle"> SSO ativo</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="dev_mode" {dev} style="width:auto;margin:0;vertical-align:middle"> Modo dev (IdP mock interno - para teste)</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:0;font-weight:400;font-size:13px"><input type="checkbox" name="auto_criar" {auto} style="width:auto;margin:0;vertical-align:middle"> Criar usuario automaticamente se nao cadastrado</label>

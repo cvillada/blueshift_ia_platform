@@ -44,7 +44,11 @@ def main():
 
         app = create_app()
         print(f"[portal] BlueShift Client Portal em http://{args.host}:{args.port}/portal")
-        app.run(host=args.host, port=args.port, debug=args.debug)
+        # threaded=True e obrigatorio: sem ele o Werkzeug atende 1 requisicao
+        # por vez e chamadas de agente (2-60s de LLM) serializariam TODO o
+        # portal. Com threads, a espera de I/O libera o GIL e multiplos
+        # usuarios/gateway atendem em paralelo (limite real: o servidor LLM).
+        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
     elif args.cmd == "mcp":
         from blueshift_layer.connector_pack.mcp_server import run as run_mcp
 
