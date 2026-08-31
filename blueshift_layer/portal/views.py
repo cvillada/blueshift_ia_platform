@@ -4712,3 +4712,169 @@ def api_ajuda():
             "secoes_usadas": [t.splitlines()[0].replace("## ", "") for t in relevantes],
         })
     return jsonify({"ok": False, "erro": out["error"]}), 502
+
+
+# --------------------------------------------------------------------------- #
+# Docs (menu lateral — renderiza o MESMO DOCUMENTACAO_PB.md do popup Ajuda)    #
+# --------------------------------------------------------------------------- #
+
+def _inline_md(t: str) -> str:
+    """Aplica inline markdown (code, negrito, italico, links) com escape HTML."""
+    import re as _re
+    import html as _html
+    t = _html.escape(t)
+    t = _re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
+    t = _re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", t)
+    t = _re.sub(r"\*([^*]+)\*", r"<i>\1</i>", t)
+    t = _re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" rel="noopener">\1</a>', t)
+    return t
+
+
+def _md_para_html(md: str) -> str:
+    """Converte markdown simples (titulos, tabelas, codigo, listas) para HTML seguro."""
+    import re as _re
+    import html as _html
+    linhas = md.split("\n")
+    out = []
+    i, n = 0, len(linhas)
+    em_codigo, codigo = False, []
+    while i < n:
+        linha = linhas[i]
+        if linha.strip().startswith("```"):
+            if not em_codigo:
+                em_codigo, codigo = True, []
+            else:
+                em_codigo = False
+                out.append("<pre><code>" + _html.escape("\n".join(codigo)) + "</code></pre>")
+            i += 1
+            continue
+        if em_codigo:
+            codigo.append(linha)
+            i += 1
+            continue
+        s = linha.strip()
+        m = _re.match(r"^(#{1,4})\s+(.*)$", s)
+        if m:
+            nivel = len(m.group(1))
+            out.append(f"<h{nivel}>{_inline_md(m.group(2))}</h{nivel}>")
+            i += 1
+            continue
+        if s == "---" or s == "***":
+            out.append("<hr>")
+            i += 1
+            continue
+        if s.startswith("|") and i + 1 < n and _re.match(r"^\s*\|[\s:|-]+\|\s*$", linhas[i + 1]):
+            tab = [s]
+            i += 1
+            while i < n and linhas[i].strip().startswith("|"):
+                tab.append(linhas[i].strip())
+                i += 1
+
+            def _cel(l):
+                return "".join(f"<td>{_inline_md(c.strip())}</td>"
+                               for c in l.strip().strip("|").split("|"))
+            if len(tab) >= 2:
+                h = "<table><thead><tr>" + _cel(tab[0]) + "</tr></thead><tbody>"
+                for l in tab[2:]:
+                    h += "<tr>" + _cel(l) + "</tr>"
+                h += "</tbody></table>"
+                out.append(h)
+            continue
+        if s.startswith("- ") or s.startswith("* "):
+            itens = []
+            while i < n and (linhas[i].strip().startswith("- ")
+                             or linhas[i].strip().startswith("* ")):
+                itens.append(linhas[i].strip()[2:])
+                i += 1
+            out.append("<ul>" + "".join(f"<li>{_inline_md(t)}</li>" for t in itens) + "</ul>")
+            continue
+        if _re.match(r"^\d+\.\s", s):
+            itens = []
+            while i < n and _re.match(r"^\d+\.\s", linhas[i].strip()):
+                itens.append(_re.sub(r"^\d+\.\s", "", linhas[i].strip()))
+                i += 1
+            out.append("<ol>" + "".join(f"<li>{_inline_md(t)}</li>" for t in itens) + "</ol>")
+            continue
+        if s.startswith(">"):
+            bloco = []
+            while i < n and linhas[i].strip().startswith(">"):
+                bloco.append(linhas[i].strip().lstrip(">").strip())
+                i += 1
+            out.append("<blockquote>" + _inline_md(" ".join(bloco)) + "</blockquote>")
+            continue
+        if not s:
+            i += 1
+            continue
+        par = [linha.strip()]
+        i += 1
+        while i < n and linhas[i].strip() and not linhas[i].strip().startswith(
+                ("#", "|", "- ", "* ", ">", "```")) \
+                and not _re.match(r"^\d+\.\s", linhas[i].strip()) \
+                and linhas[i].strip() not in ("---", "***"):
+            par.append(linhas[i].strip())
+            i += 1
+        out.append("<p>" + _inline_md(" ".join(par)) + "</p>")
+    return "\n".join(out)
+
+
+def _ancorar_doc(html_txt: str) -> str:
+    """Adiciona id nos h2/h3/h4 (slug) para o indice de secoes navegar."""
+    import re as _re
+    import unicodedata as _u
+    usados = {}
+
+    def _rep(m):
+        nivel = m.group(1)
+        txt = _re.sub(r"<[^>]+>", "", m.group(2))
+        slug = _u.normalize("NFKD", txt).encode("ascii", "ignore").decode("ascii")
+        slug = _re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-") or "secao"
+        usados[slug] = usados.get(slug, 0) + 1
+        if usados[slug] > 1:
+            slug = f"{slug}-{usados[slug]}"
+        return f'<h{nivel} id="{slug}">{m.group(2)}</h{nivel}>'
+
+    return _re.sub(r"<h([1-4])>(.*?)</h\1>", _rep, html_txt)
+
+
+@bp.route("/docs")
+@auth.login_required
+def docs():
+    """Documentacao completa (DOCUMENTACAO_PB.md) renderizada como pagina.
+
+    Reaproveita _caminho_doc()/_secoes_doc() do popup Ajuda — um unico
+    arquivo alimenta os dois (editar o .md atualiza popup e Docs).
+    """
+    import re as _re
+    import unicodedata as _u
+
+    def _slug(t):
+        t = _u.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii")
+        return _re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
+
+    caminho = _caminho_doc()
+    md = ""
+    if caminho:
+        try:
+            md = open(caminho, encoding="utf-8").read()
+        except OSError:
+            md = ""
+    if not md:
+        content = ('<div class="card"><div class="muted">'
+                   'Documentação não encontrada (DOCUMENTACAO_PB.md).</div></div>')
+        return templates.page("Docs", content, active="docs", user=_user())
+
+    secoes = _secoes_doc()
+    itens = "".join(
+        f'<a class="btn ghost" style="font-size:11px;padding:3px 10px" '
+        f'href="#{_slug(tit)}">{tit}</a>'
+        for tit, _ in secoes
+    )
+    indice = ('<div class="card" style="margin-bottom:16px">'
+              '<div class="muted" style="font-size:12px;margin-bottom:8px">Seções — clique para navegar:</div>'
+              f'<div style="display:flex;flex-wrap:wrap;gap:6px">{itens}</div>'
+              '<div class="muted" style="font-size:10px;margin-top:8px">'
+              'Fonte: DOCUMENTACAO_PB.md (mesmo arquivo do popup Ajuda — edite o arquivo para atualizar).'
+              '</div></div>') if itens else ""
+    corpo = _ancorar_doc(_md_para_html(md))
+    content = indice + f'<div class="card doc-body" style="line-height:1.65">{corpo}</div>'
+    return templates.page("Docs", content, active="docs", user=_user())

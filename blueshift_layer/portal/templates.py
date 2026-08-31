@@ -233,7 +233,7 @@ def _nav(active: str, user: dict | None) -> str:
         "conhecimento": "\U0001f4da", "chat": "\U0001f4ac",
         "uso_tokens": "\U0001f4b0", "auditoria": "\U0001f4cb",
         'observabilidade': '\U0001f4ca', 'teste_ab': '\U0001f91d', 'atualizacoes': '\U0001f504', 'sso': '\U0001f511',
-        'fine_tuning': '\U0001f9e9',
+        'fine_tuning': '\U0001f9e9', 'docs': '\U0001f4d6',
         "lgpd": "\U0001f6e1\ufe0f",
         # Icones dos grupos (submenus)
         "grupo_cadastros": "\U0001f465", "grupo_inteligencia": "\U0001f4a1",
@@ -269,6 +269,7 @@ def _nav(active: str, user: dict | None) -> str:
         ("Inteligência", "grupo_inteligencia", [
             ("memoria", "Memória", "/portal/memoria"),
             ("conhecimento", "Conhecimento", "/portal/conhecimento"),
+            ("docs", "Docs", "/portal/docs"),
             ("teste_ab", "Teste A/B", "/portal/teste-ab"),
             ("fine_tuning", "Fine-Tuning", "/portal/fine-tuning"),
         ]),
