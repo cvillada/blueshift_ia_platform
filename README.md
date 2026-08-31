@@ -820,7 +820,7 @@ SQLite em modo **WAL** com índices em `criado_em` (tracing/feedback/auditoria) 
 
 Existem duas formas de controlar o crescimento — manuais e com critérios diferentes:
 
-**1. Arquivo morto (tela Arquivo Morto, menu Operação — somente admin):** gera um snapshot selado do banco (`data/arquivo_morto/arquivo_morto_<execução>_<corte>.db` — primeira data = execução, segunda = corte) e remove do banco quente os registros com `criado_em <= corte`. Corte máximo = **ontem à meia-noite** (o dia corrente nunca é afetado). O fluxo pede confirmação mostrando as contagens antes de executar; a cópia é feita antes do DELETE (falha na cópia = nada é apagado). Backup físico do banco principal é responsabilidade do cliente (volume).
+**1. Arquivo morto (tela Arquivo Morto, menu Operação — somente admin):** gera um snapshot selado do banco (`data/arquivo_morto/arquivo_morto_<execução>_<corte>.db` — primeira data = execução, segunda = corte) e remove do banco quente os registros com `criado_em <= corte`. Corte máximo = **ontem à meia-noite** (o dia corrente nunca é afetado). O fluxo pede confirmação mostrando as contagens antes de executar — **incluindo a confirmação de que o backup físico do portal.db foi feito** (o snapshot não substitui o backup); a cópia é feita antes do DELETE (falha na cópia = nada é apagado). Backup físico do banco principal é responsabilidade do cliente (volume).
 
 | Tabela | Campo do corte | Critério |
 |:-------|:---------------|:---------|

@@ -965,7 +965,10 @@ registros até a data de corte.
    corrente nunca é afetado.
 2. Clique em **Arquivar**: o sistema mostra a **confirmação com as contagens**
    por tabela (quantos registros serão movidos) e o nome do snapshot.
-3. Confirme: o sistema gera o snapshot e limpa o quente, **na ordem segura**
+3. **Confirme o backup**: marque que o backup físico do portal.db foi realizado
+   (o snapshot **não** substitui o backup — responsabilidade do cliente). Sem
+   essa confirmação, o botão não executa.
+4. Confirme: o sistema gera o snapshot e limpa o quente, **na ordem segura**
    (cópia primeiro; se a cópia falhar, nada é apagado).
 
 **Snapshot:** `data/arquivo_morto/arquivo_morto_<execução>_<corte>.db` (primeira

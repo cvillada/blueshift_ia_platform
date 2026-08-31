@@ -5080,6 +5080,9 @@ def arquivo_morto():
         data = (request.form.get("corte") or "").strip()
         try:
             if request.form.get("confirmar") == "1":
+                if not request.form.get("backup_ok"):
+                    raise ValueError("Confirme que o backup físico do portal.db foi realizado "
+                                     "antes de arquivar (marque a caixa). O snapshot não substitui o backup.")
                 res = db.executar_arquivo_morto(data)
                 total = sum(res["movidos"].values()) if res.get("movidos") else 0
                 db.registrar_arquivo_morto(res["corte"], res["arquivo"], res["movidos"])
@@ -5159,6 +5162,12 @@ def arquivo_morto():
       <code>{nome_arq}</code> (cópia íntegra do banco inteiro, selada — o sistema
       nunca mais grava nela). Regras manuais e skills (<code>knowledge</code>
       fonte manual/skill) <b>não</b> são afetadas.</p>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
+        <input type="checkbox" name="backup_ok" value="1" required style="width:auto;margin-top:2px">
+        <span>Confirmo que o <b>backup físico do portal.db</b> foi realizado antes
+        desta ação. <span class="muted">O snapshot <b>não</b> substitui o backup do
+        banco (responsabilidade do cliente).</span></span>
+      </label>
       <form method="post" style="margin-top:10px">
         {templates.csrf_field()}
         <input type="hidden" name="corte" value="{preview['corte']}">
