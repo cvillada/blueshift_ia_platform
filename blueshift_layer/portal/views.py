@@ -3963,6 +3963,7 @@ def canais():
         _testar_link = (f'<a href="#" onclick="abrirTestarCanal({c["id"]},\'{c["token"]}\',\'{_nome_js}\');return false" title="Testar API do canal">testar</a> '
                         if c["ativo"] else "")
         body += f"""<tr>
+          <td><b>{c['id']}</b></td>
           <td><b>{c['nome']}</b></td>
           <td>{c['tipo']}</td>
           <td>{ag}</td>
@@ -4092,8 +4093,8 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharTestar
     {token_tooltip}
     <div class="card">
       <h3 style="margin-top:0">Canais cadastrados</h3>
-      <table><thead><tr><th>Nome</th><th>Tipo</th><th>Agente</th><th>Chave (token)</th><th>Status</th><th>Webhook saída</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan="7" class="muted">nenhum canal cadastrado</td></tr>'}</tbody></table>
+      <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Agente</th><th>Chave (token)</th><th>Status</th><th>Webhook saída</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan="8" class="muted">nenhum canal cadastrado</td></tr>'}</tbody></table>
     </div>
     <div class="card muted" style="font-size:13px">
       <b>Como usar (canal real):</b><br><br>
