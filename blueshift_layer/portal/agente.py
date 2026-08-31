@@ -787,6 +787,13 @@ def enviar_webhook(webhook_url: str, payload: dict,
 
     if not webhook_url:
         return {"enviado": False, "motivo": "sem_webhook"}
+    # Anti-SSRF no momento do envio (nao so no cadastro): bloqueia URL que
+    # aponte para endereco interno — cobre canal cadastrado antes da
+    # validacao e DNS rebinding (host que resolve interno na hora do POST).
+    from . import db as _db
+    _erro_url = _db.validar_webhook_url(webhook_url)
+    if _erro_url:
+        return {"enviado": False, "motivo": "url_interna_bloqueada", "erro": _erro_url}
     body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if headers_extra:

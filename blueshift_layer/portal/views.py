@@ -3977,8 +3977,12 @@ def canais():
             except Exception:  # noqa: BLE001
                 flash("Headers do webhook inválidos — use JSON válido (ex: {\"X-Webhook-Secret\": \"abc\"}).", "warn")
                 return redirect(url_for("portal.canais"))
-        db.criar_canal(cid, nome, agente_id, tipo=tipo, webhook_url=webhook_url,
-                       webhook_headers=wh_headers)
+        try:
+            db.criar_canal(cid, nome, agente_id, tipo=tipo, webhook_url=webhook_url,
+                           webhook_headers=wh_headers)
+        except ValueError as e:
+            flash(f"Webhook inválido: {e}", "warn")
+            return redirect(url_for("portal.canais"))
         db.registrar_auditoria(_user()["login"], "admin", "criar_canal", alvo=nome,
                                cliente_id=cid, ip=request.remote_addr)
         flash("Canal criado.", "ok")
@@ -4201,8 +4205,12 @@ def canal_editar(canal_id: int):
             except Exception:  # noqa: BLE001
                 flash("Headers do webhook inválidos — use JSON válido (ex: {\"X-Webhook-Secret\": \"abc\"}).", "warn")
                 return redirect(url_for("portal.canal_editar", canal_id=canal_id))
-        db.atualizar_canal(canal_id, nome=nome, tipo=tipo, agente_id=agente_id,
-                           webhook_url=webhook_url, webhook_headers=wh_headers)
+        try:
+            db.atualizar_canal(canal_id, nome=nome, tipo=tipo, agente_id=agente_id,
+                               webhook_url=webhook_url, webhook_headers=wh_headers)
+        except ValueError as e:
+            flash(f"Webhook inválido: {e}", "warn")
+            return redirect(url_for("portal.canal_editar", canal_id=canal_id))
         db.registrar_auditoria(
             _user()["login"], "admin", "editar_canal",
             alvo=nome, cliente_id=canal["cliente_id"], ip=request.remote_addr,

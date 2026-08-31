@@ -1461,19 +1461,43 @@ def gerar_token(prefix: str = "bs_chan") -> str:
 
 
 def validar_webhook_url(url: str) -> str | None:
-    """Valida URL de webhook. Retorna None se ok, ou mensagem de erro."""
+    """Valida URL de webhook (anti-SSRF). Retorna None se ok, ou mensagem de erro.
+
+    Bloqueia enderecos internos de verdade usando ipaddress (nao prefixos
+    literais): is_global=False cobre privado (10/8, 172.16/12, 192.168/16),
+    CGNAT (100.64/10), link-local (169.254.169.254 — metadata AWS/GCP),
+    loopback, multicast, reservado, IPv6 ULA/link-local, e hostnames que
+    RESOLVEM para IP interno (DNS rebinding basico via gethostbyname_ex).
+    """
     import urllib.parse
+    import socket
+    import ipaddress
     if not url:
         return None
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         return "Esquema deve ser http ou https"
     host = parsed.hostname or ""
-    # Bloqueia enderecos internos
-    internos = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "::ffff:127.0.0.1"}
-    if host in internos or host.startswith("127.") or host.startswith("10.") \
-       or host.startswith("172.16.") or host.startswith("192.168."):
-        return "URL nao pode apontar para servicos internos (localhost, 10.x, 172.16.x, 192.168.x)"
+    if not host:
+        return "URL sem host válido"
+    # Resolve TODOS os IPs do hostname (ou usa o próprio se for IP literal)
+    try:
+        addrs = socket.gethostbyname_ex(host)[2]
+    except OSError:
+        addrs = []
+    if not addrs:
+        try:
+            addrs = [ipaddress.ip_address(host).compressed]
+        except ValueError:
+            return "Não foi possível resolver o hostname do webhook"
+    for a in addrs:
+        try:
+            ip = ipaddress.ip_address(a.split("%")[0])
+        except ValueError:
+            continue
+        if not ip.is_global:
+            return ("URL não pode apontar para endereços internos/não públicos "
+                    "(privado, loopback, link-local, metadata de nuvem, IPv6 interno)")
     return None
 
 
@@ -1537,6 +1561,10 @@ def buscar_canal(canal_id: int) -> dict | None:
 
 def atualizar_canal(canal_id: int, **campos) -> None:
     """Atualiza campos do canal (nome, tipo, agente_id, webhook_url)."""
+    if "webhook_url" in campos and campos["webhook_url"]:
+        erro = validar_webhook_url(campos["webhook_url"])
+        if erro:
+            raise ValueError(erro)
     cols = ", ".join(f"{k}=?" for k in campos)
     with get_conn() as conn:
         conn.execute(f"UPDATE canais SET {cols} WHERE id=?", list(campos.values()) + [canal_id])
