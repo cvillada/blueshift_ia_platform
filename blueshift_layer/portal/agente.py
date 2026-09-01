@@ -492,7 +492,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     skills_txt = _skills_text(agente.get("skills", ""))
 
     system = (
-        f"Você é o agente corporativo '{agente['nome']}' da BlueShift "
+        f"Você é o agente corporativo '{agente['nome']}' "
         f"(área: {area or 'geral'}).\n"
     )
     if skills_txt:

@@ -2726,7 +2726,7 @@ def teste_ab():
                     conectores_trace = trace.get("conectores", []) or []
                     rag_trace = trace.get("rag", []) or []
                     # Monta prompt igual ao agente original (sem skills - nao temos)
-                    system = "Voce e um assistente corporativo da BlueShift.\n\n"
+                    system = "Voce e um assistente corporativo.\n\n"
                     blocos = []
                     for f in conectores_trace:
                         if "erro" in f:
@@ -3889,7 +3889,7 @@ def chat():
             cliente_id = modelo["cliente_id"]
             contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=u["login"], top_k=4)
             system = (
-                "Você é um assistente corporativo da BlueShift. "
+                "Você é um assistente corporativo. "
                 "Use SOMENTE o contexto abaixo para responder. "
                 "Se o contexto não tiver a resposta, diga que não sabe.\n\n"
                 "CONTEXTO:\n" + "\n".join(f"- {c['texto']}" for c in contexto)
@@ -4829,7 +4829,7 @@ def api_ajuda():
     from . import llm_client
     doc_bloco = "\n\n".join(relevantes)
     system = (
-        "Voce e o assistente de ajuda da plataforma BlueShift. "
+        "Voce e o assistente de ajuda da plataforma. "
         "Responda com base APENAS na documentacao fornecida abaixo. "
         "Se a resposta nao estiver na documentacao, diga claramente que nao "
         "encontrou e sugira contatar o suporte. "
