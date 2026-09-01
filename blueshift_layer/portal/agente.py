@@ -358,8 +358,15 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
     # resposta valida e a que se repete; incompreensivel/erro nao e voto.
     votos: list = []  # "nenhum" | id(int) | None(incompreensivel)
     for _ in range(3):
-        out = llm_client.chat(modelo_roteador, mensagens, max_tokens=100, temperatura=0.0)
-        if not out.get("ok"):
+        # max_tokens generoso + retry (mesmo tratamento do extrator P2):
+        # modelos locais (ex: 9B llama.cpp) devolvem VAZIO com max_tokens=100
+        # e o roteador cairia em falha -> None -> executa todos sem params.
+        out = None
+        for mt in (256, 512):
+            out = llm_client.chat(modelo_roteador, mensagens, max_tokens=mt, temperatura=0.0)
+            if out.get("ok") and (out.get("content") or "").strip():
+                break
+        if not out or not out.get("ok"):
             votos.append(None)
             continue
         texto = (out.get("content") or "").strip().lower()
@@ -441,16 +448,17 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             modelo_roteador = modelo_roteador or modelo
             conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
             somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
-            # B: IA completa parametros que o regex nao pegou (ex: "id cliente
-            # igual a 58") — usa os placeholders dos conectores escolhidos
+            # P1: determinístico por placeholder — roda SEMPRE, inclusive quando
+            # o roteador falha (None -> executa TODOS os conectores da área):
+            # ph = placeholders dos escolhidos ou de todos da área. A definição
+            # do conector é a fonte das chaves ("cep 03679040", "cep: x",
+            # "id 58"); custo zero.
+            ph = _placeholders_conectores(conectores_area, somente_ids)
+            params_ph = _extrair_parametros_por_placeholders(pergunta, ph)
+            for k, v in params_ph.items():
+                if k not in params:
+                    params[k] = v
             if somente_ids:
-                ph = _placeholders_conectores(conectores_area, somente_ids)
-                # P1: determinístico por placeholder ("cep 03679040", "cep: x",
-                # "id 58") — a definição do conector é a fonte das chaves.
-                params_ph = _extrair_parametros_por_placeholders(pergunta, ph)
-                for k, v in params_ph.items():
-                    if k not in params:
-                        params[k] = v
                 # P2: IA completa o que o determinismo não pegou (robusto a
                 # modelo — retry automático, sem ajuste de max_tokens)
                 params_ia = _extrair_parametros_ia(pergunta, ph, modelo_roteador)
@@ -496,15 +504,30 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         "O CONTEXTO (base de conhecimento) pode conter informacoes desatualizadas "
         "e deve ser usado apenas como referencia SECUNDARIA.\n\n"
     )
+    ausentes_nota: list = []
     if ferramentas:
         blocos = []
         for f in ferramentas:
             if "erro" in f:
-                continue  # erro vai pro trace, mas nao polui o prompt do LLM
+                # erro vai pro trace; parametro_ausente vira AVISO no prompt
+                _e = str(f.get("erro", ""))
+                if _e.startswith("parametro_ausente:"):
+                    ausentes_nota.extend(
+                        x.strip() for x in _e.split(":", 1)[1].split(",") if x.strip())
+                continue
             blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
                           f"args={f.get('args')} -> {f.get('resultado')}")
         if blocos:
             system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+    if ausentes_nota:
+        # Reforço anti-alucinação: o conector NAO rodou — o modelo nao pode
+        # responder com memoria/treino nem citar o conector como fonte.
+        system += (
+            "\nAVISO: a chamada ao conector NAO foi executada porque faltou "
+            "informar: " + ", ".join(sorted(set(ausentes_nota))) + ". Peca esse "
+            "dado ao usuario de forma natural e NAO responda com dados de "
+            "memoria/treino nem cite o conector como fonte.\n"
+        )
     if not tem_dados_vivos:
         # C: guardrail anti-alucinacao — conectores rodaram sem dados vivos
         system += (

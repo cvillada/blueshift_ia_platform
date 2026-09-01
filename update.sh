@@ -45,6 +45,14 @@ log "git checkout $TAG"
 git checkout "$TAG"
 
 log "docker compose up -d --build"
-docker compose up -d --build
+# Projeto do compose: o update roda DENTRO do container (docker.sock). Se o
+# compose rodar daqui, deriva o projeto do nome do diretorio (/opt/blueshift/
+# repo -> "repo") e NAO reconhece os containers criados pelo host (projeto
+# "blueshift_ia_platform") -> conflito de nome e o update aborta sem trocar
+# os containers. Deriva o projeto do container em execucao (label real).
+PROJ="$(docker inspect blueshift-platform \
+  --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)"
+PROJ="${PROJ:-blueshift_ia_platform}"
+docker compose -p "$PROJ" up -d --build
 
 log "Update concluido: $TAG"
