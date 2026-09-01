@@ -201,6 +201,11 @@ def apply(version: str | None = None) -> dict:
            "-v", f"{_host_repo}:{REPO_DIR}",
            "-w", REPO_DIR,
            "-e", f"COMPOSE_PROJECT_NAME={_proj}",
+           # O compose do irmão resolve ${BLUESHIFT_REPO_DIR:-.} — sem a env,
+           # vira "." (workdir do irmão) e o daemon do host interpreta como
+           # path do HOST -> bind para pasta vazia. Passar o path real do host
+           # garante que o portal recriado monte o repo verdadeiro.
+           "-e", f"BLUESHIFT_REPO_DIR={_host_repo}",
            # git safe.directory via env (GIT_CONFIG_COUNT, git >= 2.31): o
            # container irmao roda como root sobre repo de dono 1000:1000 e o
            # git bloquearia por 'dubious ownership'. Via env garante que vale
