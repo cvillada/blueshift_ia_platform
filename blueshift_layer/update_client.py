@@ -201,6 +201,13 @@ def apply(version: str | None = None) -> dict:
            "-v", f"{_host_repo}:{REPO_DIR}",
            "-w", REPO_DIR,
            "-e", f"COMPOSE_PROJECT_NAME={_proj}",
+           # git safe.directory via env (GIT_CONFIG_COUNT, git >= 2.31): o
+           # container irmao roda como root sobre repo de dono 1000:1000 e o
+           # git bloquearia por 'dubious ownership'. Via env garante que vale
+           # MESMO quando o update.sh em execucao e o antigo (bash bufferiza).
+           "-e", "GIT_CONFIG_COUNT=1",
+           "-e", "GIT_CONFIG_KEY_0=safe.directory",
+           "-e", f"GIT_CONFIG_VALUE_0={REPO_DIR}",
            "blueshift/platform:latest",
            f"{REPO_DIR}/update.sh", version]
 
