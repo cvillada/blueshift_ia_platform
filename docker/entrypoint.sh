@@ -8,6 +8,13 @@
 #  - Update Channel: serve a versao aprovada da camada (BLUESHIFT_UPDATE_URL)
 set -e
 
+# git safe.directory: o repo montado (/opt/blueshift/repo) tem dono 1000:1000
+# e o git (CVE-2022-24765) recusa operar nele ("dubious ownership") — sem isso
+# o update_client (ls-remote/describe/fetch) falha e a tela Atualizacoes nunca
+# lista uma versao nova. Configura para o REPO_DIR efetivo (default ou env).
+REPO_DIR_GIT="${BLUESHIFT_REPO_DIR:-/opt/blueshift/repo}"
+git config --global --add safe.directory "$REPO_DIR_GIT" 2>/dev/null || true
+
 LICENSE_PORT="${BLUESHIFT_LICENSE_PORT:-9000}"
 UPDATE_PORT="${BLUESHIFT_UPDATE_PORT:-9001}"
 
