@@ -4671,7 +4671,8 @@ def atualizacoes():
       <p class="muted" style="font-size:12px">Repo: <code>{templates.h(str(info.get('repo', '')))}</code></p>
       {'<p class="muted">Nenhuma atualização disponível no remoto (ou sem acesso ao repositório).</p>' if not info.get('disponivel') else ''}
       {'<div class="badge ok">Nova versão disponível: ' + templates.h(str(info.get('disponivel_version'))) + '</div>' if info.get('disponivel') else ''}
-      {('<form method="post">' + templates.csrf_field() + '<div style="margin-top:12px"><button class="btn" type="submit">Aplicar atualização</button></div></form>') if info.get('disponivel') else ''}
+      {('<div class="badge bad" style="margin-top:10px">⚠️ Update baixado mas <b>NÃO aplicado</b>: o repositório está na tag <b>' + templates.h(str(info.get('atual',''))) + '</b>, mas a versão em execução é <b>' + templates.h(str(info.get('codigo',''))) + '</b> (containers antigos). Clique em <b>Aplicar</b> para reconstruir os containers e, se falhar, confira o log abaixo.</div>') if info.get('aplicado') is False else ''}
+      {('<form method="post">' + templates.csrf_field() + '<div style="margin-top:12px"><button class="btn" type="submit">Aplicar atualização</button></div></form>') if (info.get('disponivel') or info.get('aplicado') is False) else ''}
     </div>
     <div class="card muted" style="max-width:680px;font-size:13px">
       O update puxa a tag aprovada do repositório Git e recria os containers

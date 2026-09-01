@@ -93,11 +93,18 @@ def check() -> dict:
     """Retorna versao instalada vs disponivel no remoto git."""
     atual = versao_instalada()
     remoto = _tags_remotas()
+    # 'aplicado': o checkout do repo pode ser mais novo que o codigo RODANDO
+    # (imagem/container) — sinal de update baixado mas NAO aplicado (build ok
+    # que nao trocou os containers). O usuario precisa ver esse aviso.
+    codigo = CURRENT_VERSION
+    aplicado = (atual.lstrip("v") == codigo) if atual.startswith("v") else True
     if not remoto:
         return {
             "disponivel": False,
             "motivo": "remoto_indisponivel",
             "atual": atual,
+            "codigo": codigo,
+            "aplicado": aplicado,
             "repo": REPO_DIR,
             "repo_ok": _repo_existe(),
         }
@@ -105,6 +112,8 @@ def check() -> dict:
     return {
         "disponivel": nova != atual,
         "atual": atual,
+        "codigo": codigo,
+        "aplicado": aplicado,
         "disponivel_version": nova,
         "todas": remoto,
         "repo": REPO_DIR,
@@ -124,7 +133,10 @@ def apply(version: str | None = None) -> dict:
         version = info.get("disponivel_version")
     if not version:
         return {"ok": False, "motivo": "nenhuma_versao_disponivel"}
-    if version == info.get("atual"):
+    # Se o checkout ja esta na versao E o codigo rodando tambem, nada a fazer.
+    # Se o checkout esta na versao mas o codigo NAO (update baixado nao
+    # aplicado), permite RE-aplicar — troca os containers de verdade.
+    if version == info.get("atual") and info.get("aplicado", True):
         return {"ok": False, "motivo": "ja_na_versao_atual", "versao": version}
 
     cmd = ["bash", UPDATE_SCRIPT, version]
@@ -137,12 +149,30 @@ def apply(version: str | None = None) -> dict:
         return {"ok": False, "motivo": "update_script_ausente",
                 "erro": f"{UPDATE_SCRIPT} nao encontrado"}
 
+    # Projeto do compose: o update.sh roda DENTRO do container e o git checkout
+    # no meio da execucao troca o proprio script no disco (o bash ja leu a
+    # versao antiga em memoria). Derivamos o projeto AQUI — update_client roda
+    # na imagem (nao e substituido pelo checkout) — e passamos via
+    # COMPOSE_PROJECT_NAME: o docker compose usa essa variavel em QUALQUER
+    # versao do update.sh (antiga ou nova), entao o conflito de nome some.
+    _proj = ""
+    try:
+        _proj = subprocess.check_output(
+            ["docker", "inspect", "blueshift-platform",
+             "--format", '{{index .Config.Labels "com.docker.compose.project"}}'],
+            text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
+    except Exception:  # noqa: BLE001 - fallback abaixo
+        _proj = ""
+    env = dict(os.environ)
+    env["COMPOSE_PROJECT_NAME"] = _proj or env.get(
+        "COMPOSE_PROJECT_NAME", "blueshift_ia_platform")
+
     try:
         # background: o rebuild derruba o portal — o update termina sozinho
         with open(LOG_FILE, "a", encoding="utf-8") as logf:
             logf.write(f"\n=== update {version} iniciado ===\n")
             proc = subprocess.Popen(
-                cmd, stdout=logf, stderr=subprocess.STDOUT,
+                cmd, stdout=logf, stderr=subprocess.STDOUT, env=env,
                 start_new_session=True,  # sobrevive ao rebuild do container
             )
         return {"ok": True, "versao": version, "pid": proc.pid,
