@@ -17,6 +17,13 @@ REPO_DIR="${REPO_DIR:-/opt/blueshift/repo}"
 TAG="${1:-}"
 LOG_FILE="${BLUESHIFT_UPDATE_LOG:-/opt/blueshift/update.log}"
 
+# git safe.directory: o container irmao roda o update como root sobre um repo
+# de outro dono (1000:1000) — sem isso o git bloqueia por 'dubious ownership'
+# (CVE-2022-24765) e o fetch falha no primeiro comando. Defensivo: vale para
+# qualquer runner (o entrypoint do portal ja configura, mas o container irmao
+# pula o entrypoint).
+git config --global --add safe.directory "$REPO_DIR" 2>/dev/null || true
+
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 if [ -z "$TAG" ]; then
