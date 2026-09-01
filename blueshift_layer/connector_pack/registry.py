@@ -115,13 +115,21 @@ def _executar_api(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     else:
         headers = dict(headers_str)
 
+    # Guarda (P3): se algum placeholder da URL/body/headers ficou sem valor,
+    # NAO chama a API (iria com {param} literal -> 400/404 sem sentido).
+    body_template = config.get("body", "")
+    ausentes = _placeholders_ausentes(
+        [url, body_template] + [h for h in headers.values() if isinstance(h, str)],
+        params)
+    if ausentes:
+        return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
+
     # Substitui placeholders {param} nos valores
     url = _aplicar_params(url, params)
     headers = {k: _aplicar_params(v, params) for k, v in headers.items()}
 
     body = None
     if method in ("POST", "PUT", "PATCH"):
-        body_template = config.get("body", "")
         if body_template:
             body = _aplicar_params(body_template, params).encode("utf-8")
 
@@ -160,6 +168,11 @@ def _executar_mcp(nome: str, config: dict, params: dict, pergunta: str) -> dict:
         return {"erro": "Conector MCP stdio sem command configurado"}
 
     args_tool = config.get("args", {})
+    # Guarda (P3): placeholder sem valor -> nao chama a ferramenta MCP
+    ausentes = _placeholders_ausentes(
+        [v for v in args_tool.values() if isinstance(v, str)], params)
+    if ausentes:
+        return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
     # Substitui placeholders nos args
     for k, v in args_tool.items():
         if isinstance(v, str):
@@ -214,6 +227,11 @@ def _executar_mcp_sse(nome: str, config: dict, params: dict, pergunta: str) -> d
     args_tool = dict(config.get("args", {}))
     if not url:
         return {"erro": "Conector MCP SSE sem URL configurada"}
+    # Guarda (P3): placeholder sem valor -> nao chama a ferramenta MCP
+    ausentes = _placeholders_ausentes(
+        [v for v in args_tool.values() if isinstance(v, str)], params)
+    if ausentes:
+        return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
     # Substitui placeholders nos args
     for k, v in args_tool.items():
         if isinstance(v, str):
@@ -335,6 +353,11 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     query = config.get("query", "")
     if not query:
         return {"erro": "SQL query nao configurada"}
+
+    # Guarda (P3): placeholder sem valor -> nao executa query quebrada
+    ausentes = _placeholders_ausentes([query], params)
+    if ausentes:
+        return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
 
     # Substitui placeholders na query
     query = _aplicar_params(query, params)
@@ -554,3 +577,21 @@ def _aplicar_params(texto: str, params: dict) -> str:
         return str(val)
 
     return re.sub(r"\{(\w+)\}", _repl, texto)
+
+
+def _placeholders_ausentes(textos: list, params: dict) -> list:
+    """Placeholders {param} presentes nos templates que NAO tem valor em params.
+
+    Guarda de execucao (P3): se algum placeholder da config do conector ficou
+    sem valor apos a extracao (regex + IA), a chamada NAO e feita — a URL/query
+    iria com o placeholder literal e quebrar (400/404/SQL invalido). O agente
+    recebe 'parametro_ausente: X' e pede o dado ao usuario de forma natural.
+    """
+    ausentes: set[str] = set()
+    for t in textos:
+        if not isinstance(t, str) or not t:
+            continue
+        for m in re.finditer(r"\{(\w+)\}", t):
+            if not params.get(m.group(1)):
+                ausentes.add(m.group(1))
+    return sorted(ausentes)

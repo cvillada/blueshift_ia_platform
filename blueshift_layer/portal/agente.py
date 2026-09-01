@@ -249,42 +249,75 @@ def _placeholders_conectores(conectores: list[dict], ids: list[int] | None) -> s
     return ph
 
 
+def _extrair_parametros_por_placeholders(pergunta: str, placeholders: set[str]) -> dict:
+    """Extrai 'chave valor' / 'chave: valor' / 'chave=valor' para os placeholders
+    dos conectores escolhidos (P1).
+
+    Generico: a definicao do conector (URL/args/query) e a fonte das chaves —
+    nenhuma lista hardcoded de campos. Cobre 'cep 03679040', 'cep: 03679-040',
+    'id 58', 'pedido PED-99', etc. O valor vira string (sem normalizacao).
+    """
+    params: dict[str, str] = {}
+    for ph in sorted(placeholders):
+        if ph in params:
+            continue
+        # chave=valor ou chave: valor (token sem espaco)
+        m = re.search(rf"\b{re.escape(ph)}\b\s*[=:]\s*(\S+)", pergunta, re.IGNORECASE)
+        if not m:
+            # chave + numero (com hifen/ponto: 03679-040, 58, 12.345)
+            m = re.search(rf"\b{re.escape(ph)}\b\s+(\d[\d.\-]*)", pergunta, re.IGNORECASE)
+        if m:
+            valor = m.group(1).strip().rstrip(".,;!?\"'")
+            if valor:
+                params[ph] = valor
+    return params
+
+
 def _extrair_parametros_ia(pergunta: str, placeholders: set[str],
                            modelo: dict) -> dict | None:
     """Extrai parametros da pergunta via IA (linguagem natural).
 
-    Complementa o regex _extrair_parametros: cobre variacoes que o regex
-    nao reconhece (ex: \"id cliente igual a 58\"). Retorna dict ou None
-    (falha — o chamador mantem o regex como fallback).
+    Complementa o regex (P1): cobre variacoes que o determinismo nao
+    reconhece (ex: \\"id cliente igual a 58\\"). Retorna dict ou None
+    (falha — o chamador segue sem os parametros).
+
+    Robusto a modelo (P2): max_tokens generoso (256) + retry automatico com
+    512 se a resposta vier vazia ou com JSON invalido + exemplo few-shot no
+    prompt. Nao depende de ajuste manual de max_tokens por modelo.
     """
     if not placeholders:
         return None
     lista = ", ".join(sorted(placeholders))
     from . import llm_client
+    system = (
+        "Voce extrai parametros de uma pergunta do usuario para chamadas de "
+        "ferramentas. Retorne APENAS um JSON valido com os valores encontrados "
+        "(strings). Se nenhum parametro for encontrado, retorne {}.\n"
+        "Exemplo: pergunta 'qual o endereco do cep 03679-040?' com parametros "
+        "[cep] -> {\"cep\": \"03679040\"}.\n"
+        "Nao escreva texto fora do JSON."
+    )
     mensagens = [
-        {"role": "system", "content": (
-            "Voce extrai parametros de uma pergunta do usuario para chamadas "
-            "de ferramentas. Retorne APENAS um JSON valido com os valores "
-            "encontrados (strings). Se nenhum parametro for encontrado, "
-            "retorne {}.")},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"Pergunta: {pergunta}\n\nParametros disponiveis: {lista}\n\nJSON:"},
     ]
-    out = llm_client.chat(modelo, mensagens, max_tokens=100, temperatura=0.0)
-    if not out.get("ok"):
-        return None
-    texto = (out.get("content") or "").strip()
-    # limpa cercas ```json ... ```
-    import re as _re
-    m = _re.search(r"\{.*\}", texto, _re.DOTALL)
-    if not m:
-        return None
-    try:
-        dados = _json.loads(m.group(0))
-    except Exception:  # noqa: BLE001
-        return None
-    if not isinstance(dados, dict):
-        return None
-    return {str(k): str(v) for k, v in dados.items() if v is not None and str(v).strip()}
+    for mt in (256, 512):
+        out = llm_client.chat(modelo, mensagens, max_tokens=mt, temperatura=0.0)
+        if not out.get("ok"):
+            return None
+        texto = (out.get("content") or "").strip()
+        # limpa cercas ```json ... ```
+        m = re.search(r"\{.*\}", texto, re.DOTALL)
+        if not m:
+            continue
+        try:
+            dados = _json.loads(m.group(0))
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(dados, dict):
+            continue
+        return {str(k): str(v) for k, v in dados.items() if v is not None and str(v).strip()}
+    return None
 
 
 def _selecionar_conectores(pergunta: str, conectores: list[dict],
@@ -412,6 +445,14 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             # igual a 58") — usa os placeholders dos conectores escolhidos
             if somente_ids:
                 ph = _placeholders_conectores(conectores_area, somente_ids)
+                # P1: determinístico por placeholder ("cep 03679040", "cep: x",
+                # "id 58") — a definição do conector é a fonte das chaves.
+                params_ph = _extrair_parametros_por_placeholders(pergunta, ph)
+                for k, v in params_ph.items():
+                    if k not in params:
+                        params[k] = v
+                # P2: IA completa o que o determinismo não pegou (robusto a
+                # modelo — retry automático, sem ajuste de max_tokens)
                 params_ia = _extrair_parametros_ia(pergunta, ph, modelo_roteador)
                 if params_ia:
                     for k, v in params_ia.items():
