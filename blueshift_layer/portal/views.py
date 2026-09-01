@@ -636,6 +636,7 @@ def usuario_novo():
             flash(f"Usuário '{login}' criado.", "ok")
             return redirect(url_for("portal.usuarios"))
     opts = _opts_cliente()
+    areas_opts = "".join(f'<option value="{templates.h(ar)}">{templates.h(ar)}</option>' for ar in listar_areas())
     content = f"""
     <div class="card" style="max-width:640px">
       <h3 style="margin-top:0">Cadastrar usuário</h3>
@@ -648,7 +649,7 @@ def usuario_novo():
         <div class="form-row">
           <div><label>Senha</label><input name="senha" type="password"></div>
           <div><label>Área</label>
-            <select name="area"><option value="">--</option><option>vendas</option><option>suporte</option><option>financeiro</option><option>rh</option><option>operacoes</option></select></div>
+            <select name="area"><option value="">--</option>{areas_opts}</select></div>
         </div>
         <label>Papel</label>
         <select name="papel">
@@ -1107,6 +1108,7 @@ def agente_novo():
             flash(f"Agente '{nome}' criado.", "ok")
             return redirect(url_for("portal.agentes"))
     opts = _opts_cliente()
+    areas_opts = "".join(f'<option value="{templates.h(ar)}">{templates.h(ar)}</option>' for ar in listar_areas())
     mopts = "".join(f'<option value="{m["id"]}">{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
     skopts = "".join(
@@ -1128,7 +1130,7 @@ def agente_novo():
         </div>
         <div class="form-row">
           <div><label>Área</label>
-            <select name="area"><option value="">--</option><option>vendas</option><option>suporte</option><option>financeiro</option><option>rh</option><option>operacoes</option></select></div>
+            <select name="area"><option value="">--</option>{areas_opts}</select></div>
           <div><label>Modelo de IA (principal)</label><select name="modelo_id">{mopts}</select></div>
         </div>
         <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum (sem failover) --</option>{mopts}</select>
@@ -1203,7 +1205,7 @@ def agente_editar(aid: int):
         for s in skills_disp
     )
     copts = ""
-    areas_opts = "".join(f'<option value="{templates.h(ar)}" {"selected" if ar==a.get("area") else ""}>{templates.h(ar)}</option>' for ar in ["vendas","suporte","financeiro","rh","operacoes"])
+    areas_opts = "".join(f'<option value="{templates.h(ar)}" {"selected" if ar==a.get("area") else ""}>{templates.h(ar)}</option>' for ar in listar_areas())
     content = f"""
     <div class="card" style="max-width:700px">
       <h3 style="margin-top:0">Editar agente #{aid}: {templates.h(a['nome'])}</h3>
