@@ -6,6 +6,7 @@ o bloco de conteudo. Estilo dark/azul da marca BlueShift.
 
 
 import html
+import json
 import secrets
 from flask import session
 
@@ -22,9 +23,19 @@ def csrf_field() -> str:
     return f'<input type="hidden" name="_csrf_token" value="{csrf_token()}">'
 
 
-def h(texto: str | None) -> str:
-    """Escapa HTML para prevenir XSS."""
-    return html.escape(texto or "")
+def h(texto) -> str:
+    """Escapa HTML para prevenir XSS. Aceita qualquer tipo:
+    - str/None -> escape (None vira '')
+    - list/dict -> serializa JSON (dados estruturados de ferramenta) e escapa
+    - outro -> str() e escapa
+    """
+    if texto is None:
+        return ""
+    if isinstance(texto, (list, dict)):
+        texto = json.dumps(texto, ensure_ascii=False, default=str)
+    elif not isinstance(texto, str):
+        texto = str(texto)
+    return html.escape(texto)
 
 
 def _flashes() -> str:
