@@ -179,10 +179,26 @@ def apply(version: str | None = None) -> dict:
     except Exception:  # noqa: BLE001 - fallback abaixo
         _proj = ""
     _proj = _proj or "blueshift_ia_platform"
+    # Source do volume = caminho do repo NO HOST (o -v espera source no host;
+    # REPO_DIR e o caminho DENTRO do container — usar como source montaria
+    # pasta vazia e o update.sh sumiria: "No such file or directory").
+    _host_repo = REPO_DIR
+    try:
+        out = subprocess.check_output(
+            ["docker", "inspect", "blueshift-platform",
+             "--format", '{{range .Mounts}}{{.Destination}}={{.Source}}\n{{end}}'],
+            text=True, stderr=subprocess.DEVNULL, timeout=10)
+        for linha in out.splitlines():
+            dest, _, src = linha.partition("=")
+            if dest == REPO_DIR and src:
+                _host_repo = src
+                break
+    except Exception:  # noqa: BLE001 - fallback: usa REPO_DIR mesmo
+        pass
     cmd = ["docker", "run", "--rm", "--entrypoint", "bash",
            "--network", f"{_proj}_default",
            "-v", "/var/run/docker.sock:/var/run/docker.sock",
-           "-v", f"{REPO_DIR}:{REPO_DIR}",
+           "-v", f"{_host_repo}:{REPO_DIR}",
            "-w", REPO_DIR,
            "-e", f"COMPOSE_PROJECT_NAME={_proj}",
            "blueshift/platform:latest",
