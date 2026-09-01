@@ -36,7 +36,8 @@ ENV BLUESHIFT_LICENSE_PORT="9000"
 ENV BLUESHIFT_UPDATE_URL="http://localhost:9001/v1/channel"
 ENV BLUESHIFT_UPDATE_PORT="9001"
 # Ambiente de dev/demo: aplica update em dry-run e usa chaves BS-DEV-*
-ENV BLUESHIFT_DEV="1"
+# CLIENTE/PRODUCAO = 0 (a tela Atualizacoes aplica de verdade). Dev local = 1.
+ENV BLUESHIFT_DEV="0"
 EXPOSE 8080 9000 9001
 
 ENTRYPOINT ["/opt/blueshift/docker/entrypoint.sh"]

@@ -354,7 +354,7 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Clone git do repo (Update via Git — tela Atualizações) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`); sem ela, usa o host da requisição |
-| `BLUESHIFT_DEV` | 1 | Modo dev (licença BS-DEV-*) |
+| `BLUESHIFT_DEV` | 0 | **Produção/cliente = 0** (a tela Atualizações aplica a atualização de verdade); **dev = 1** (dry-run + licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |
 
 Sem Docker (CLI direta), carregue o `.env` e suba:
