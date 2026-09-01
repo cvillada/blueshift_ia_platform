@@ -89,31 +89,45 @@ def _tags_remotas() -> list[str]:
     return sorted(set(tags), key=_chave, reverse=True)
 
 
+def _estado_container() -> str:
+    """Status do container do portal: running/created/restarting/exited/?.
+
+    'created' = container criado mas NUNCA iniciado — estado de update pela
+    metade (o compose morreu entre criar e iniciar). A tela deve avisar.
+    """
+    try:
+        return subprocess.check_output(
+            ["docker", "inspect", "blueshift-platform",
+             "--format", "{{.State.Status}}"],
+            text=True, stderr=subprocess.DEVNULL, timeout=10).strip() or "?"
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
 def check() -> dict:
     """Retorna versao instalada vs disponivel no remoto git."""
     atual = versao_instalada()
     remoto = _tags_remotas()
     # 'aplicado': o checkout do repo pode ser mais novo que o codigo RODANDO
     # (imagem/container) — sinal de update baixado mas NAO aplicado (build ok
-    # que nao trocou os containers). O usuario precisa ver esse aviso.
+    # que nao trocou os containers, ou container 'Created' nunca iniciado).
     codigo = CURRENT_VERSION
-    aplicado = (atual.lstrip("v") == codigo) if atual.startswith("v") else True
-    if not remoto:
-        return {
-            "disponivel": False,
-            "motivo": "remoto_indisponivel",
-            "atual": atual,
-            "codigo": codigo,
-            "aplicado": aplicado,
-            "repo": REPO_DIR,
-            "repo_ok": _repo_existe(),
-        }
-    nova = remoto[0]
-    return {
-        "disponivel": nova != atual,
+    status = _estado_container()
+    aplicado = (atual.lstrip("v") == codigo) and status != "created" \
+        if atual.startswith("v") else True
+    base = {
         "atual": atual,
         "codigo": codigo,
         "aplicado": aplicado,
+        "container_status": status,
+    }
+    if not remoto:
+        return {**base, "disponivel": False, "motivo": "remoto_indisponivel",
+                "repo": REPO_DIR, "repo_ok": _repo_existe()}
+    nova = remoto[0]
+    return {
+        **base,
+        "disponivel": nova != atual,
         "disponivel_version": nova,
         "todas": remoto,
         "repo": REPO_DIR,
@@ -149,12 +163,13 @@ def apply(version: str | None = None) -> dict:
         return {"ok": False, "motivo": "update_script_ausente",
                 "erro": f"{UPDATE_SCRIPT} nao encontrado"}
 
-    # Projeto do compose: o update.sh roda DENTRO do container e o git checkout
-    # no meio da execucao troca o proprio script no disco (o bash ja leu a
-    # versao antiga em memoria). Derivamos o projeto AQUI — update_client roda
-    # na imagem (nao e substituido pelo checkout) — e passamos via
-    # COMPOSE_PROJECT_NAME: o docker compose usa essa variavel em QUALQUER
-    # versao do update.sh (antiga ou nova), entao o conflito de nome some.
+    # Update via container IRMAO descartavel: rodar o update.sh DENTRO do
+    # portal morre no meio — o rebuild recria o proprio portal e o processo
+    # some (update pela metade: container 'Created' nunca iniciado). Um
+    # container efemero (--rm, --entrypoint bash) executa o update.sh via
+    # docker.sock: NAO e gerenciado pelo compose, sobrevive a recriacao do
+    # portal e o update termina sozinho. COMPOSE_PROJECT_NAME via -e resolve
+    # o self-replacement do update.sh em qualquer versao dele.
     _proj = ""
     try:
         _proj = subprocess.check_output(
@@ -163,17 +178,24 @@ def apply(version: str | None = None) -> dict:
             text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
     except Exception:  # noqa: BLE001 - fallback abaixo
         _proj = ""
-    env = dict(os.environ)
-    env["COMPOSE_PROJECT_NAME"] = _proj or env.get(
-        "COMPOSE_PROJECT_NAME", "blueshift_ia_platform")
+    _proj = _proj or "blueshift_ia_platform"
+    cmd = ["docker", "run", "--rm", "--entrypoint", "bash",
+           "--network", f"{_proj}_default",
+           "-v", "/var/run/docker.sock:/var/run/docker.sock",
+           "-v", f"{REPO_DIR}:{REPO_DIR}",
+           "-w", REPO_DIR,
+           "-e", f"COMPOSE_PROJECT_NAME={_proj}",
+           "blueshift/platform:latest",
+           f"{REPO_DIR}/update.sh", version]
 
     try:
         # background: o rebuild derruba o portal — o update termina sozinho
+        # no container irmao (fora do ciclo de vida do portal)
         with open(LOG_FILE, "a", encoding="utf-8") as logf:
-            logf.write(f"\n=== update {version} iniciado ===\n")
+            logf.write(f"\n=== update {version} iniciado (container irmao) ===\n")
             proc = subprocess.Popen(
-                cmd, stdout=logf, stderr=subprocess.STDOUT, env=env,
-                start_new_session=True,  # sobrevive ao rebuild do container
+                cmd, stdout=logf, stderr=subprocess.STDOUT,
+                start_new_session=True,  # sobrevive ao rebuild do portal
             )
         return {"ok": True, "versao": version, "pid": proc.pid,
                 "mensagem": f"Atualizacao {version} iniciada em background "
