@@ -36,7 +36,7 @@ services:
       # VAZIA = plataforma nao ativada (a tela Atualizacoes orienta a
       # solicitacao). NUNCA usar BS-DEV-* em producao (so valem com DEV=1).
       BLUESHIFT_LICENSE: "${BLUESHIFT_LICENSE:-}"
-      BLUESHIFT_LICENSE_URL: "http://localhost:9000/v1/validate"
+      BLUESHIFT_LICENSE_URL: "${BLUESHIFT_LICENSE_URL:-http://localhost:9000/v1/validate}"
       BLUESHIFT_LICENSE_PORT: "9000"
       BLUESHIFT_UPDATE_URL: "${BLUESHIFT_UPDATE_URL:-http://localhost:9001/v1/channel}"
       BLUESHIFT_UPDATE_PORT: "9001"

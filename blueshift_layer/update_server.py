@@ -5,8 +5,9 @@ Serve o "canal de atualizacao aprovado" da camada BlueShift (connectors,
 skills, installer). Contrato com blueshift_layer/update_client.py:
   - GET /v1/channel  -> JSON com a versao aprovada da camada
 
-Em producao este mock some: o client aponta para
-https://update.blueshift.app/v1/channel e o backend real serve o canal.
+Em producao o canal de update NAO usa este servidor: o update e via git
+(update_client + update.sh, repo publico). Este mock serve apenas dev
+(entrypoint sobe os mocks com BLUESHIFT_DEV=1 ou URL local).
 
 A versao servida pode vir de um arquivo JSON (BLUESHIFT_CHANNEL_FILE) ou,
 em dev, do valor embutido abaixo. Assim o "canal real" e so trocar o JSON.

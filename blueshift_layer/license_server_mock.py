@@ -5,8 +5,9 @@ Contrato casado com blueshift_layer/license_client.py:
   - Recebe POST /v1/validate  com body JSON {"key": "<chave>"}
   - Responde JSON {"valid": true|false, ...metadados}
 
-Em producao este mock some: o client aponta para
-https://license.blueshift.app/v1/validate e o backend real valida a chave.
+Em producao este mock NAO roda: o client aponta (BLUESHIFT_LICENSE_URL)
+para o License Server da BlueShift — o mesmo backend da pagina publica de
+solicitacao de chave (cadastro da empresa -> chave emitida).
 
 Chaves aceitas no mock (dev):
   - Qualquer chave com prefixo "BS-DEV-"  -> valid=true
