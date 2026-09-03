@@ -349,11 +349,11 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 
 | Variável | Padrão | Efeito |
 |:---------|:-------|:-------|
-| `BLUESHIFT_LICENSE` | vazio | Chave de ativação (validada no boot) |
+| `BLUESHIFT_LICENSE` | vazio | **Chave de ativação emitida pela BlueShift** — obtida no cadastro da empresa (veja a seção [Licença](#-licença)); vazio = plataforma não ativada. `BS-DEV-*` vale só em dev (`BLUESHIFT_DEV=1`) |
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** das áreas — depois a tela Cadastros → Áreas domina (banco) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo (setup inicial) |
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome aparece na tela Modelos IA); vazio = principal do agente; recomendado `hermes-3-llama-3.1-8b` (local) |
-| `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
+| `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença — **produção/cliente: aponte para o License Server da BlueShift** (a mesma base da página de solicitação, ex: `<url>/v1/validate`); default = mock local (só dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Clone git do repo (Update via Git — tela Atualizações) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`); sem ela, usa o host da requisição |
@@ -848,16 +848,31 @@ Este projeto é **código-fonte disponível (source-available)**: o repositório
 público para fins de transparência, auditoria e atualização automática das
 instalações licenciadas — a publicação NÃO concede direito de uso.
 
+> ### 🔑 Obtenha sua chave de ativação
+>
+> **https://static.190.55.99.91.clients.your-server.de:9096/**
+>
+> Cadastro da empresa (razão social, CNPJ e contato) → a chave é emitida na
+> hora. A BlueShift entra em contato com a proposta comercial. *(URL atual da
+> página de solicitação — a URL definitiva será divulgada no site da
+> BlueShift.)*
+
 **Uso e instalação** exigem:
 1. Contrato de licenciamento válido assinado com a BlueShift; e
 2. **Chave de ativação emitida pela BlueShift** para a empresa contratante
-   (obtida mediante cadastro: razão social, CNPJ e contato — a BlueShift
-   entra em contato com a proposta comercial).
+   (obtida pelo cadastro no link acima).
 
 Não existem chaves de uso geral: instalação sem chave válida não é
 licenciada (a tela **Atualizações** mostra o status da licença). Chaves
 `BS-DEV-*` são aceitas **somente em ambiente de desenvolvimento**
 (`BLUESHIFT_DEV=1`) — nunca em produção.
+
+**Validação em produção:** a instalação valida a chave contra o License
+Server da BlueShift — configure no `.env`:
+```
+BLUESHIFT_LICENSE=SUA-CHAVE
+BLUESHIFT_LICENSE_URL=<url-da-pagina-de-solicitacao>/v1/validate
+```
 
 **Serviços adicionais** (fine-tuning de modelos, retreino, suporte
 estendido, treinamento) não estão incluídos na licença: são contratados

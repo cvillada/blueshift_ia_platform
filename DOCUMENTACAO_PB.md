@@ -25,7 +25,7 @@ Componentes principais:
 | **Skills** | Instruções de comportamento (SKILL.md) que guiam os agentes |
 | **Canais** | Integração máquina-a-máquina com token próprio (API/webhook) |
 | **Gateway** | OpenAI-compatível para chats externos (Open WebUI, apps) — porta 9003 |
-| **Licença** | Validação por chave anual; offline (servidor mock incluso) |
+| **Licença** | Anual por empresa — chave de ativação emitida pela BlueShift (cadastro da empresa); validação online contra o License Server BlueShift em produção |
 
 ---
 
@@ -96,6 +96,11 @@ O primeiro boot cria o banco `data/portal.db` e semeia o demo
 
 ### 3.2 Docker (produção / entrega)
 
+> **🔑 Antes de instalar em produção, solicite a chave de ativação** —
+> cadastro da empresa (razão social, CNPJ e contato) → chave emitida na hora:
+> **https://static.190.55.99.91.clients.your-server.de:9096/**
+> (chave `BS-DEV-*` só vale em dev; produção sem chave real = não ativada).
+
 ```bash
 docker build -t blueshift/platform -f docker/Dockerfile .
 docker volume create blueshift_data
@@ -105,6 +110,10 @@ docker run -d --name blueshift-platform -p 8090:8080 \
   -e BLUESHIFT_LICENSE=SUA-CHAVE-DA-BLUESHIFT \
   blueshift/platform blueshift portal
 ```
+
+> Em produção a validação é online contra o License Server da BlueShift:
+> defina também `BLUESHIFT_LICENSE_URL=<url-da-pagina-de-solicitacao>/v1/validate`
+> no `.env` (o default aponta para o mock local, que só conhece chaves de dev).
 
 Ou via docker-compose (com `BLUESHIFT_AREAS` e `TZ=America/Sao_Paulo`):
 ```bash
@@ -127,15 +136,15 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_PORTAL_SECRET` | aleatório | Secret key das sessões |
 | `BLUESHIFT_PORTAL_SECURE` | vazio | `1/true` → cookie Secure (HTTPS) |
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** das áreas — depois a tela Cadastros → Áreas domina (banco) |
-| `BLUESHIFT_LICENSE` | vazio | Chave de ativação da instalação (validada no boot) |
-| `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença |
+| `BLUESHIFT_LICENSE` | vazio | **Chave de ativação emitida pela BlueShift** (cadastro da empresa — link na seção de instalação/licença deste documento); vazio = não ativada. `BS-DEV-*` só com `BLUESHIFT_DEV=1` |
+| `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença — produção/cliente: License Server da BlueShift (`<url-da-pagina-de-solicitacao>/v1/validate`); default = mock local (só dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Diretório do clone git (Update via Git — tela Atualizações) |
 | `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente; recomendado modelo local rápido (hermes-3-llama-3.1-8b) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`) — sem ela, usa o host da requisição. Chat externo em Docker na mesma máquina: `http://host.docker.internal:9003/v1` |
 | `BLUESHIFT_PORTAL_SECRET` | vazio | Chave da SESSÃO do portal — deve ser **FIXA entre deploys** (sem ela, cada rebuild gera uma chave nova e derruba todos os logins; usuário logado cai com redirecionamento para o login no próximo clique). Trocar em produção e manter estável |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo → primeira entrada vira Configuração inicial (cliente final) |
-| `BLUESHIFT_DEV` | 1 no Docker | Modo dev (licença BS-DEV-*) |
+| `BLUESHIFT_DEV` | 0 | **Produção/cliente = 0** (a tela Atualizações aplica de verdade; chaves `BS-DEV-*` NÃO valem); dev = 1 (dry-run + licença BS-DEV-*) |
 | `TZ` | UTC | Fuso (usar `America/Sao_Paulo`) |
 
 > O `.env.example` da raiz traz todas as variáveis com comentários — copie
