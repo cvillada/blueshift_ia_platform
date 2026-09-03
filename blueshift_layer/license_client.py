@@ -16,10 +16,12 @@ def validate(key: str) -> bool:
     """Retorna True se a chave for valida junto ao License Server."""
     if not key:
         return False
-    # MODO DEV: aceita qualquer chave comecando com "BS-DEV-" para desenvolvimento local.
-    # REMOVER este atalho antes de producao.
+    # Chaves BS-DEV-* existem SO para desenvolvimento local (BLUESHIFT_DEV=1).
+    # Em producao/cliente (DEV=0) NAO valem: a chave precisa ser emitida pela
+    # BlueShift (cadastro da empresa -> chave oficial). Sem isso, qualquer
+    # clone do repo publico "se licenciaria" com um prefixo qualquer.
     if key.startswith("BS-DEV-"):
-        return True
+        return os.getenv("BLUESHIFT_DEV") == "1"
     try:
         r = requests.post(LICENSE_SERVER_URL, json={"key": key}, timeout=TIMEOUT)
         return r.status_code == 200 and r.json().get("valid", False)

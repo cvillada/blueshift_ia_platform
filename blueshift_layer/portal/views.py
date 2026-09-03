@@ -4618,6 +4618,11 @@ def atualizacoes():
         _mascarada = (chave[:12] + "••••" + chave[-6:]) if len(chave) > 20 else "••••••"
         _badge = ('<span class="badge ok">✅ ativa</span>' if _valida
                   else '<span class="badge bad">⚠️ inválida</span>')
+        _orienta = "" if _valida else (
+            '<p class="muted" style="font-size:11px;margin-top:8px">A instalação não está '
+            'licenciada. Chaves <code>BS-DEV-*</code> valem apenas em desenvolvimento '
+            '(<code>BLUESHIFT_DEV=1</code>). Solicite sua chave de ativação à BlueShift '
+            '— a emissão é feita mediante cadastro da empresa (razão social, CNPJ e contato).</p>')
         _meta_html = ""
         if _valida and _meta.get("cliente") and _meta["cliente"] not in ("demo", None):
             _meta_html = (f'<div class="muted" style="font-size:12px;margin-top:6px">'
@@ -4630,6 +4635,7 @@ def atualizacoes():
         <code style="font-size:13px">{templates.h(_mascarada)}</code> {_badge}
       </div>
       {_meta_html}
+      {_orienta}
       <p class="muted" style="font-size:11px;margin-top:8px">A chave de ativação é definida na instalação (variável <code>BLUESHIFT_LICENSE</code>). Para trocar, reinicie o container com a nova chave.</p>
     </div>"""
     else:
@@ -4637,7 +4643,7 @@ def atualizacoes():
     <div class="card" style="max-width:680px;margin-top:14px">
       <h3 style="margin-top:0">Licença da plataforma</h3>
       <span class="badge warn">⚠️ não configurada</span>
-      <p class="muted" style="font-size:11px;margin-top:8px">Defina a variável <code>BLUESHIFT_LICENSE</code> na instalação para ativar a plataforma.</p>
+      <p class="muted" style="font-size:11px;margin-top:8px">Defina a variável <code>BLUESHIFT_LICENSE</code> na instalação para ativar a plataforma — a chave é emitida pela BlueShift mediante cadastro da empresa (razão social, CNPJ e contato). Chaves <code>BS-DEV-*</code> valem apenas em desenvolvimento (<code>BLUESHIFT_DEV=1</code>).</p>
     </div>"""
     # ── Configuracao de ambiente (roteamento + areas) ──
     _router_env = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "").strip()

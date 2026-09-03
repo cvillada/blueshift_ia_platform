@@ -299,7 +299,10 @@ pip install -e .
 
 # 4. Teste a instalação
 blueshift --help
-blueshift activate BS-DEV-teste123   # deve mostrar LICENSE OK
+# Dev local (BLUESHIFT_DEV=1): qualquer chave BS-DEV-* ativa. Produção:
+# a chave é emitida pela BlueShift mediante cadastro da empresa
+# (solicite no canal oficial — veja a seção Licença).
+blueshift activate BS-DEV-local
 
 # 5. Suba o Portal
 blueshift portal --port 8080
@@ -561,7 +564,7 @@ docker run -d --name blueshift-platform \
   -p 8080:8080 \
   -v blueshift_data:/data/blueshift \
   -e BLUESHIFT_PORTAL_DB=/data/blueshift/portal.db \
-  -e BLUESHIFT_LICENSE=BS-DEV-teste123 \
+  -e BLUESHIFT_LICENSE=SUA-CHAVE-DA-BLUESHIFT \
   blueshift/platform blueshift portal
 ```
 
@@ -841,13 +844,29 @@ Nunca entram: `metricas_diarias` (agregado perpétuo) e dados mestres (clientes,
 
 ## 📄 Licença
 
-Este projeto é distribuído sob **licença comercial de uso corporativo restrito**.
-O uso do software é permitido apenas para pessoas jurídicas com contrato
-de licenciamento válido e assinado com a BlueShift.
+Este projeto é **código-fonte disponível (source-available)**: o repositório é
+público para fins de transparência, auditoria e atualização automática das
+instalações licenciadas — a publicação NÃO concede direito de uso.
+
+**Uso e instalação** exigem:
+1. Contrato de licenciamento válido assinado com a BlueShift; e
+2. **Chave de ativação emitida pela BlueShift** para a empresa contratante
+   (obtida mediante cadastro: razão social, CNPJ e contato — a BlueShift
+   entra em contato com a proposta comercial).
+
+Não existem chaves de uso geral: instalação sem chave válida não é
+licenciada (a tela **Atualizações** mostra o status da licença). Chaves
+`BS-DEV-*` são aceitas **somente em ambiente de desenvolvimento**
+(`BLUESHIFT_DEV=1`) — nunca em produção.
+
+**Serviços adicionais** (fine-tuning de modelos, retreino, suporte
+estendido, treinamento) não estão incluídos na licença: são contratados
+separadamente com a BlueShift, mediante proposta de serviço.
 
 Veja o arquivo [LICENSE](LICENSE) para os termos completos.
 
-Para obter uma licença comercial, entre em contato.
+Para obter uma licença comercial ou solicitar sua chave de ativação,
+entre em contato: https://www.blueshift.com.br/FaleComBlueShift
 
 ---
 

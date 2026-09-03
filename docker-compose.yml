@@ -32,7 +32,10 @@ services:
       # e TODAS as sessoes morrem — usuario logado cai com 302 no proximo
       # clique). Trocar em producao e manter estavel entre deploys.
       BLUESHIFT_PORTAL_SECRET: "${BLUESHIFT_PORTAL_SECRET:-bs-portal-secret-troque-em-producao}"
-      BLUESHIFT_LICENSE: "${BLUESHIFT_LICENSE:-BS-DEV-CHANGE-ME}"
+      # Chave de ativacao emitida pela BlueShift (cadastro da empresa).
+      # VAZIA = plataforma nao ativada (a tela Atualizacoes orienta a
+      # solicitacao). NUNCA usar BS-DEV-* em producao (so valem com DEV=1).
+      BLUESHIFT_LICENSE: "${BLUESHIFT_LICENSE:-}"
       BLUESHIFT_LICENSE_URL: "http://localhost:9000/v1/validate"
       BLUESHIFT_LICENSE_PORT: "9000"
       BLUESHIFT_UPDATE_URL: "${BLUESHIFT_UPDATE_URL:-http://localhost:9001/v1/channel}"

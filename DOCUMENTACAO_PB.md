@@ -102,7 +102,7 @@ docker volume create blueshift_data
 docker run -d --name blueshift-platform -p 8090:8080 \
   -v blueshift_data:/data/blueshift \
   -e BLUESHIFT_PORTAL_DB=/data/blueshift/portal.db \
-  -e BLUESHIFT_LICENSE=BS-DEV-teste123 \
+  -e BLUESHIFT_LICENSE=SUA-CHAVE-DA-BLUESHIFT \
   blueshift/platform blueshift portal
 ```
 
@@ -250,7 +250,7 @@ e o administrador inicial. Depois disso, o login normal aparece. Campos:
 | Nome | ✅ | `XPTO Seguros (Piloto)` | Nome comercial |
 | Empresa | ❌ | `XPTO Seguro S/A` | Razão social |
 | Email de contato | ❌ | `ti@empresa.com.br` | E-mail do suporte técnico |
-| Licença | ❌ | `BS-DEV-teste123` | Chave de licença |
+| Licença | ❌ | `BS-2026-XXXX` | Chave de ativação emitida pela BlueShift |
 | Status | ❌ | `ativo` | ativo / suspenso |
 
 Ações na lista: **editar**, **suspender/reativar** (por cliente).

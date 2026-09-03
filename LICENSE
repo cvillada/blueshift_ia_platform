@@ -1,19 +1,37 @@
-Licença BlueShift IA Platform — Uso Corporativo Restrito
+Licença BlueShift IA Platform — Código-Fonte Disponível (Source-Available)
 
 Copyright (c) 2026 BlueShift
 
 Todos os direitos reservados.
 
 A BlueShift IA Platform (doravante "Software") é um produto comercial
-de propriedade exclusiva da BlueShift.
+de propriedade exclusiva da BlueShift. Seu código-fonte é disponibilizado
+publicamente em repositório aberto (GitHub) para fins de transparência,
+auditoria e atualização automática das instalações licenciadas.
 
-1. CONCESSÃO DE LICENÇA
-   O uso do Software é permitido APENAS para pessoas jurídicas que
-   possuam contrato de licenciamento válido e assinado com a BlueShift.
-   O contrato define o escopo, período, número de instalações e demais
-   condições de uso.
+1. DISPONIBILIZAÇÃO PÚBLICA DO CÓDIGO
+   A publicação do código-fonte em repositório público NÃO constitui
+   licença de uso, instalação, distribuição ou modificação do Software.
+   A consulta, leitura ou clonagem do repositório não concede ao visitante
+   qualquer direito de executar, instalar ou redistribuir o Software.
 
-2. RESTRIÇÕES
+2. CONCESSÃO DE LICENÇA DE USO
+   O uso e a instalação do Software são permitidos APENAS para pessoas
+   jurídicas que possuam contrato de licenciamento válido e assinado com
+   a BlueShift E chave de ativação emitida pela BlueShift para a empresa
+   contratante. O contrato define escopo, período, número de instalações
+   e demais condições de uso. Cada instalação deve ser ativada com a
+   chave fornecida pela BlueShift; instalações sem chave válida não são
+   licenciadas.
+
+3. SOLICITAÇÃO DE CHAVE
+   A chave de ativação é emitida pela BlueShift mediante cadastro da
+   empresa solicitante (razão social, CNPJ e contato) no canal oficial
+   de solicitação. O cadastro destina-se ao relacionamento comercial e
+   à elaboração da proposta. Não existem chaves de uso geral: qualquer
+   chave sem emissão oficial da BlueShift é inválida.
+
+4. RESTRIÇÕES
    É expressamente proibido, sem autorização prévia por escrito da BlueShift:
    a) Distribuir, ceder, sublicenciar, alugar ou disponibilizar o Software
       a terceiros não autorizados no contrato;
@@ -21,29 +39,37 @@ de propriedade exclusiva da BlueShift.
    c) Remover ou alterar avisos de direitos autorais ou propriedade;
    d) Utilizar o Software para fins diversos dos previstos no contrato.
 
-3. AUDITORIA
+5. SERVIÇOS ADICIONAIS
+   Fine-tuning de modelos, retreino com dados do cliente, suporte técnico
+   estendido, treinamento e demais serviços profissionais NÃO estão
+   incluídos na licença do Software. São contratados separadamente com a
+   BlueShift, mediante proposta de serviço específica, e podem exigir
+   contrato e valores próprios.
+
+6. AUDITORIA
    A BlueShift reserva-se o direito de auditar o uso do Software pelo
    licenciado, mediante aviso prévio razoável, para verificar a
    conformidade com os termos contratuais.
 
-4. ISENÇÃO DE GARANTIAS
+7. ISENÇÃO DE GARANTIAS
    O Software é fornecido "como está", sem garantias de qualquer tipo,
    expressas ou implícitas, incluindo, mas não se limitando a, garantias
    de comercialização, adequação a um fim específico e não violação.
    O uso do Software é de inteira responsabilidade do licenciado.
 
-5. LIMITAÇÃO DE RESPONSABILIDADE
+8. LIMITAÇÃO DE RESPONSABILIDADE
    Em nenhum caso a BlueShift será responsável por quaisquer danos
    diretos, indiretos, incidentais, especiais, exemplares ou
    consequenciais decorrentes do uso ou da impossibilidade de uso
    do Software.
 
-6. VIGÊNCIA
+9. VIGÊNCIA
    Esta licença é válida enquanto o contrato de licenciamento estiver
-   ativo. Ao término ou rescisão do contrato, o licenciado deve
-   cessar todo uso e eliminar todas as cópias do Software.
+   ativo. Ao término ou rescisão do contrato, o licenciado deve cessar
+   todo uso, desativar a instalação e eliminar todas as cópias do Software.
 
 ---
 
-Para obter uma licença comercial, entre em contato:
+Para obter uma licença comercial ou solicitar sua chave de ativação,
+entre em contato:
 BlueShift — https://www.blueshift.com.br/FaleComBlueShift
