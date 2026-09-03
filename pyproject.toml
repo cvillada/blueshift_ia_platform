@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blueshift-layer"
-version = "0.10.11"
+version = "0.10.12"
 description = "BlueShift IA Platform — Flask standalone, on-premise, Docker + license key"
 requires-python = ">=3.11"
 dependencies = [
