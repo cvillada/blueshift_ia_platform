@@ -26,6 +26,7 @@
 - [Portal do Cliente](#-portal-do-cliente)
 - [Agentes e Conectores](#-agentes-e-conectores)
 - [Docker](#-docker)
+- [Instalação sem Docker (Linux direto)](#-instalação-sem-docker-linux-direto)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Stack Tecnológica](#-stack-tecnológica)
 - [Licença](#-licença)
@@ -608,6 +609,58 @@ Para conectar o **Open WebUI** (container na mesma máquina):
 - Sem Docker: `set -a; . ./.env; set +a` + `blueshift gateway --port 9003`
 
 ---
+
+## 🖥️ Instalação sem Docker (Linux direto)
+
+O produto roda **100% sem Docker**: é Python puro (Flask standalone). Para
+clientes que preferem rodar direto no servidor Linux (sem containers):
+
+```bash
+# 1. Clone do repo (o MESMO clone usado pelo Update)
+sudo mkdir -p /opt/blueshift/repo && sudo chown $USER /opt/blueshift/repo
+git clone https://github.com/cvillada/blueshift_ia_platform.git /opt/blueshift/repo
+cd /opt/blueshift/repo
+
+# 2. Ambiente virtual + dependencias
+python3 -m venv .venv
+.venv/bin/pip install -e .
+
+# 3. Servico systemd (/etc/systemd/system/blueshift.service)
+#    [Unit]
+#    Description=CL Agents — BlueShift IA Platform
+#    After=network.target
+#
+#    [Service]
+#    WorkingDirectory=/opt/blueshift/repo
+#    Environment=BLUESHIFT_PORTAL_DB=/opt/blueshift/data/portal.db
+#    Environment=BLUESHIFT_LICENSE=SUA-CHAVE
+#    Environment=BLUESHIFT_LICENSE_URL=<url-da-pagina-de-solicitacao>/v1/validate
+#    Environment=BLUESHIFT_REPO_DIR=/opt/blueshift/repo
+#    ExecStart=/opt/blueshift/repo/.venv/bin/blueshift portal --port 8080
+#    Restart=always
+#
+#    [Install]
+#    WantedBy=multi-user.target
+
+sudo systemctl daemon-reload && sudo systemctl enable --now blueshift
+# Acesse: http://<servidor>:8080/portal
+```
+
+**Atualização pelo botão (tela Atualizações) funciona sem Docker:** o portal
+detecta que roda fora de container (`/.dockerenv` ausente) e o botão
+**Aplicar** faz `git fetch + checkout` da tag no repo e reinicia o serviço
+via `systemctl restart blueshift` — com o mesmo aviso de "baixado mas não
+aplicado" e log em `/opt/blueshift/update.log`.
+
+Variáveis específicas do modo bare:
+- `BLUESHIFT_REPO_DIR=/opt/blueshift/repo` — clone do repo (default já é esse)
+- `BLUESHIFT_SERVICE_NAME=blueshift` — nome do serviço systemd (default
+  `blueshift`); se o serviço tiver outro nome, defina aqui
+
+> **Nota:** sem systemd no host, o botão faz o checkout e o log orienta o
+> restart manual — a tela mostra "baixado mas NÃO aplicado" até o serviço
+> reiniciar. Docker continua sendo o modo recomendado de entrega; o bare é
+> para servidores Linux sem containers.
 
 ## 📁 Estrutura do Projeto
 

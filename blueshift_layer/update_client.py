@@ -26,6 +26,11 @@ from . import __version__ as CURRENT_VERSION
 
 REPO_DIR = os.getenv("BLUESHIFT_REPO_DIR", "/opt/blueshift/repo")
 UPDATE_SCRIPT = os.getenv("BLUESHIFT_UPDATE_SCRIPT", "/opt/blueshift/repo/update.sh")
+UPDATE_BARE_SCRIPT = os.getenv(
+    "BLUESHIFT_UPDATE_BARE_SCRIPT",
+    os.path.join(os.path.dirname(os.getenv("BLUESHIFT_UPDATE_SCRIPT",
+                                           "/opt/blueshift/repo/update.sh")),
+                 "update_bare.sh"))
 LOG_FILE = os.getenv("BLUESHIFT_UPDATE_LOG", "/opt/blueshift/update.log")
 
 
@@ -41,6 +46,16 @@ def _git(*args: str, cwd: str | None = None, timeout: int = 15) -> str:
 
 def _repo_existe() -> bool:
     return os.path.isdir(os.path.join(REPO_DIR, ".git"))
+
+
+def _em_container_docker() -> bool:
+    """True quando o portal roda DENTRO de um container Docker (/.dockerenv
+    e a marca padrao deixada pelo Docker no filesystem do container).
+
+    False = modo bare-metal (processo Python direto no Linux, sem Docker):
+    o update nao recria containers — faz checkout e reinicia o servico.
+    """
+    return os.path.exists("/.dockerenv")
 
 
 def versao_instalada() -> str:
@@ -112,9 +127,17 @@ def check() -> dict:
     # (imagem/container) — sinal de update baixado mas NAO aplicado (build ok
     # que nao trocou os containers, ou container 'Created' nunca iniciado).
     codigo = CURRENT_VERSION
-    status = _estado_container()
-    aplicado = (atual.lstrip("v") == codigo) and status != "created" \
-        if atual.startswith("v") else True
+    if _em_container_docker():
+        status = _estado_container()
+        # 'created' = container criado mas NUNCA iniciado — update pela metade
+        aplicado = (atual.lstrip("v") == codigo) and status != "created" \
+            if atual.startswith("v") else True
+    else:
+        # bare-metal (sem Docker): o portal roda o codigo do repo (install -e
+        # .) — 'aplicado' = checkout do repo == codigo rodando. Sem estado de
+        # container para inspecionar.
+        status = "n/a"
+        aplicado = (atual.lstrip("v") == codigo) if atual.startswith("v") else True
     base = {
         "atual": atual,
         "codigo": codigo,
@@ -162,6 +185,32 @@ def apply(version: str | None = None) -> dict:
     if not os.path.isfile(UPDATE_SCRIPT):
         return {"ok": False, "motivo": "update_script_ausente",
                 "erro": f"{UPDATE_SCRIPT} nao encontrado"}
+
+    if not _em_container_docker():
+        # ── MODO BARE-METAL (sem Docker) ──
+        # Portal roda como processo Python direto no Linux (pip install -e .,
+        # servico systemd). Update = git fetch/checkout no repo + restart do
+        # servico — nao ha containers para recriar. O update_bare.sh roda
+        # desacoplado (start_new_session), mesma ideia do container irmao:
+        # sobrevive ao restart do proprio servico e termina sozinho.
+        if not os.path.isfile(UPDATE_BARE_SCRIPT):
+            return {"ok": False, "motivo": "update_script_ausente",
+                    "erro": f"{UPDATE_BARE_SCRIPT} nao encontrado"}
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as logf:
+                logf.write(f"\n=== update {version} iniciado (bare-metal) ===\n")
+                proc = subprocess.Popen(
+                    ["bash", UPDATE_BARE_SCRIPT, version],
+                    stdout=logf, stderr=subprocess.STDOUT,
+                    start_new_session=True,  # sobrevive ao restart do servico
+                )
+            return {"ok": True, "versao": version, "pid": proc.pid,
+                    "mensagem": f"Atualizacao {version} iniciada em background "
+                                f"(log: {LOG_FILE})"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "motivo": "falha_update", "erro": str(e)}
+
+    # ── MODO DOCKER (container): fluxo atual, inalterado ──
 
     # Update via container IRMAO descartavel: rodar o update.sh DENTRO do
     # portal morre no meio — o rebuild recria o proprio portal e o processo
