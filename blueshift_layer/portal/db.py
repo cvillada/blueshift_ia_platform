@@ -1554,6 +1554,28 @@ def listar_documentos(cliente_id: int | None = None, area: str | None = None) ->
         return [dict(r) for r in _rows(conn, sql, params)]
 
 
+def purgar_conteudo_tool_call() -> dict:
+    """Purge retroativo: remove chunks de knowledge/memories contaminados
+    com tag de tool_call cru (<tool_call>, <function=, <parameter=).
+
+    Contagio RAG: um chunk com tool_call vira exemplo few-shot — o LLM
+    (fine-tuned p/ tool-use) imita o formato e a resposta ruim vira chunk
+    novo, reforcando o ciclo. Rodado no boot do portal (idempotente:
+    apos a 1a execucao nao ha mais contaminados). Retorna contagem p/ tabela.
+    """
+    padroes = ("%<tool_call>%", "%<function=%", "%<parameter=%")
+    resultado: dict[str, int] = {}
+    with get_conn() as conn:
+        for tabela in ("knowledge", "memories"):  # lista fixa interna
+            total = 0
+            for p in padroes:
+                cur = conn.execute(
+                    f"DELETE FROM {tabela} WHERE conteudo LIKE ?", (p,))
+                total += cur.rowcount
+            resultado[tabela] = total
+    return resultado
+
+
 def buscar_documento(did: int) -> dict | None:
     with get_conn() as conn:
         row = _one(conn, "SELECT * FROM knowledge WHERE id=?", (did,))

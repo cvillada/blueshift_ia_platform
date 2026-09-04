@@ -503,6 +503,10 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         "informacoes ATUAIS dos bancos e sistemas da empresa. "
         "O CONTEXTO (base de conhecimento) pode conter informacoes desatualizadas "
         "e deve ser usado apenas como referencia SECUNDARIA.\n\n"
+        "IMPORTANTE: as ferramentas/conectores JA foram executados pelo sistema "
+        "e seus resultados estao nos DADOS DE SISTEMA/CONTEXTO. NAO emita "
+        "chamadas de funcao nem tags (<tool_call>, <function=...>, <parameter=...) "
+        "— responda apenas em texto corrido.\n\n"
     )
     ausentes_nota: list = []
     if ferramentas:
@@ -633,8 +637,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     )
 
     if out["ok"]:
-        db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {_limpar_imagens(out['content'])}",
-                         tipo="conversa", area=area)
+        # Memoria de conversa: nao grava resposta contaminada com tag de
+        # tool_call cru (contagio RAG — o chunk ensinaria o modelo a imitar)
+        if not _tem_tool_call(out["content"]):
+            db.criar_memoria(cliente_id, usuario, f"[{agente['nome']}] P: {pergunta} | R: {_limpar_imagens(out['content'])}",
+                             tipo="conversa", area=area)
         detalhe = f"trace:{trace_id} | {pergunta[:60]}" + (f" | fallback->{modelo_usado}" if usou_fallback else "")
         db.registrar_uso_token(
             cliente_id=cliente_id, modelo=modelo_usado,
@@ -703,6 +710,14 @@ def _limpar_imagens(texto: str) -> str:
         "[imagem do grafico]", texto or "")
 
 
+def _tem_tool_call(texto: str) -> bool:
+    """True se o texto contem tag de tool_call cru (<tool_call>, <function=,
+    <parameter=) — resposta contaminada que, se vira chunk de RAG/memoria,
+    faz o LLM imitar o formato (contagio few-shot). Nunca deve ser gravada.
+    """
+    return bool(re.search(r"<tool_call>|<function=|<parameter=", texto or ""))
+
+
 def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,
                          ferramentas: list[dict]) -> None:
     """Guarda o resultado dos conectores + resposta no RAG para consultas futuras.
@@ -710,7 +725,11 @@ def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: st
     Só salva se:
     - Houver dados de conectores (ferramentas com resultado)
     - Não existir chunk muito similar (evita duplicatas)
+    - A resposta NAO estiver contaminada com tag de tool_call cru
+      (contagio RAG: chunk ruim viraria exemplo few-shot para o modelo)
     """
+    if _tem_tool_call(resposta):
+        return  # resposta contaminada — nao vira RAG
     dados_conectores = [f for f in ferramentas if "resultado" in f and f.get("resultado")]
     if not dados_conectores:
         return

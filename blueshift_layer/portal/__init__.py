@@ -59,6 +59,16 @@ def create_app() -> "Flask":
     app.debug = False  # nunca rodar em debug em producao
 
     db.init_db()
+    # Purge retroativo de contagio RAG: remove chunks com tag de tool_call
+    # cru gravados antes do filtro de gravacao (best-effort, idempotente).
+    try:
+        _purge = db.purgar_conteudo_tool_call()
+        if sum(_purge.values()):
+            app.logger.info(
+                f"[rag] purge tool_call: {_purge.get('knowledge', 0)} knowledge "
+                f"+ {_purge.get('memories', 0)} memories removidos")
+    except Exception:
+        pass  # nunca derruba o boot
     # Seed demo: so quando BLUESHIFT_SEED_DEMO != "0". Em instalacao de cliente
     # final (sem BLUESHIFT_DEV), desligar nao cria dados demo de empresa —
     # o cliente cadastra a propria empresa na tela Clientes.
