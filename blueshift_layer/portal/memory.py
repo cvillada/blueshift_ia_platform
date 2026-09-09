@@ -128,10 +128,11 @@ def construir_store(cliente_id: int | None = None) -> VectorStore:
     'conversa' ficam de fora para nao poluir o RAG nem criar loop.
     """
     rows: list[dict] = []
-    mem = db.listar_memorias(cliente_id)
+    # tipo 'conversa' (historico de trocas) NAO entra no RAG — filtrado na
+    # propria query, sem carregar/tokenizar o historico inteiro por busca.
+    mem = db.listar_memorias(cliente_id, tipos=("preferencia", "contexto"))
     for m in mem:
-        if m.get("tipo") in ("preferencia", "contexto"):
-            rows.append({**m, "_fonte": "memoria", "_meta": m["usuario"]})
+        rows.append({**m, "_fonte": "memoria", "_meta": m["usuario"]})
     docs = db.listar_documentos(cliente_id)
     for d in docs:
         rows.append({**d, "_fonte": "base_conhecimento", "_meta": d["categoria"]})

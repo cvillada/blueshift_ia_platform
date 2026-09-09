@@ -413,6 +413,10 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     """
     import time as _time
     _t0 = _time.time()
+    # Marcos de tempo por fase (ms) — preenchem o trace (instrumentacao de
+    # latencia: roteador / conectores / rag / llm separados do total).
+    _ms_rot = _ms_conn = _ms_rag = _ms_llm = 0.0
+    _marca = _t0
     cliente_id = agente["cliente_id"]
     # Agente pausado nao atende (portal, API e gateway passam por aqui).
     if (agente.get("status") or "ativo") == "pausado":
@@ -447,6 +451,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                 modelo_roteador = None
             modelo_roteador = modelo_roteador or modelo
             conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
+            _marca = _time.time()  # inicio: roteador (3 votos + extracao IA)
             somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
             # P1: determinístico por placeholder — roda SEMPRE, inclusive quando
             # o roteador falha (None -> executa TODOS os conectores da área):
@@ -466,10 +471,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                     for k, v in params_ia.items():
                         if k in ph and k not in params:
                             params[k] = v
+            _ms_rot = (_time.time() - _marca) * 1000
+            _marca = _time.time()  # inicio: execucao dos conectores
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
                 somente_ids=somente_ids, modelo=modelo_roteador,
             )
+            _ms_conn = (_time.time() - _marca) * 1000
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
 
@@ -478,6 +486,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         f.get("resultado") for f in ferramentas
     )
     top_k = 2 if tem_dados_vivos else 4
+    _marca = _time.time()  # inicio: RAG (busca + possivel refiltro)
     contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k, area=area)
 
     # Filtra contexto RAG: remove documentos com id_cliente diferente do extraido
@@ -487,6 +496,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         # Se filtrou tudo e tem dados vivos, ok. Senao busca sem filtro.
         if not contexto and not tem_dados_vivos:
             contexto = memory.buscar_contexto(pergunta, cliente_id, usuario=usuario, top_k=top_k, area=area)
+    _ms_rag = (_time.time() - _marca) * 1000
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
     skills_txt = _skills_text(agente.get("skills", ""))
@@ -558,7 +568,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             resumo_dados = _resumo_dados(ferramentas)
             if resumo_dados:
                 spec_modelo = locals().get("modelo_roteador") or modelo
+                _marca = _time.time()  # inicio: LLM (spec de grafico)
                 spec = _especificar_grafico(pergunta, resumo_dados, spec_modelo)
+                _ms_llm += (_time.time() - _marca) * 1000
                 if spec:
                     from . import grafico as grafico_mod
                     # A imagem e saida: aplica a mesma politica de mascara
@@ -589,7 +601,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     ]
 
     # --- tentativa principal ---
+    _marca = _time.time()  # inicio: LLM (resposta principal)
     out = llm_client.chat(modelo, mensagens)
+    _ms_llm += (_time.time() - _marca) * 1000
     modelo_usado = modelo["modelo"]
     usou_fallback = False
 
@@ -599,7 +613,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     if (not out["ok"] or _vazio) and agente.get("modelo_secundario_id") and agente["modelo_secundario_id"] != agente["modelo_id"]:
         modelo2 = db.buscar_modelo(agente["modelo_secundario_id"])
         if modelo2:
+            _marca = _time.time()  # inicio: LLM (fallback)
             out2 = llm_client.chat(modelo2, mensagens)
+            _ms_llm += (_time.time() - _marca) * 1000
             if out2["ok"] and (out2.get("content") or "").strip():
                 out = out2
                 modelo_usado = modelo2["modelo"]
@@ -633,6 +649,10 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         tokens=tok,
         resposta=_limpar_imagens(out.get("content", "")),
         tempo_ms=tempo_ms,
+        roteador_ms=int(_ms_rot),
+        conectores_ms=int(_ms_conn),
+        rag_ms=int(_ms_rag),
+        llm_ms=int(_ms_llm),
         agente_id=agente.get("id"),
     )
 
@@ -654,9 +674,6 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         )
         db.registrar_auditoria(usuario, "sistema", "agente_responder", alvo=agente["nome"],
                                cliente_id=cliente_id, detalhe=detalhe)
-
-        # --- RAG automatico: salva resultado dos conectores no knowledge base ---
-        _salvar_no_knowledge(cliente_id, area, pergunta, out["content"], ferramentas)
 
     # --- Feedback implicito: detecta pergunta repetida ---
     if out["ok"] and agente.get("id"):
@@ -716,53 +733,6 @@ def _tem_tool_call(texto: str) -> bool:
     faz o LLM imitar o formato (contagio few-shot). Nunca deve ser gravada.
     """
     return bool(re.search(r"<tool_call>|<function=|<parameter=", texto or ""))
-
-
-def _salvar_no_knowledge(cliente_id: int, area: str, pergunta: str, resposta: str,
-                         ferramentas: list[dict]) -> None:
-    """Guarda o resultado dos conectores + resposta no RAG para consultas futuras.
-
-    Só salva se:
-    - Houver dados de conectores (ferramentas com resultado)
-    - Não existir chunk muito similar (evita duplicatas)
-    - A resposta NAO estiver contaminada com tag de tool_call cru
-      (contagio RAG: chunk ruim viraria exemplo few-shot para o modelo)
-    """
-    if _tem_tool_call(resposta):
-        return  # resposta contaminada — nao vira RAG
-    dados_conectores = [f for f in ferramentas if "resultado" in f and f.get("resultado")]
-    if not dados_conectores:
-        return
-
-    blocos = []
-    fontes = set()
-    for f in dados_conectores:
-        fonte = f.get("conector", "desconhecido")
-        fontes.add(fonte)
-        res = f.get("resultado", "")
-        # Limita a 300 chars por ferramenta pra nao explodir o RAG
-        res_str = str(res)[:300]
-        blocos.append(f"[{fonte}.{f.get('tool','?')}] {res_str}")
-
-    texto = f"Pergunta: {pergunta[:200]}\nResposta: {_limpar_imagens(resposta[:500])}\nDados: {' | '.join(blocos)}"
-    if len(texto) < 30:
-        return
-
-    # Verifica se ja existe algo similar (evita duplicar a cada pergunta identica)
-    from . import memory as memory_mod
-    existing = memory_mod.buscar_contexto(pergunta, cliente_id, usuario=None, top_k=1, registrar_acesso=False, area=area)
-    for e in existing:
-        if e.get("score", 0) > 0.95 and pergunta[:50] in e.get("texto", ""):
-            return  # ja tem no RAG, nao duplica
-
-    titulo = f"RAG auto: {area}/{pergunta[:60]}"
-    try:
-        db.criar_documento(
-            cliente_id=cliente_id, titulo=titulo, categoria="base_conhecimento",
-            conteudo=texto, area=area, fonte=f"conector:{','.join(sorted(fontes))}",
-        )
-    except Exception:
-        pass  # fallback silencioso — RAG e best-effort
 
 
 # --------------------------------------------------------------------------- #

@@ -45,7 +45,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Modelos** | Híbrido: local (vLLM/LM Studio/Ollama) ou externo (OpenAI/DeepSeek/Claude) |
 | **Agentes** | Por área da empresa (vendas, suporte, financeiro, RH, operações) |
 | **Memória** | Persistente por usuário — banco vetorial local (TF-IDF + cosseno) |
-| **RAG** | Auto-alimentado por consultas reais + import CSV/PDF |
+| **RAG** | Conhecimento curado: import CSV/PDF + cadastro manual (sem auto-gravação de conversas desde v0.10.14) |
 | **Conectores** | Configuráveis: API REST, servidores MCP ou consultas SQL |
 | **Gateway OpenAI** | Chats externos (Open WebUI, LibreChat, apps) no protocolo padrão — porta 9003 |
 | **Skills IA** | Geração de skills com o próprio modelo cadastrado |
@@ -141,8 +141,8 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
     │   * Modelo principal + fallback automático
     │
     ▼ (pós-resposta)
-5   Auto-alimentação  →  Guarda pergunta + resposta na memória
-    │   Próxima pergunta similar: etapa 2 responde direto, sem conector
+5   Pós-resposta  →  Grava pergunta + resposta no histórico (memória conversa)
+    │   Base de conhecimento: só import/cadastro manual (sem auto-feed — v0.10.14)
     │
     ▼
 6   Webhook (opcional)  →  POST resposta para URL externa (com retry 3x)

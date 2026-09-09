@@ -1046,6 +1046,13 @@ def agente_testar(aid: int):
           h+='<div style="font-size:11px;color:var(--muted-soft)">'+s.detalhe+'</div></div>';
         }}
         h+='</div><hr>';
+        var _rot=t.roteador_ms||0,_con=t.conectores_ms||0,_ragm=t.rag_ms||0,_llm=t.llm_ms||0;
+        if(_rot+_con+_ragm+_llm>0){{h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #2563eb">Roteador <b>'+_rot+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #7c3aed">Conectores <b>'+_con+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #059669">RAG <b>'+_ragm+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
         h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
@@ -2320,6 +2327,13 @@ def auditoria():
         }}
         h+='</div>';
         h+='<hr>';
+        var _rot=t.roteador_ms||0,_con=t.conectores_ms||0,_ragm=t.rag_ms||0,_llm=t.llm_ms||0;
+        if(_rot+_con+_ragm+_llm>0){{h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #2563eb">Roteador <b>'+_rot+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #7c3aed">Conectores <b>'+_con+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #059669">RAG <b>'+_ragm+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
+          h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
@@ -3266,6 +3280,9 @@ def memoria():
 
     # Opcoes do seletor de limite
     limite_opts = " ".join(f'<option value="{n}" {"selected" if limite==n else ""}>{n}</option>' for n in [10,20,50,100,200])
+    export_btn = ('<a class="btn ghost" href="/portal/memoria/exportar-jsonl" style="font-size:12px" '
+                  'title="Exportar memórias como JSONL para backup/fine-tuning (máscara LGPD aplicada)">📥 Exportar JSONL</a>'
+                  if u["papel"] in ("admin", "gestor") else '')
 
     tabela = f"""<table><thead><tr><th>Tipo</th><th>Conteúdo</th><th>Usuário</th><th>Quando</th></tr></thead>
       <tbody>{body or '<tr><td colspan=4 class="empty">Nenhuma memória.</td></tr>'}</tbody></table>{pag_btns}"""
@@ -3288,13 +3305,77 @@ def memoria():
     </div>
     <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:8px">
       <div class="muted" style="font-size:13px">{total} memória(s) registrada(s)</div>
-      <div><label style="font-size:12px">Por página</label>
-        <select onchange="var u=new URL(location.href);u.searchParams.set('limite',this.value);u.searchParams.set('pagina','1');location.href=u.toString()" style="font-size:12px;padding:3px 6px">
-          {limite_opts}
-        </select></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        {export_btn}
+        <div><label style="font-size:12px">Por página</label>
+          <select onchange="var u=new URL(location.href);u.searchParams.set('limite',this.value);u.searchParams.set('pagina','1');location.href=u.toString()" style="font-size:12px;padding:3px 6px">
+            {limite_opts}
+          </select></div>
+      </div>
     </div>
     {tabela}"""
     return templates.page("Memória", content, active="memoria", user=u)
+
+
+@bp.route("/memoria/exportar-jsonl")
+@auth.login_required
+def memoria_exportar_jsonl():
+    """Exporta memorias como JSONL (backup / fine-tuning), com mascara LGPD.
+
+    Linhas tipo 'conversa' sao parseadas em pergunta/resposta quando possivel
+    (formato "[Agente] P: ... | R: ..."); preferencia/contexto saem como
+    `conteudo`. Restrito a admin/gestor.
+    """
+    u = _user()
+    if u["papel"] not in ("admin", "gestor"):
+        flash("Exportação de memórias é restrita a admin/gestor.", "warn")
+        return redirect(url_for("portal.memoria"))
+    cid = request.args.get("cliente_id", type=int)
+    rows = db.listar_memorias(cid)
+    lgpd_cfg = db.carregar_lgpd_config()
+    anonimizar = lgpd_cfg.get("anonimizar_rag") == "1"
+    if anonimizar:
+        from . import mask as _mask
+    linhas: list[str] = []
+    for m in rows:
+        conteudo = (m.get("conteudo") or "").strip()
+        if not conteudo:
+            continue
+        pergunta = resposta = ""
+        if (m.get("tipo") or "conversa") == "conversa":
+            # formato gravado pelo agente: "[Agente] P: ... | R: ..." — parse
+            # por indice (find) cobre resposta vazia; texto livre cai no else.
+            _j = conteudo.find("P: ")
+            _i = conteudo.find(" | R:")
+            if _j >= 0 and _i > _j:
+                pergunta = conteudo[_j + 3:_i].strip()
+                resposta = conteudo[_i + 5:].strip()
+        if anonimizar:
+            conteudo = _mask.aplicar_mascaras(conteudo, lgpd_cfg)
+            if pergunta:
+                pergunta = _mask.aplicar_mascaras(pergunta, lgpd_cfg)
+            if resposta:
+                resposta = _mask.aplicar_mascaras(resposta, lgpd_cfg)
+        linha = {"tipo": m.get("tipo") or "conversa", "usuario": m.get("usuario"),
+                 "area": m.get("area") or "", "criado_em": m.get("criado_em")}
+        if pergunta or resposta:
+            linha["pergunta"] = pergunta
+            linha["resposta"] = resposta
+        else:
+            linha["conteudo"] = conteudo
+        linhas.append(json.dumps(linha, ensure_ascii=False))
+    if not linhas:
+        flash("Nenhuma memória para exportar.", "warn")
+        return redirect(url_for("portal.memoria"))
+    conteudo_jsonl = "\n".join(linhas)
+    nome_arquivo = f"blueshift_memorias_{len(linhas)}registros.jsonl"
+    response = make_response(conteudo_jsonl)
+    response.headers["Content-Type"] = "application/jsonl"
+    response.headers["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    db.registrar_auditoria(u["login"], u["papel"], "memoria_exportar",
+                           alvo=f"{len(linhas)} registros", cliente_id=cid or 0,
+                           ip=request.remote_addr)
+    return response
 
 
 @bp.route("/conhecimento", methods=["GET", "POST"])
@@ -3625,7 +3706,8 @@ def conhecimento_exportar_jsonl():
     Formato compativel com TreinarModelo (mlx_lm lora):
       {"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
 
-    Documentos do tipo "RAG auto:" sao parseados para extrair pergunta e resposta.
+    Documentos LEGADOS do tipo "RAG auto:" (gravados automaticamente por
+    versoes anteriores a v0.10.14) sao parseados para extrair pergunta e resposta.
     Demais documentos viram: user="Explique sobre {titulo}", assistant={conteudo}.
     """
     area = request.args.get("area", "")
@@ -4674,6 +4756,24 @@ def atualizacoes():
           <div class="muted" style="font-size:11px">cadastro em <a href="/portal/areas">Cadastros → Áreas</a> (banco) — a variável <code>BLUESHIFT_AREAS</code> serve só como seed inicial do primeiro boot</div></div>
       </div>
     </div>"""
+    card_manual = """
+    <div class="card" style="max-width:680px;margin-top:14px">
+      <h3 style="margin-top:0">Atualização manual (se o botão falhar)</h3>
+      <p class="muted" style="font-size:12px;margin-top:0">O botão puxa a tag do repositório Git e reconstrói os containers. Se ele falhar (rede, repo sujo, imagem que não troca), atualize na mão a partir do HOST do servidor:</p>
+      <pre style="background:var(--code-bg);padding:10px;border-radius:6px;font-size:12px;overflow-x:auto;line-height:1.7;white-space:pre-wrap"># 1. Descubra a pasta do repositório no host (a saída é o caminho)
+docker inspect blueshift-platform --format '{{range .Mounts}}{{if eq .Destination "/opt/blueshift/repo"}}{{.Source}}{{end}}{{end}}'
+
+# 2. Na pasta do repositório, puxe a tag desejada e recrie os containers
+cd /caminho/da/pasta/acima
+git fetch origin --tags
+git checkout vX.Y.Z
+docker compose up -d --build
+
+# 3. Confira: container reiniciado + versão nova aplicada
+docker ps
+git describe --tags</pre>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Linux sem Docker (processo direto): <code>bash update_bare.sh vX.Y.Z</code> (reinicia o serviço via systemd). <b>Nunca</b> rode <code>docker compose down -v</code> — apaga o volume de dados. Se o botão acusar repo não encontrado, rode no host: <code>docker exec blueshift-platform bash -c 'git config --global --add safe.directory /opt/blueshift/repo'</code> (dubious ownership — o entrypoint já configura, o container irmão do update pula o entrypoint).</p>
+    </div>"""
     content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Update via Git (canal de atualização)</h3>
@@ -4690,6 +4790,7 @@ def atualizacoes():
       (<code>docker compose up -d --build</code>) — dados preservados (volumes intactos).
       O processo roda em background e o portal reinicia ao concluir.
     </div>
+    {card_manual}
     {card_licenca}
     {card_ambiente}
     """

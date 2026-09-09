@@ -635,8 +635,13 @@ também é bloqueada).
 
 **Onde:** Inteligência → Memória.
 
-**Propósito:** histórico de memória persistente por usuário/cliente — base do
-contexto do agente (auto-alimentação: pergunta+resposta são salvas).
+**Propósito:** histórico de memória persistente por usuário/cliente.
+
+- Toda resposta do agente grava a memória tipo **conversa**
+  (`[Agente] P: ... | R: ...`) — histórico para auditoria e export.
+- Tipos **preferência** e **contexto** (cadastro manual) alimentam o contexto
+  do agente; memória tipo **conversa** NÃO entra no RAG (isolamento — não
+  polui a base de conhecimento com trocas de chat).
 
 | Campo | Obrigatório | Exemplo |
 |:------|:-----------:|:--------|
@@ -644,6 +649,11 @@ contexto do agente (auto-alimentação: pergunta+resposta são salvas).
 | Tipo | ✅ | pergunta / resposta / nota |
 
 - Lista com paginação (10/20/50/100/200 por página).
+- **Exportar JSONL** (admin/gestor): baixa o histórico como
+  `blueshift_memorias_Nregistros.jsonl` — conversas saem parseadas em
+  `pergunta`/`resposta`; preferência/contexto saem como `conteudo`. Máscara
+  LGPD aplicada quando ativada (mesma política do export de Conhecimento).
+  Auditoria `memoria_exportar`.
 - Acesso: login_required.
 
 ### 5.12 Conhecimento (/portal/conhecimento) — RAG
@@ -671,6 +681,10 @@ Importações em massa:
 
 Ações: **editar**, **excluir**, **Exportar JSONL** (formato de fine-tuning;
 com anonimização LGPD se ativada). Colunas: acessos e último acesso.
+
+A base NÃO recebe auto-gravação de conversas (desde v0.10.14): cresce apenas
+por cadastro manual, import CSV/PDF e indexação de skills. Documentos legados
+"RAG auto:" de versões anteriores permanecem e são parseados no Exportar JSONL.
 Filtros por Cliente, Área, Categoria, Fonte.
 
 ### 5.13 Chat de teste (/portal/chat)
@@ -851,6 +865,20 @@ instalação:
   inexistente; vazio = modelo principal de cada agente);
 - **Áreas configuradas** — a lista do cadastro Cadastros → Áreas (banco;
   a env `BLUESHIFT_AREAS` serve só como seed inicial do primeiro boot).
+
+**Card "Atualização manual (se o botão falhar)":** traz os comandos para
+atualizar na mão a partir do **host** do servidor (útil quando o botão
+erra por rede, repo sujo ou imagem que não troca):
+1. descobrir a pasta do repo no host (`docker inspect` do mount
+   `/opt/blueshift/repo`);
+2. `git fetch origin --tags && git checkout vX.Y.Z && docker compose up -d --build`;
+3. conferir com `docker ps` + `git describe --tags`.
+Inclui também o caminho **sem Docker** (`bash update_bare.sh vX.Y.Z`, Linux
+direto) e o aviso de nunca rodar `docker compose down -v` (apaga o volume
+de dados). O diagnóstico de "repo não encontrado" (dubious ownership) é o
+`safe.directory` do git no container — o entrypoint já configura; o
+container irmão do update pula o entrypoint, então o fix pode ser aplicado
+à mão com `docker exec` quando necessário.
 
 ### 5.22 SSO (OIDC) (/portal/sso/config)
 
@@ -1126,8 +1154,13 @@ Hierarquia no `agente.responder()`:
    RAG. Prioriza dados do conector (fonte primária) sobre RAG (secundária).
 
 Detalhes:
-- **Auto-alimentação**: pergunta+resposta são salvas na memória (sempre) e no
-  knowledge base (dedup TF-IDF).
+- **Memória de conversa**: pergunta+resposta são salvas na memória (tipo
+  'conversa') a cada resposta — histórico/auditoria/export, fora do RAG.
+- **Base de conhecimento SEM auto-feed (v0.10.14)**: o knowledge só recebe
+  conteúdo intencional (cadastro manual, import CSV/PDF, skills indexadas).
+  Antes, respostas com dados de conectores eram gravadas automaticamente
+  ("RAG auto:") — comportamento removido; documentos legados continuam na
+  base e são reconhecidos no export JSONL.
 - **Isolamento por área**: docs RAG com `area` definida só aparecem para a
   mesma área; docs sem área valem para todas.
 - **Filtro por cliente**: contexto RAG é filtrado pelo `id_cliente` da
@@ -1135,6 +1168,11 @@ Detalhes:
 - **Fallback de modelo**: se o modelo principal falhar, usa o secundário.
 - **Tracing**: cada execução gera um trace completo (params, conectores, RAG,
   modelo, tokens, resposta, tempo_ms) — visível na auditoria via 🔍 Rastreio.
+  Além do tempo total, o trace guarda o tempo por **fase** (ms):
+  `roteador_ms` (votos de seleção de conectores + extração de params por IA),
+  `conectores_ms` (execução real), `rag_ms` (busca no conhecimento) e
+  `llm_ms` (chamadas de resposta/fallback/gráfico) — o modal de rastreio
+  exibe os quatro. Fase que não rodou (ou falhou antes do marco) fica 0.
 - **LGPD**: se ativado, a resposta é mascarada na saída (o trace guarda o
   original para auditoria).
 
@@ -1184,7 +1222,7 @@ Detalhes:
 | metricas_diarias | Agregações diárias (observabilidade) |
 | alertas_config | Thresholds de alerta |
 | custos_modelo | Preços por modelo |
-| memories | Memória persistente (auto-alimentação) |
+| memories | Histórico por usuário (conversa grava a cada resposta; preferência/contexto alimentam o RAG) |
 | knowledge | Base RAG (docs, área, acessos) |
 | modelos | Modelos OpenAI-compatíveis |
 | api_keys | Chaves de API (legado) |
@@ -1228,7 +1266,10 @@ Verifique se o documento RAG tem `area` definida — docs sem área participam
 de todas as áreas. Use o isolamento por área para evitar contaminação.
 
 **Onde vejo o detalhamento de uma resposta (conectores, RAG, tokens)?**
-Na página Auditoria, clique em **🔍 Rastreio** ao lado do registro.
+Na página Auditoria, clique em **🔍 Rastreio** ao lado do registro. O modal
+mostra também o **tempo por fase** (Roteador / Conectores / RAG / LLM em ms)
+— útil para diagnosticar lentidão: se `conectores_ms` domina, é o conector;
+se `llm_ms` domina, é o modelo/endpoint.
 
 **Como medir se os modelos estão bons?**
 Observabilidade (taxa de acerto, drift, custos) + Teste A/B com modelo juiz.

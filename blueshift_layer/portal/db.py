@@ -454,6 +454,10 @@ def _migrar_colunas() -> None:
         ],
         "tracing": [
             ("agente_id", "INTEGER"),
+            ("roteador_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("conectores_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("rag_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("llm_ms", "INTEGER NOT NULL DEFAULT 0"),
         ],
         "canais": [
             ("webhook_headers", "TEXT DEFAULT '{}'"),
@@ -812,17 +816,25 @@ def listar_skills_db() -> list[dict]:
 def salvar_trace(pergunta: str, params: dict, conectores: list,
                  rag: list, modelo: str, modelo_fallback: bool,
                  tokens: dict, resposta: str, tempo_ms: int,
-                 agente_id: int | None = None) -> int:
-    """Salva o trace de uma execucao do agente. Retorna o id do trace."""
+                 agente_id: int | None = None, roteador_ms: int = 0,
+                 conectores_ms: int = 0, rag_ms: int = 0,
+                 llm_ms: int = 0) -> int:
+    """Salva o trace de uma execucao do agente. Retorna o id do trace.
+
+    roteador_ms/conectores_ms/rag_ms/llm_ms: tempos por fase (instrumentacao
+    de latencia) — 0 quando a fase nao rodou ou falhou antes do marco.
+    """
     ts = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO tracing (pergunta, params, conectores, rag, modelo,
-               modelo_fallback, tokens, resposta, tempo_ms, agente_id, criado_em)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+               modelo_fallback, tokens, resposta, tempo_ms, roteador_ms,
+               conectores_ms, rag_ms, llm_ms, agente_id, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (pergunta, json.dumps(params), json.dumps(conectores, default=str),
              json.dumps(rag, default=str), modelo, 1 if modelo_fallback else 0,
-             json.dumps(tokens), resposta, tempo_ms, agente_id, ts),
+             json.dumps(tokens), resposta, tempo_ms, roteador_ms, conectores_ms,
+             rag_ms, llm_ms, agente_id, ts),
         )
         return cur.lastrowid
 
@@ -1522,12 +1534,25 @@ def criar_memoria(cliente_id, usuario, conteudo, tipo="conversa", area="") -> in
         return cur.lastrowid
 
 
-def listar_memorias(cliente_id: int | None = None) -> list[dict]:
+def listar_memorias(cliente_id: int | None = None,
+                    tipos: tuple | list | None = None) -> list[dict]:
+    """Lista memorias. `tipos` filtra na QUERY (ex: ("preferencia","contexto")).
+
+    O RAG so consome preferencia/contexto; o tipo 'conversa' (historico de
+    trocas, gravado a cada resposta) fica de fora do carregamento — evita
+    trafegar/tokenizar o historico inteiro a cada busca de contexto.
+    """
+    sql = "SELECT * FROM memories WHERE 1=1"
+    params: list = []
+    if cliente_id is not None:
+        sql += " AND cliente_id=?"
+        params.append(cliente_id)
+    if tipos:
+        sql += " AND tipo IN (" + ",".join("?" * len(tipos)) + ")"
+        params.extend(tipos)
+    sql += " ORDER BY id DESC"
     with get_conn() as conn:
-        if cliente_id:
-            return [dict(r) for r in _rows(
-                conn, "SELECT * FROM memories WHERE cliente_id=? ORDER BY id DESC", (cliente_id,))]
-        return [dict(r) for r in _rows(conn, "SELECT * FROM memories ORDER BY id DESC")]
+        return [dict(r) for r in _rows(conn, sql, tuple(params))]
 
 
 def criar_documento(cliente_id, titulo, categoria, conteudo, area="", fonte="manual") -> int:
