@@ -540,7 +540,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "\nAVISO: a chamada ao conector NAO foi executada porque faltou "
             "informar: " + ", ".join(sorted(set(ausentes_nota))) + ". Peca esse "
             "dado ao usuario de forma natural e NAO responda com dados de "
-            "memoria/treino nem cite o conector como fonte.\n"
+            "memoria/treino nem cite o conector como fonte. NUNCA emita "
+            "tool_call nem tags (<tool_call>, <function=, <parameter=) — "
+            "responda apenas em texto corrido pedindo o dado.\n"
         )
     if not tem_dados_vivos:
         # C: guardrail anti-alucinacao — conectores rodaram sem dados vivos
@@ -620,6 +622,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                 out = out2
                 modelo_usado = modelo2["modelo"]
                 usou_fallback = True
+
+    # --- Guard de resposta (fronteira, independe do modelo): fine-tunes com
+    # formato de tool-call emitem <tool_call>/<think> cru no content mesmo
+    # com o prompt anti-tag — o usuario nunca recebe o tag cru; recebe o
+    # pedido do dado ausente (ou cai na mensagem de vazio, logo abaixo).
+    if out["ok"]:
+        out["content"] = _limpar_resposta_guard(out.get("content") or "", ausentes_nota)
 
     # --- LLM devolveu VAZIO (principal e fallback): resposta amigavel em
     # vez de "" — o usuario/sistema externo nunca recebe resposta em branco
@@ -733,6 +742,31 @@ def _tem_tool_call(texto: str) -> bool:
     faz o LLM imitar o formato (contagio few-shot). Nunca deve ser gravada.
     """
     return bool(re.search(r"<tool_call>|<function=|<parameter=", texto or ""))
+
+
+def _limpar_resposta_guard(content: str, ausentes_nota: list[str]) -> str:
+    """Guarda de fronteira da resposta (independe do modelo).
+
+    Modelos fine-tunados com formato de tool-call (ex: ornith) emitem
+    <tool_call>/<function= crus no content mesmo com o prompt anti-tag, e
+    modelos de reasoning vazam <think>...</think> para o content. Aqui:
+      1. remove blocos <think>...</think> (raciocinio vazado);
+      2. se sobrou tag de chamada crua, retorna o pedido do(s) dado(s)
+         ausente(s) — ou "" (vazio) quando nao ha dado a pedir (o chamador
+         cai na mensagem generica de resposta vazia).
+    """
+    resp = (content or "").strip()
+    if "<think>" in resp:
+        resp = re.sub(r"<think>.*?</think>", "", resp, flags=re.S).strip()
+    if _tem_tool_call(resp):
+        if ausentes_nota:
+            return (
+                "Não consegui consultar porque faltou informar: "
+                + ", ".join(sorted(set(ausentes_nota)))
+                + ". Por favor, informe esse dado para eu buscar a informação."
+            )
+        return ""
+    return resp
 
 
 # --------------------------------------------------------------------------- #
