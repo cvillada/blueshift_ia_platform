@@ -154,16 +154,36 @@ def deletar_skill(nome: str) -> bool:
     return True
 
 
+# Limite do corpo da skill enviado ao prompt (chars por skill) — regras
+# normalmente cabem em <4k; o limite evita que uma skill gigante estoure o
+# contexto de modelos locais pequenos.
+_SKILL_BODY_MAX = 4000
+
+
 def _skills_text(skills_csv: str) -> str:
-    """Monta bloco de instrução das skills a partir da lista 'vendas,suporte'."""
+    """Monta bloco de instrucao das skills a partir da lista 'vendas,suporte'.
+
+    Envia nome + descricao + CORPO do SKILL.md (via ler_skill: banco primeiro,
+    arquivo como fallback). O corpo e parte da instrucao — sem ele o modelo so
+    via a descricao e ignorava regras de formato/comportamento escritas no
+    corpo (ex.: "responda apenas texto, sem tabelas nem figuras").
+    """
     nomes = [s.strip().lower() for s in (skills_csv or "").split(",") if s.strip()]
-    catalogo = {s["name"]: s for s in listar_skills()}
     partes = []
     for n in nomes:
-        s = catalogo.get(n)
-        if s:
-            partes.append(f"- {s['name']}: {s.get('description', '')}")
-    return "\n".join(partes)
+        s = ler_skill(n)
+        if not s:
+            continue
+        desc = (s.get("description") or "").strip() or n
+        corpo = (s.get("body") or "").strip()
+        bloco = f"### Skill: {n}\nDescricao: {desc}"
+        if corpo:
+            if len(corpo) > _SKILL_BODY_MAX:
+                bloco += "\n" + corpo[:_SKILL_BODY_MAX] + "\n[...corpo truncado...]"
+            else:
+                bloco += "\n" + corpo
+        partes.append(bloco)
+    return "\n\n".join(partes)
 
 
 def _pede_grafico(pergunta: str) -> bool:
@@ -506,7 +526,9 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         f"(área: {area or 'geral'}).\n"
     )
     if skills_txt:
-        system += f"\nSKILLS DISPONÍVEIS (use conforme adequado):\n{skills_txt}\n"
+        system += ("\nSKILLS DO AGENTE (instrucoes das skills anexadas — as "
+                   "regras de formato e comportamento DEVEM ser seguidas):\n"
+                   + skills_txt + "\n")
 
     system += (
         "\nUse os DADOS DE SISTEMA abaixo como fonte PRIMARIA — eles contem "

@@ -368,20 +368,24 @@ responde "não encontrei" e sugere reformular a pergunta (ex: informar
 **Onde:** Cadastros → Skills.
 
 **Propósito:** catálogo de instruções (SKILL.md) que guiam o comportamento
-dos agentes. O LLM recebe a **descrição** de cada skill no prompt do sistema.
+dos agentes. O LLM recebe a **descrição** e o **corpo** de cada skill ANEXADA
+ao agente no prompt do sistema — desde v0.10.16 (corpo limitado a 4.000
+caracteres por skill; regras de formato/comportamento escritas no corpo são
+enviadas e devem ser seguidas).
 
 | Campo | Obrigatório | Exemplo | Dica |
 |:------|:-----------:|:--------|:-----|
 | Nome (identificador) | ✅ | `vendas` | Minúsculas, sem espaço (isidentifier) |
 | Versão | ❌ | `1.0.0` | |
-| Descrição | ✅ | regras de comportamento | É o que o LLM enxerga — coloque guardrails aqui |
-| Conteúdo (SKILL.md body) | ✅ | corpo markdown | Instruções detalhadas |
+| Descrição | ✅ | regras de comportamento | Enviada SEMPRE ao LLM — guardrails aqui |
+| Conteúdo (SKILL.md body) | ✅ | corpo markdown | Instruções detalhadas — enviado ao LLM (até 4.000 chars) |
 | ✨ Gerar com IA | — | — | Botão que usa um modelo cadastrado para gerar o SKILL.md |
 
 Ações: **editar**, **excluir** (vermelho), botão **Indexar no RAG**
 (/portal/skills/indexar-rag) para a skill entrar na base de conhecimento.
 
-**Dica (guardrails):** regras de comportamento vão na **descrição**:
+**Dica (guardrails):** regras de comportamento vão na **descrição** (vai
+sempre, sem corte) ou no **corpo** (vai até 4.000 chars). Exemplo:
 ```
 PRIMEIRA skill.
 REGRAS:
