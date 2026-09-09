@@ -39,6 +39,18 @@ fi
 log "Update BlueShift -> tag $TAG (repo: $REPO_DIR)"
 cd "$REPO_DIR"
 
+# Config do compose via shell env: o compose interpola ${BLUESHIFT_*:-...}
+# com precedencia shell env > .env. Carrega o .env do repo para o ambiente
+# do shell — garante que o compose veja a config mesmo quando nao localiza o
+# arquivo .env (bind/permissao/diretorio de projeto), evitando o portal
+# recriado nascer com defaults (ex: BLUESHIFT_LICENSE_URL mock :9000).
+set -a
+# shellcheck disable=SC1091
+if [ -f .env ]; then
+  . ./.env 2>/dev/null || true
+fi
+set +a
+
 log "git fetch origin --tags"
 git fetch origin --tags
 

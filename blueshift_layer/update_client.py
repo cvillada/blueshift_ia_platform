@@ -244,6 +244,17 @@ def apply(version: str | None = None) -> dict:
                 break
     except Exception:  # noqa: BLE001 - fallback: usa REPO_DIR mesmo
         pass
+    # Config da instalacao (licenca, rotas, flags...) repassada por -e ao
+    # container irmao: o compose interpola ${BLUESHIFT_*:-default} com shell
+    # env com precedencia SOBRE o .env. O .env do host nem sempre e lido de
+    # dentro do irmao (permissao/diretorio do projeto) — sem o repasse o
+    # portal recriado nasce com os defaults do compose (ex:
+    # BLUESHIFT_LICENSE_URL -> mock localhost:9000 -> licenca "invalida" apos
+    # TODO update). A config que FUNCIONA ja esta no ambiente do portal
+    # atual; o portal novo herda a MESMA via shell env do compose.
+    _cfg_env_args: list[str] = []
+    for _k in sorted(k for k in os.environ if k.startswith("BLUESHIFT_")):
+        _cfg_env_args += ["-e", f"{_k}={os.environ[_k]}"]
     cmd = ["docker", "run", "--rm", "--entrypoint", "bash",
            "--network", f"{_proj}_default",
            "-v", "/var/run/docker.sock:/var/run/docker.sock",
@@ -262,6 +273,7 @@ def apply(version: str | None = None) -> dict:
            "-e", "GIT_CONFIG_COUNT=1",
            "-e", "GIT_CONFIG_KEY_0=safe.directory",
            "-e", f"GIT_CONFIG_VALUE_0={REPO_DIR}",
+           *_cfg_env_args,
            "blueshift/platform:latest",
            f"{REPO_DIR}/update.sh", version]
 

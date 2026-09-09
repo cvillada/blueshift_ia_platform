@@ -853,6 +853,11 @@ remoto. Admin-only.
   `git fetch` + `git checkout <tag>` + `docker compose up -d --build`
   (dados preservados — volumes intactos). O portal reinicia ao concluir;
   log em `/opt/blueshift/update.log`
+- A configuração da instalação (ex.: `BLUESHIFT_LICENSE_URL`, chave de
+  licença, roteador) é **repassada ao portal recriado** via env do próprio
+  container em execução — o update não depende do compose ler o `.env` do
+  host (que falhava de dentro do container irmão e fazia a licença cair no
+  mock `localhost:9000`, exibindo "inválida" após todo update)
 - Em dev (`BLUESHIFT_DEV=1`) o botão faz **dry-run** (mostra o comando,
   não derruba o ambiente); se o remoto for inacessível (repo privado sem
   credencial), usa as tags locais como referência
