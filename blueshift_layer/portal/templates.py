@@ -215,7 +215,7 @@ function fecharFluxo(){var p=document.getElementById("fluxo-popup");if(p)p.style
     <textarea id="ajuda-pergunta" rows="3" placeholder="Ex: como preencho o campo Host de um conector SQL?"></textarea>
     <div style="margin-top:10px"><button class="btn" onclick="enviarAjuda()">Perguntar</button></div>
     <div id="ajuda-resposta" style="margin-top:12px"></div>
-    <div class="muted" style="font-size:10px;margin-top:10px">Respostas baseadas no DOCUMENTACAO_PB.md — edite o arquivo para atualizar a ajuda.</div>
+    <div class="muted" style="font-size:10px;margin-top:10px">Respostas baseadas na documentação (docs/) — edite os arquivos para atualizar a ajuda.</div>
   </div>
 </div>
 <div class="fluxo-popup" id="fluxo-popup" style="display:none" onclick="if(event.target===this)fecharFluxo()">

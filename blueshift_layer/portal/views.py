@@ -5068,20 +5068,47 @@ git describe --tags</pre>
 
 
 # --------------------------------------------------------------------------- #
-# Ajuda (popup publico — le DOCUMENTACAO_PB.md direto do disco, sem RAG)      #
+# Ajuda (popup publico — le docs/*.md direto do disco, sem RAG)               #
 # --------------------------------------------------------------------------- #
 
-def _caminho_doc() -> str:
-    """Localiza o DOCUMENTACAO_PB.md (repo local ou /opt/blueshift no Docker).
+def _dir_docs() -> str:
+    """Localiza a pasta docs/ da documentacao (repo montado, repo local, imagem).
 
-    Prioriza o arquivo dentro do repo montado (compose monta o clone em
-    /opt/blueshift/repo) — fonte unica que funciona em dev e producao.
+    Uma unica fonte (`docs/NN-*.md`) alimenta o popup Ajuda e a tela Docs —
+    editar/README.md explica a convencao. Sem pasta docs/, ainda aceita o
+    arquivo unico antigo (DOCUMENTACAO_PB.md) de instalacoes anteriores.
     """
     from pathlib import Path
     candidatos = [
-        Path("/opt/blueshift/repo/DOCUMENTACAO_PB.md"),                 # repo montado (Docker)
-        Path(__file__).resolve().parent.parent.parent / "DOCUMENTACAO_PB.md",  # repo local
-        Path("/opt/blueshift/DOCUMENTACAO_PB.md"),                      # copia da imagem (fallback)
+        Path("/opt/blueshift/repo/docs"),                 # repo montado (Docker)
+        Path(__file__).resolve().parent.parent.parent / "docs",  # repo local
+        Path("/opt/blueshift/docs"),                      # copia da imagem (fallback)
+    ]
+    for c in candidatos:
+        if c.is_dir():
+            return str(c)
+    return ""
+
+
+def _paginas_doc() -> list:
+    """Arquivos de docs/NN-*.md em ordem de leitura (ignora _arquivos e README.md)."""
+    import glob as _glob
+    import os as _os
+    pasta = _dir_docs()
+    if not pasta:
+        return []
+    return [f for f in sorted(_glob.glob(_os.path.join(pasta, "*.md")))
+            if not _os.path.basename(f).startswith("_")
+            and _os.path.basename(f) != "README.md"]
+
+
+def _caminho_doc_legado() -> str:
+    """Arquivo unico da doc (formato antigo) — fallback de compatibilidade."""
+    from pathlib import Path
+    candidatos = [
+        Path("/opt/blueshift/repo/DOCUMENTACAO_PB.md"),
+        Path(__file__).resolve().parent.parent.parent / "DOCUMENTACAO_PB.md",
+        Path("/opt/blueshift/DOCUMENTACAO_PB.md"),
     ]
     for c in candidatos:
         if c.exists():
@@ -5089,15 +5116,44 @@ def _caminho_doc() -> str:
     return ""
 
 
-def _secoes_doc() -> list:
-    """Le o arquivo e separa em (titulo, texto) pelas secoes ## e ###."""
-    import re as _re
-    caminho = _caminho_doc()
-    if not caminho:
-        return []
+def _versao_plataforma() -> str:
     try:
-        texto = open(caminho, encoding="utf-8").read()
-    except OSError:
+        from .. import __version__ as _v
+        return str(_v)
+    except Exception:  # noqa: BLE001 - versao e informativa
+        return ""
+
+
+def _texto_doc() -> str:
+    """Documentacao completa: paginas de docs/ em ordem (+ fallback do arquivo unico).
+
+    Substitui os marcadores {{versao}} e {{data}} — assim a doc nunca fica com
+    versao/atualizacao desatualizada escrita a mao.
+    """
+    import datetime as _dt
+    partes = []
+    for arq in _paginas_doc():
+        try:
+            partes.append(open(arq, encoding="utf-8").read())
+        except OSError:
+            continue
+    texto = "\n".join(partes)
+    if not texto.strip():                      # fallback: arquivo unico antigo
+        legado = _caminho_doc_legado()
+        if legado:
+            try:
+                texto = open(legado, encoding="utf-8").read()
+            except OSError:
+                texto = ""
+    return (texto.replace("{{versao}}", _versao_plataforma())
+                 .replace("{{data}}", _dt.date.today().strftime("%d/%m/%Y")))
+
+
+def _secoes_doc() -> list:
+    """Separa a documentacao em (titulo, texto) pelas secoes ## e ###."""
+    import re as _re
+    texto = _texto_doc()
+    if not texto:
         return []
     partes = _re.split(r"\n(?=#{2,3} )", texto)
     secoes = []
@@ -5168,7 +5224,7 @@ def api_ajuda_modelos():
 @bp.route("/api/ajuda", methods=["POST"])
 @auth.rate_limit_por_ip(30, 60)
 def api_ajuda():
-    """Responde a pergunta usando as secoes relevantes do DOCUMENTACAO_PB.md.
+    """Responde a pergunta usando as secoes relevantes da documentacao (docs/*.md).
 
     Sem modelo cadastrado: retorna orientacao documental (secao Modelos IA
     da propria doc) — nunca falha em branco.
@@ -5242,7 +5298,7 @@ def api_ajuda():
 
 
 # --------------------------------------------------------------------------- #
-# Docs (menu lateral — renderiza o MESMO DOCUMENTACAO_PB.md do popup Ajuda)    #
+# Docs (menu lateral — renderiza as MESMAS paginas do popup Ajuda)            #
 # --------------------------------------------------------------------------- #
 
 def _inline_md(t: str) -> str:
@@ -5388,48 +5444,279 @@ def healthz():
     }), status
 
 
-@bp.route("/docs")
-@auth.login_required
-def docs():
-    """Documentacao completa (DOCUMENTACAO_PB.md) renderizada como pagina.
+# --------------------------------------------------------------------------- #
+# Docs (menu lateral) — paginas de docs/ com sidebar, busca e indice lateral    #
+# --------------------------------------------------------------------------- #
 
-    Reaproveita _caminho_doc()/_secoes_doc() do popup Ajuda — um unico
-    arquivo alimenta os dois (editar o .md atualiza popup e Docs).
-    """
+_GRUPOS_DOC = (
+    ("Começando", ("00", "01", "02", "03")),
+    ("Telas do Portal", ("04",)),
+    ("Como funciona", ("05", "06", "07")),
+    ("Segurança e dados", ("08", "09")),
+    ("Referência", ("10", "11")),
+)
+
+_CSS_DOC = """<style>
+.doc-flex{display:flex;gap:18px;align-items:flex-start}
+.doc-side{flex:0 0 246px;width:246px;position:sticky;top:10px;max-height:82vh;overflow:auto}
+.doc-main{flex:1;min-width:0}
+.doc-toc-wrap{flex:0 0 206px;width:206px;position:sticky;top:10px;max-height:82vh;overflow:auto}
+.doc-grupo{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-soft);margin:13px 0 4px}
+.doc-item{display:block;padding:5px 9px;border-radius:7px;font-size:12.5px;color:var(--txt);text-decoration:none;border:1px solid transparent}
+.doc-item:hover{background:var(--panel2);border-color:var(--line)}
+.doc-item.on{background:var(--panel-soft);border-color:var(--blue);font-weight:600}
+.doc-busca{width:100%;padding:7px 9px;font-size:12.5px;margin-bottom:2px;background:var(--input-bg);color:var(--txt);border:1px solid var(--line);border-radius:7px}
+.doc-res a{display:block;padding:6px 9px;border:1px solid var(--line);border-radius:7px;margin:5px 0;text-decoration:none;color:var(--txt);font-size:12.5px}
+.doc-res a:hover{border-color:var(--blue)}
+.doc-res .tr{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.doc-tab{overflow-x:auto}
+.doc-toc a{display:block;font-size:11.5px;color:var(--muted);text-decoration:none;padding:2px 0}
+.doc-toc a:hover{color:var(--blue)}
+.doc-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.doc-copiar{font-size:10px;padding:2px 8px;margin-left:6px;cursor:pointer}
+.doc-body pre{position:relative}
+@media print{.doc-side,.doc-toc-wrap,.doc-top{display:none!important}.doc-flex{display:block!important}}
+</style>"""
+
+_JS_DOC = """<script>
+(function(){
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  var pres=document.querySelectorAll('.doc-body pre');
+  for(var i=0;i<pres.length;i++){
+    (function(pre){
+      var b=document.createElement('button');
+      b.type='button';b.className='btn ghost doc-copiar';b.textContent='copiar';
+      b.onclick=function(){
+        var code=pre.querySelector('code');
+        if(!code||!navigator.clipboard)return;
+        navigator.clipboard.writeText(code.innerText).then(function(){
+          b.textContent='copiado';setTimeout(function(){b.textContent='copiar';},1500);});
+      };
+      pre.appendChild(b);
+    })(pres[i]);
+  }
+  var tabs=document.querySelectorAll('.doc-body table');
+  for(var j=0;j<tabs.length;j++){
+    if(tabs[j].parentNode&&tabs[j].parentNode.className==='doc-tab')continue;
+    var w=document.createElement('div');w.className='doc-tab';
+    tabs[j].parentNode.insertBefore(w,tabs[j]);w.appendChild(tabs[j]);
+  }
+  var inp=document.getElementById('doc-busca'),res=document.getElementById('doc-busca-res');
+  if(inp&&res){
+    var t=null;
+    inp.addEventListener('input',function(){
+      clearTimeout(t);
+      var q=inp.value.trim();
+      if(q.length<2){res.innerHTML='';return;}
+      t=setTimeout(function(){
+        fetch('/portal/docs/buscar?q='+encodeURIComponent(q)).then(function(r){return r.json();})
+        .then(function(d){
+          if(!d.ok||!d.resultados.length){
+            res.innerHTML='<div class="muted" style="font-size:11px;padding:2px 4px">nada encontrado</div>';return;}
+          res.innerHTML=d.resultados.map(function(r){
+            return '<a href="/portal/docs/'+encodeURIComponent(r.slug)+'"><b>'+esc(r.titulo)
+              +'</b><span class="tr">'+esc(r.grupo)+' &middot; '+esc(r.trecho)+'</span></a>';
+          }).join('');
+        });
+      },180);
+    });
+    inp.addEventListener('keydown',function(ev){
+      if(ev.key==='Enter'){var a=res.querySelector('a');if(a)location.href=a.href;}
+    });
+  }
+  var ANC=window.__ANC_DOC||{};
+  if(location.hash){
+    var h=location.hash.slice(1);
+    if(!document.getElementById(h)&&ANC[h])location.replace('/portal/docs/'+ANC[h]+'#'+h);
+  }
+})();
+</script>"""
+
+
+def _slug_pagina(arquivo: str) -> str:
+    """Nome do arquivo sem extensao — e a URL da pagina (/portal/docs/<slug>)."""
+    import os as _os
+    return _os.path.basename(arquivo)[:-3]
+
+
+def _titulo_pagina(md: str) -> str:
+    import re as _re
+    for linha in md.splitlines():
+        m = _re.match(r"^#{1,3}\s+(.+)$", linha.strip())
+        if m:
+            return m.group(1).strip()
+    return "Documentação"
+
+
+def _titulo_curto(titulo: str) -> str:
+    """Titulo da sidebar: sem a numeracao e sem o complemento apos ' — '."""
+    import re as _re
+    t = _re.sub(r"^\d[\d.]*-?[A-Za-z]?\s+", "", titulo).strip()
+    t = t.split(" — ")[0].split(" (")[0].strip()
+    return t or titulo
+
+
+def _paginas_doc_meta() -> list:
+    """Paginas de docs/ em ordem: {slug, titulo, curto, grupo, arquivo, md}."""
+    paginas = []
+    for arq in _paginas_doc():
+        try:
+            md = open(arq, encoding="utf-8").read()
+        except OSError:
+            continue
+        slug = _slug_pagina(arq)
+        titulo = _titulo_pagina(md)
+        grupo = next((g for g, prefs in _GRUPOS_DOC if slug[:2] in prefs), "Outros")
+        paginas.append({"slug": slug, "titulo": titulo, "curto": _titulo_curto(titulo),
+                        "grupo": grupo, "arquivo": arq, "md": md})
+    return paginas
+
+
+def _anchors_doc(paginas: list) -> dict:
+    """Mapa ancora -> slug da pagina (links antigos #5-9-conectores continuam validos)."""
+    import re as _re
+    import unicodedata as _u
+    mapa = {}
+    for p in paginas:
+        for linha in p["md"].splitlines():
+            m = _re.match(r"^#{2,3}\s+(.+)$", linha.strip())
+            if not m:
+                continue
+            t = _re.sub(r"[*`]", "", m.group(1))
+            a = _u.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
+            a = _re.sub(r"[^a-z0-9]+", "-", a).strip("-")
+            if a:
+                mapa.setdefault(a, p["slug"])
+    return mapa
+
+
+def _links_doc(md: str, paginas: list) -> str:
+    """Converte links entre arquivos ([x](04-09-conectores.md)) na rota da pagina."""
+    import re as _re
+    slugs = {p["slug"] for p in paginas}
+
+    def _rep(m):
+        texto, alvo = m.group(1), m.group(2)
+        if alvo.endswith(".md"):
+            destino = alvo[:-3].split("#")[0]
+            if destino in slugs:
+                return f"[{texto}](/portal/docs/{destino})"
+            return texto                       # pagina nao publicada: so o texto
+        return m.group(0)
+
+    return _re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _rep, md)
+
+
+def _busca_doc(q: str, paginas: list, limite: int = 12) -> list:
+    """Busca textual nas paginas (sem acento, case-insensitive)."""
     import re as _re
     import unicodedata as _u
 
-    def _slug(t):
-        t = _u.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii")
-        return _re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
+    def _norm(s: str) -> str:
+        return _u.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
 
-    caminho = _caminho_doc()
-    md = ""
-    if caminho:
-        try:
-            md = open(caminho, encoding="utf-8").read()
-        except OSError:
-            md = ""
-    if not md:
-        content = ('<div class="card"><div class="muted">'
-                   'Documentação não encontrada (DOCUMENTACAO_PB.md).</div></div>')
-        return templates.page("Docs", content, active="docs", user=_user())
+    alvo = _norm(q).strip()
+    if len(alvo) < 2:
+        return []
+    achados = []
+    for p in paginas:
+        pos = _norm(p["md"]).find(alvo)
+        if pos < 0:
+            continue
+        # o trecho comeca na LINHA do casamento (evita cortar no meio de uma tabela)
+        ini = p["md"].rfind("\n", 0, pos) + 1
+        fim = p["md"].find("\n", pos)
+        trecho = p["md"][ini:fim if fim > 0 else len(p["md"])].strip().lstrip("|").strip()
+        if trecho.startswith("#"):
+            trecho = trecho.lstrip("# ").strip()
+        achados.append({"slug": p["slug"], "titulo": p["curto"], "grupo": p["grupo"],
+                        "trecho": _re.sub(r"\s+", " ", trecho)[:190]})
+        if len(achados) >= limite:
+            break
+    return achados
 
-    secoes = _secoes_doc()
-    itens = "".join(
-        f'<a class="btn ghost" style="font-size:11px;padding:3px 10px" '
-        f'href="#{_slug(tit)}">{tit}</a>'
-        for tit, _ in secoes
-    )
-    indice = ('<div class="card" style="margin-bottom:16px">'
-              '<div class="muted" style="font-size:12px;margin-bottom:8px">Seções — clique para navegar:</div>'
-              f'<div style="display:flex;flex-wrap:wrap;gap:6px">{itens}</div>'
-              '<div class="muted" style="font-size:10px;margin-top:8px">'
-              'Fonte: DOCUMENTACAO_PB.md (mesmo arquivo do popup Ajuda — edite o arquivo para atualizar).'
-              '</div></div>') if itens else ""
-    corpo = _ancorar_doc(_md_para_html(md))
-    content = indice + f'<div class="card doc-body" style="line-height:1.65">{corpo}</div>'
-    return templates.page("Docs", content, active="docs", user=_user())
+
+def _render_pagina_doc(paginas: list, atual: dict) -> str:
+    """Tela Docs: busca + sidebar por grupo + pagina + indice lateral."""
+    import json as _json
+    import re as _re
+
+    grupos = ""
+    for grupo, _pref in tuple(_GRUPOS_DOC) + (("Outros", None),):
+        itens = [p for p in paginas if p["grupo"] == grupo]
+        if not itens:
+            continue
+        links = "".join(
+            f'<a class="doc-item{" on" if p["slug"] == atual["slug"] else ""}" '
+            f'href="/portal/docs/{p["slug"]}">{templates.h(p["curto"])}</a>'
+            for p in itens)
+        grupos += f'<div class="doc-grupo">{templates.h(grupo)}</div>{links}'
+
+    corpo = _ancorar_doc(_md_para_html(_links_doc(atual["md"], paginas)))
+    # links internos abrem na mesma aba (o conversor marca target=_blank em tudo)
+    corpo = _re.sub(r'(<a href="/portal/docs/[^"]+") target="_blank" rel="noopener"', r"\1", corpo)
+    titulos = _re.findall(r'<h([34]) id="([^"]+)">(.*?)</h\1>', corpo)
+    toc = "".join(f'<a href="#{anc}">{txt}</a>' for _n, anc, txt in titulos[1:])
+    card_toc = ('<div class="card doc-toc"><div class="doc-grupo" style="margin-top:0">Nesta página</div>'
+                + toc + "</div>") if toc else ""
+
+    return f"""{_CSS_DOC}
+    <div class="doc-top">
+      <span class="badge">{templates.h(atual['grupo'])}</span>
+      <span class="muted" style="font-size:12px">{templates.h(atual['curto'])}</span>
+      <span style="flex:1"></span>
+      <span class="muted" style="font-size:11px">v{templates.h(_versao_plataforma())}</span>
+      <button type="button" class="btn ghost" style="font-size:11px" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+    <div class="doc-flex">
+      <div class="doc-side">
+        <input id="doc-busca" class="doc-busca" placeholder="🔎 buscar na documentação..." autocomplete="off">
+        <div id="doc-busca-res" class="doc-res"></div>
+        {grupos}
+      </div>
+      <div class="doc-main"><div class="card doc-body" style="line-height:1.65">{corpo}</div></div>
+      <div class="doc-toc-wrap">{card_toc}</div>
+    </div>
+    <script>window.__ANC_DOC = {_json.dumps(_anchors_doc(paginas), ensure_ascii=False)};</script>
+    {_JS_DOC}
+    """
+
+
+@bp.route("/docs")
+@auth.login_required
+def docs():
+    """Documentacao (primeira pagina) com sidebar, busca e indice lateral.
+
+    Fonte unica: docs/*.md — as MESMAS paginas do popup Ajuda. Convencao de
+    escrita em docs/README.md; checagem em tools/doc_check.py.
+    """
+    paginas = _paginas_doc_meta()
+    if not paginas:
+        aviso = ('<div class="card"><div class="muted">'
+                 'Documentação não encontrada (pasta docs/).</div></div>')
+        return templates.page("Docs", aviso, active="docs", user=_user())
+    return templates.page("Docs", _render_pagina_doc(paginas, paginas[0]),
+                          active="docs", user=_user())
+
+
+@bp.route("/docs/buscar")
+@auth.login_required
+def docs_buscar():
+    """Busca textual nas paginas da documentacao (usada pela sidebar do Docs)."""
+    return jsonify({"ok": True, "resultados": _busca_doc(request.args.get("q", ""),
+                                                         _paginas_doc_meta())})
+
+
+@bp.route("/docs/<slug>")
+@auth.login_required
+def docs_pagina(slug: str):
+    """Uma pagina da documentacao (docs/NN-nome.md) renderizada no layout do Docs."""
+    paginas = _paginas_doc_meta()
+    atual = next((p for p in paginas if p["slug"] == slug), None)
+    if not atual:
+        return redirect(url_for("portal.docs"))
+    return templates.page(atual["curto"], _render_pagina_doc(paginas, atual),
+                          active="docs", user=_user())
 
 
 # --------------------------------------------------------------------------- #

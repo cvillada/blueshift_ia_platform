@@ -59,7 +59,7 @@ services:
       # + docker.sock do host (o portal dispara o rebuild por ele).
       # Default "." = o proprio diretorio do compose (dev: o projeto local;
       # producao: clone em /opt/blueshift/repo). BLUESHIFT_REPO_DIR sobrescreve.
-      # O DOCUMENTACAO_PB.md (popup Ajuda + tela Docs) e lido de dentro do
+      # A pasta docs/ (popup Ajuda + tela Docs) e lida de dentro do
       # repo montado — fonte unica, sem bind de arquivo separado.
       - ${BLUESHIFT_REPO_DIR:-.}:/opt/blueshift/repo
       - /var/run/docker.sock:/var/run/docker.sock

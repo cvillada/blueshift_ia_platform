@@ -165,7 +165,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Skills** | Catálogo de skills por área (SKILL.md) | Login |
 | **Memória** | Memória persistente por usuário (banco vetorial local) | Login |
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
-| **Docs** | Documentação completa (DOCUMENTACAO_PB.md) no menu lateral — mesma fonte do popup Ajuda | Login |
+| **Docs** | Documentação completa (pasta `docs/`) no menu lateral — mesmas páginas do popup Ajuda; convenção de escrita em `docs/README.md` | Login |
 | Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
 | **Conectores** | Cadastro de fontes externas (API, A2A, MCP, SQL) + autenticação OAuth2/bearer, SSL/wallet, polling de jobs + finalidade (Art. 26 LGPD) | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
@@ -211,7 +211,7 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 | 🔌 **MCP** | Servidor MCP via stdio (local) ou SSE (remoto, JSON-RPC 2.0) | `python mcp_server.py` / URL SSE + tool call |
 | 🗄️ **SQL** | PostgreSQL, MySQL, SQL Server, **Oracle** via `oracledb`, com SSL mode e wallet (Autonomous) | `SELECT * FROM vw_clientes WHERE id = %s` |
 
-Os parâmetros (`{id_cliente}`, `{email}`, `{data}`, `{pergunta}`) são extraídos automaticamente da pergunta do usuário. Configuração detalhada de cada tipo: `DOCUMENTACAO_PB.md` §5.9.
+Os parâmetros (`{id_cliente}`, `{email}`, `{data}`, `{pergunta}`) são extraídos automaticamente da pergunta do usuário. Configuração detalhada de cada tipo: `docs/04-09-conectores.md`.
 
 **Consulta inteligente (SQL):** quando a query fixa volta vazia e a pergunta pede
 análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o
