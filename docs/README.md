@@ -55,6 +55,25 @@ sem documentação; a qualidade do texto continua sendo trabalho de quem escreve
 Quando `--lista` mostrar algo que passou a ser documentado, remova o item de
 `_pendentes.json` para a dívida não crescer (a checagem já ignora o que está na doc).
 
+## Site público (pré-venda)
+
+O mesmo `docs/` gera um site estático para pré-venda, com menu curado:
+
+```bash
+./bp-venv/bin/python tools/docs_site.py          # gera dist/docs_site/
+./bp-venv/bin/python tests/test_docs_site.py     # smoke (curadoria, links, busca, JS)
+```
+
+- Quem entra no site é **só o que estiver em `docs/_publico.txt`** (curadoria
+  explícita, com grupos). O resto continua só dentro do produto.
+- O gerador usa o MESMO markdown→HTML do portal — site e produto não divergem.
+- Saída autocontida (sem CDN, funciona offline): `site.css`, `site.js`,
+  `busca.json` (busca no cliente), `llms.txt` e `llms-full.txt` (índice para
+  ferramentas de IA), além de uma página HTML por assunto.
+- Para publicar: copiar a pasta gerada para o servidor web (estático).
+- Páginas internas (fora da lista) podem ser marcadas com `<!-- interno -->` no
+  topo, como reforço de leitura humana.
+
 ## Convenções de escrita
 
 - Rótulos **exatos** da interface (`Endpoint (base_url)`, `SSL mode`) — é o que o

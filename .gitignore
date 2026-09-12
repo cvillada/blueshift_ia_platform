@@ -9,3 +9,4 @@ blueshift_profile_*/
 *.egg-info/
 erp_demo/
 tests/
+dist/

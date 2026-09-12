@@ -1,0 +1,46 @@
+# Páginas de docs/ que vão para o SITE PÚBLICO (pré-venda) — curadoria explícita.
+#
+# Regra: o que NÃO estiver listado aqui fica só no produto (Docs interno).
+# Linhas com "#" são títulos de grupo no menu do site; os slugs devem ser os
+# nomes dos arquivos de docs/ sem ".md".
+#
+# Gerar o site:  ./bp-venv/bin/python tools/docs_site.py
+# Conferir:      ./bp-venv/bin/python tests/test_docs_site.py
+
+# Começando
+00-visao-geral
+01-arquitetura
+02-como-executar
+03-acesso-e-papeis
+04-26-configuracao-inicial
+
+# Telas do Portal
+04-02-monitorar
+04-03-workspace
+04-04-clientes
+04-05-usuarios
+04-06-agentes
+04-07-skills
+04-08-modelos-ia
+04-09-conectores
+04-10-canais
+04-11-memoria
+04-12-conhecimento
+04-13-chat-de-teste
+04-14-uso-de-tokens
+04-15-auditoria
+04-16-observabilidade
+04-18-teste-a-b
+04-19-lgpd
+04-20-fine-tuning
+04-23-gateway
+
+# Como funciona
+05-api-de-canal
+06-conectores
+07-fluxo-do-agente-e-rag
+
+# Referência
+11-perguntas-frequentes
+12-api-reference
+13-changelog
