@@ -188,7 +188,11 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
   qual conector é relevante para cada pergunta (ou nenhum): pergunta de
   norma/política responde só com a Base de Conhecimento; pergunta que cita
   um conector (ex: "CEP") executa só ele. Configurável via
-  `BLUESHIFT_ROUTER_MODEL` (recomendado: hermes-3-llama-3.1-8b local)
+   `BLUESHIFT_ROUTER_MODEL` — use um modelo **pequeno, inteligente e rápido**
+   (instruct, nunca reasoning); validado em produção: `qwen3-4b-instruct-2507`
+   (outro exemplo: `hermes-3-llama-3.1-8b`).
+   O mesmo modelo atende 4 tarefas internas (escolher conectores, extrair
+   parâmetros, spec do gráfico e o SELECT da Consulta inteligente)
 - **Extração de parâmetros por IA** — a IA extrai as chaves da pergunta em
   linguagem natural ("id cliente igual a 58" → `customer_id='58'`), para
   todos os tipos de conector (API/MCP/SQL) + anti-alucinação: sem dados,
@@ -354,7 +358,7 @@ A configuração da instalação vive em variáveis de ambiente. O arquivo
 | `BLUESHIFT_LICENSE` | vazio | **Chave de ativação emitida pela BlueShift** — obtida no cadastro da empresa (veja a seção [Licença](#-licença)); vazio = plataforma não ativada. `BS-DEV-*` vale só em dev (`BLUESHIFT_DEV=1`) |
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** das áreas — depois a tela Cadastros → Áreas domina (banco) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo (setup inicial) |
-| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome aparece na tela Modelos IA); vazio = principal do agente; recomendado `hermes-3-llama-3.1-8b` (local) |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de **ROTEAMENTO** — **ID ou NOME** (o nome aparece na tela Modelos IA); vazio = principal do agente (não recomendado). Regra: **pequeno, inteligente e rápido** (instruct, nunca reasoning). Exemplos: `qwen3-4b-instruct-2507` (validado) e `hermes-3-llama-3.1-8b` |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença — **produção/cliente: aponte para o License Server da BlueShift** (a mesma base da página de solicitação, ex: `<url>/v1/validate`); default = mock local (só dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Clone git do repo (Update via Git — tela Atualizações) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível |

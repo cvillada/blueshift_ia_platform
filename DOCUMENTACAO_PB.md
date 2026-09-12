@@ -139,7 +139,7 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_LICENSE` | vazio | **Chave de ativação emitida pela BlueShift** (cadastro da empresa — link na seção de instalação/licença deste documento); vazio = não ativada. `BS-DEV-*` só com `BLUESHIFT_DEV=1` |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validação de licença — produção/cliente: License Server da BlueShift (`<url-da-pagina-de-solicitacao>/v1/validate`); default = mock local (só dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Diretório do clone git (Update via Git — tela Atualizações) |
-| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de ROTEAMENTO dos conectores: **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente; recomendado modelo local rápido (hermes-3-llama-3.1-8b) |
+| `BLUESHIFT_ROUTER_MODEL` | vazio | Modelo de **ROTEAMENTO** (ver §5.8 — modelo de roteamento): **ID ou NOME** do modelo (o nome é o que aparece na tela Modelos IA, que também exibe o ID); vazio = modelo principal de cada agente (**não recomendado** — encarece toda pergunta). Regra: **pequeno, inteligente e rápido** (INSTRUCT, nunca reasoning). Exemplos: `qwen3-4b-instruct-2507` (validado em produção) e `hermes-3-llama-3.1-8b` |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`) — sem ela, usa o host da requisição. Chat externo em Docker na mesma máquina: `http://host.docker.internal:9003/v1` |
 | `BLUESHIFT_PORTAL_SECRET` | vazio | Chave da SESSÃO do portal — deve ser **FIXA entre deploys** (sem ela, cada rebuild gera uma chave nova e derruba todos os logins; usuário logado cai com redirecionamento para o login no próximo clique). Trocar em produção e manter estável |
@@ -339,7 +339,8 @@ montagem (base → modelo/skills → agente → entrega).
 
 **Roteamento inteligente de conectores:** antes de executar os conectores
 da área, uma IA curta (a mesma do agente, ou a apontada por
-`BLUESHIFT_ROUTER_MODEL`) decide QUAL conector é relevante para a pergunta
+`BLUESHIFT_ROUTER_MODEL` — ver §5.8, "Modelo de roteamento") decide QUAL
+conector é relevante para a pergunta
 — ou nenhum. Pergunta de norma/política → responde só com a Base de
 Conhecimento (RAG), sem tocar nos conectores. Pergunta que cita um
 conector (ex: "CEP", "hospedagem") → executa só ele. Voto majoritário de
@@ -446,9 +447,74 @@ respondeu (online) ou não (offline). Detalhe de cada campo abaixo.
 **Para que servem os modelos cadastrados:**
 - Cada **Agente** escolhe o modelo via `modelo_id` (tela Montar/Editar
   agente) — pode mesclar local e externo entre agentes;
-- **Roteamento de conectores**: o `BLUESHIFT_ROUTER_MODEL` (ID ou NOME)
-  aponta qual modelo decide a ferramenta (recomendado: local rápido);
+- **Roteamento** (`BLUESHIFT_ROUTER_MODEL`) — ver o bloco abaixo;
 - **Ajuda IA** e **geração de skills** usam o modelo selecionado.
+
+#### Modelo de roteamento (`BLUESHIFT_ROUTER_MODEL`) — o que ele faz e qual usar
+
+A plataforma tem uma etapa de **roteamento** antes de chamar o modelo que
+escreve a resposta. Configure um modelo **dedicado, pequeno e rápido** para
+ela — de preferência local. Sem essa variável, o roteamento cai no **modelo
+principal de cada agente**, o que encarece e atrasa TODA pergunta.
+
+**As quatro tarefas que usam esse modelo** (é o mesmo modelo nas quatro):
+
+| # | Tarefa | Onde | Tipo de saída | Peso |
+|:-:|:-------|:-----|:--------------|:-----|
+| 1 | **Escolher os conectores** relevantes da área (ou nenhum) | `agente.py` (`_selecionar_conectores`) — voto majoritário de 3 tentativas | um número | classificação, 1 token |
+| 2 | **Extrair os parâmetros** da pergunta (`{id_cliente}`, `{email}`, `{data}`…) | `agente.py` (`_extrair_parametros_ia`) | JSON minúsculo | extração |
+| 3 | **Montar o spec do gráfico** (tipo, título, dados) | `agente.py` (`_especificar_grafico`) | JSON pequeno (≤20 pontos) | geração curta |
+| 4 | **Gerar o SELECT da Consulta inteligente** (text-to-SQL sobre o schema real) | `connector_pack/registry.py` (`_gerar_sql_ia`) | SQL, ~300 tokens | **geração de verdade** |
+
+**Perfil obrigatório do modelo de roteamento — pequeno, inteligente e rápido:**
+> O roteador precisa ser **pequeno** (cabe no servidor do cliente, sem GPU dedicada),
+> **inteligente** (entende a pergunta e acerta escolher — ou não escolher — o
+> conector certo, mesmo com sinônimos) e **rápido** (a latência dele é a latência
+> de TODA pergunta). Se faltar qualquer um dos três, o roteamento vira gargalo.
+
+- **Pequeno** — roda em quase toda pergunta, no mesmo servidor da plataforma, sem exigir GPU dedicada (4B–8B quantizado já é "pequeno" para esse papel; 0,5B é o piso);
+- **Inteligente** — entende a pergunta e acerta **escolher, não escolher, ou escolher mais de um** conector, inclusive com sinônimos ("faturamento" → conector de vendas). É aqui que o 0,5B tropeça; 3B–8B instruct acerta bem;
+- **Rápido** — a latência do roteador é a latência de TODA pergunta. Referência: ~0,3–0,5 s por voto no 4B em GPU;
+- **INSTRUCT, nunca reasoning** — modelo de raciocínio gasta os tokens "pensando" e, com o limite cortado, devolve **vazio**; o roteador então repete a chamada (256→512) e a conta explode: medimos **16 s de 17 s** de uma resposta só por causa disso (modelo 9B reasoning);
+- **Temperatura 0 / determinístico** — a plataforma já chama com temperatura 0.0; o prompt pede resposta curta e objetiva;
+- **Contexto modesto basta** (o prompt é a pergunta + uma lista curta de conectores), mas para a **tarefa 4** (SQL) o modelo precisa ter alguma competência de geração — um 0,5B dá conta de 1–3, **não** da 4. Se o roteador for muito pequeno, a Consulta inteligente tende a falhar (e o agente cai no comportamento seguro de responder sem o dado).
+
+> Regra prática de escolha: **menor modelo que ainda acerta a seleção**. Comece
+> com 3B–4B instruct; suba para 8B (`hermes-3-llama-3.1-8b`) se o entendimento
+> ficar fraco; só desça para 0,5B em instalação muito modesta, ciente de que a
+> Consulta inteligente (tarefa 4) pode falhar.
+
+**Validado em produção:** `qwen3-4b-instruct-2507` em LM Studio (aprox. 2,6 GB,
+Q4) — resultado medido: pergunta simples **1,6 s** no total (era 6–17 s) e
+pergunta com conector **3,4 s** (era 22,5 s); os votos do roteador caem para
+~0,3–0,5 s.
+
+**Outros modelos que atendem** (todos INSTRUCT, temperatura 0):
+- `hermes-3-llama-3.1-8b` — 8B instruct, já usado como referência da plataforma;
+  excelente em seguir formato/JSON. Roda bem quando o servidor tem GPU (você já
+  tem 2× RTX 5070 Ti): é mais "inteligente" no entendimento, um pouco mais lento
+  que o 4B no primeiro token;
+- `Qwen2.5-3B-Instruct` — meio-termo entre tamanho e acerto;
+- `Qwen3-4B` **com o "pensamento" desligado** (`/no_think`) — mesma família, mas
+  obrigatoriamente sem reasoning;
+- `Qwen2.5-0.5B-Instruct` — para instalações muito modestas (CPU fraca), aceitando
+  as limitações: pode errar o caso "nenhum", escorregar no formato e não dá conta
+  do text-to-SQL (tarefa 4).
+
+**O que NÃO usar como roteador:** modelo de resposta do agente (grande/ reasoning),
+modelo de 7B+ reasoning e qualquer coisa com "thinking" ligado por padrão.
+
+**Como configurar:**
+1. Cadastre o modelo na tela **Modelos IA** (ex.: `qwen3-4b-instruct-2507`, endpoint do LM Studio/vLLM, tipo **local**);
+2. Na instalação, defina `BLUESHIFT_ROUTER_MODEL` com o **ID ou o NOME** desse modelo (o nome é o que aparece na tela Modelos IA);
+3. Confira em **Atualizações → Configuração de ambiente** qual modelo de roteamento está em uso (mostra o nome e o ID);
+4. Se deixar vazio, o roteamento usa o modelo principal do agente — funciona, mas não é o recomendado.
+
+**Pitfalls operacionais (aprendidos em produção):**
+- **LM Studio é aplicativo com interface** — se o servidor reiniciar e o LM Studio não subir, o roteamento volta para o modelo principal **sem erro visível** (o sintoma é só lentidão). Em cliente/produção, hospede o modelo de roteamento como **serviço** (llama-server via systemd) ou garanta o autostart;
+- **Nunca use o modelo grande/resposta como roteador** — além do custo, é onde o reasoning cortado gera respostas vazias e o famoso retry;
+- Se o roteamento **falhar ou for ambíguo, a plataforma executa todos os conectores da área** (comportamento seguro — o agente nunca fica sem dados);
+- Catálogo de conectores grande aumenta o prompt do roteamento: mantenha **descrições curtas e distintas** por conector (é a descrição que o roteador lê).
 
 **Dica:** no Docker, `127.0.0.1`/`localhost` é traduzido automaticamente para
 `host.docker.internal` (o modelo roda no HOST, fora do container).
@@ -1436,6 +1502,20 @@ persiste entre rebuilds).
 **O modelo local não responde (erro de conexão)?**
 Confirme que o LM Studio/vLLM está rodando no host e que a `base_url` do
 modelo está correta. No Docker, `127.0.0.1` vira `host.docker.internal`.
+
+**Preciso de um segundo servidor de modelo só para o roteamento?**
+Não é obrigatório, mas é o **recomendado**: um modelo pequeno e rápido
+dedicado (`BLUESHIFT_ROUTER_MODEL`) responde por quatro tarefas internas
+(escolher conectores, extrair parâmetros, montar o spec do gráfico e gerar o
+SELECT da Consulta inteligente) e roda em quase toda pergunta. Sem ele, essas
+tarefas usam o modelo principal do agente — funciona, porém mais lento e mais
+caro. Detalhes, perfil do modelo e pitfalls no §5.8 ("Modelo de roteamento").
+
+**A resposta ficou lenta de repente, sem erro na tela?**
+Verifique se o **modelo de roteamento ainda está no ar** (LM Studio fechado
+após reiniciar o servidor é a causa clássica). No trace da resposta, a fase
+`roteador_ms` mostra o tempo gasto no roteamento — se ela domina o total, o
+problema é o roteador, não o RAG nem o banco.
 
 **Posso misturar modelo local e externo?**
 Sim — cada agente define o próprio `modelo_id`; a plataforma é agnóstica a
