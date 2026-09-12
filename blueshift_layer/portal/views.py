@@ -5453,7 +5453,7 @@ _GRUPOS_DOC = (
     ("Telas do Portal", ("04",)),
     ("Como funciona", ("05", "06", "07")),
     ("Segurança e dados", ("08", "09")),
-    ("Referência", ("10", "11")),
+    ("Referência", ("10", "11", "12", "13")),
 )
 
 _CSS_DOC = """<style>

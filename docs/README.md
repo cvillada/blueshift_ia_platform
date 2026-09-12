@@ -30,7 +30,8 @@ segunda cópia para atualizar.
 | Uma tela / um campo na tela | a página da tela (`04-NN-...md`): tabela de campos + passo a passo |
 | Um comportamento do agente, RAG ou roteamento | `07-fluxo-do-agente-e-rag.md` (e `04-08-modelos-ia.md` se for o roteador) |
 | Um conector (novo tipo, campo, exemplo) | `04-09-conectores.md` (+ `06-conectores.md` se mudar o funcionamento) |
-| Uma rota de API / integração | `05-api-de-canal.md` (API de canal) e `04-23-gateway.md` (gateway OpenAI) |
+| Uma rota de API / integração | `12-api-reference.md` (referência da API) e `04-23-gateway.md` (gateway OpenAI) |
+| Uma versão nova (release) | `13-changelog.md` — entrada no topo com os destaques (a tag precisa aparecer lá) |
 | Uma variável de ambiente | `02-como-executar.md` (tabela de variáveis) |
 | Uma tabela/coluna do banco | `09-banco-de-dados.md` |
 | Uma tela nova | crie `04-NN-nome.md` a partir do `_TEMPLATE.md` e linke no índice `04-00-telas-do-portal.md` |

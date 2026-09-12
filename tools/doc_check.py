@@ -8,6 +8,7 @@ Percorre o codigo e confere se o que existe na plataforma esta documentado em
   - campos de formulario     (name="..."  em blueshift_layer/portal/views.py)
   - variaveis de ambiente    (BLUESHIFT_* / GATEWAY_* em todo o pacote)
   - tabelas do banco         (CREATE TABLE IF NOT EXISTS em portal/db.py)
+  - versoes entregues        (tags vX.Y.Z do git precisam estar no changelog)
 
 Um campo pode ser documentado pelo NOME TECNICO (`a2a_url`) ou pelo ROTULO da
 tela, desde que o rotulo esteja em `docs/_mapa_apelidos.json`. A checagem por
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +58,16 @@ def _documentado(item: str, texto: str, apelidos: dict) -> bool:
 _IGNORAR_CAMPOS = {"canal_id", "csrf_token", "_acao", "_action", "_csrf_token", "corte"}
 
 
+def _tags_git() -> list:
+    """Tags de versao do repositorio (se estiver num clone git)."""
+    try:
+        out = subprocess.run(["git", "tag", "-l", "v*"], cwd=RAIZ,
+                             capture_output=True, text=True, timeout=20)
+        return sorted(t for t in out.stdout.split() if t)
+    except Exception:  # noqa: BLE001 - sem git, sem checagem de versao
+        return []
+
+
 def coletar() -> dict:
     views = (RAIZ / "blueshift_layer/portal/views.py").read_text(encoding="utf-8")
     dbpy = (RAIZ / "blueshift_layer/portal/db.py").read_text(encoding="utf-8")
@@ -70,7 +82,8 @@ def coletar() -> dict:
                      if not c.startswith("_") and c not in _IGNORAR_CAMPOS})
     envs = sorted(set(re.findall(r'"(BLUESHIFT_[A-Z_]+|GATEWAY_[A-Z_]+)"', pacote)))
     tabelas = sorted(set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", dbpy)))
-    return {"rotas": rotas, "campos": campos, "envs": envs, "tabelas": tabelas}
+    return {"rotas": rotas, "campos": campos, "envs": envs, "tabelas": tabelas,
+            "versoes": _tags_git()}
 
 
 def _candidatos_rota(rota: str) -> list[str]:
@@ -103,6 +116,9 @@ def analisar() -> dict:
     for tabela in itens["tabelas"]:
         if tabela not in texto:
             gaps.setdefault("tabelas", []).append(tabela)
+    for versao in itens["versoes"]:
+        if versao not in texto:      # changelog (docs/13-changelog.md) tem que citar a tag
+            gaps.setdefault("versoes", []).append(versao)
     total = {k: len(v) for k, v in itens.items()}
     return {"gaps": gaps, "total": total}
 
