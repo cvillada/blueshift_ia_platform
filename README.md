@@ -28,6 +28,7 @@
 - [Docker](#-docker)
 - [Instalação sem Docker (Linux direto)](#-instalação-sem-docker-linux-direto)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
+- [Documentação](#-documentação)
 - [Stack Tecnológica](#-stack-tecnológica)
 - [Licença](#-licença)
 
@@ -42,13 +43,14 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | Característica | BlueShift |
 |:---------------|:----------|
 | **Dados** | 100% on-premise — nunca saem do cliente |
-| **Modelos** | Híbrido: local (vLLM/LM Studio/Ollama) ou externo (OpenAI/DeepSeek/Claude) |
+| **Modelos** | Híbrido: local (llama.cpp/LM Studio/vLLM/Ollama) ou externo (OpenRouter/DeepSeek/OpenAI); **Modo da API** `openai_chat` ou `responses` (agentes externos, ex.: AIDP `/chat`) |
 | **Agentes** | Por área da empresa (vendas, suporte, financeiro, RH, operações) |
-| **Memória** | Persistente por usuário — banco vetorial local (TF-IDF + cosseno) |
+| **Memória** | Persistente por usuário — índice local em TF-IDF + cosseno (sem banco vetorial externo) |
 | **RAG** | Conhecimento curado: import CSV/PDF + cadastro manual (sem auto-gravação de conversas desde v0.10.14) |
 | **Conectores** | Configuráveis: API REST (com OAuth2/bearer e job assíncrono), agentes A2A, servidores MCP e consultas SQL (TLS/wallet) |
 | **Gateway OpenAI** | Chats externos (Open WebUI, LibreChat, apps) no protocolo padrão — porta 9003 |
 | **Skills IA** | Geração de skills com o próprio modelo cadastrado |
+| **Documentação** | Docs navegável dentro do produto (busca, uma página por tela) + Ajuda IA sobre a mesma fonte + API Reference e Changelog |
 | **Licenciamento** | Anual por empresa (não por token) |
 | **Stack** | Python puro, Flask, SQLite — sem dependências pesadas |
 
@@ -404,7 +406,7 @@ Resposta:
   "resposta": "O cliente C001 possui 3 interações...",
   "pergunta": "Qual o histórico do cliente C001?",
   "agente": "Agente Vendas",
-  "modelo": "hermes-3-llama-3.1-8b",
+  "modelo": "qwen3-4b-instruct-2507",
   "feedback_url": "http://localhost:8080/portal/api/v1/feedback/123",
   "erro": null,
   "tokens": {"total_tokens": 345, "prompt_tokens": 200, "completion_tokens": 145},
@@ -476,14 +478,17 @@ A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Voc
 # 1. Baixe o LM Studio em https://lmstudio.ai
 # 2. Na aba "Discover", busque e baixe um modelo GGUF
 
-# Modelo usado nos testes de desenvolvimento:
-#   NousResearch/Hermes-3-Llama-3.1-8B (Q4_K_M, ~5.5 GB)
-#   → Buscar no LM Studio: "hermes-3-llama-3.1-8b"
+# Modelo de ROTEAMENTO (recomendado, validado em produção):
+#   Qwen3-4B-Instruct-2507 (Q4, ~2,6 GB)
+#   → Buscar no LM Studio: "qwen3-4b-instruct-2507"
 #
-# Alternativas leves:
-#   - Llama 3.1 8B Instruct
-#   - Mistral 7B v0.3
-#   - Qwen 2.5 7B Instruct
+# Exemplos alternativos (instruct, NUNCA reasoning):
+#   - hermes-3-llama-3.1-8b (8B instruct, ótimo em formato/JSON)
+#   - Qwen2.5-3B-Instruct (meio-termo)
+#   - Qwen2.5-0.5B-Instruct (instalação modesta; não faz o text-to-SQL)
+#
+# Para o modelo PRINCIPAL (que escreve a resposta) use o que tiver de melhor:
+# Llama 3.1 8B Instruct, Qwen 2.5 7B/14B, Mistral, etc.
 
 # 3. Na aba "Local Server":
 #    - Selecione o modelo baixado
@@ -492,10 +497,10 @@ A BlueShift é 100% compatível com qualquer servidor **OpenAI-compatible**. Voc
 #    - Porta: 1234 (padrão)
 
 # 4. No Portal BlueShift, vá em Modelos IA e cadastre:
-#    - Nome: Hermes-3-Llama-3.1-8B
+#    - Nome: qwen3-4b-instruct-2507
 #    - Endpoint: http://host.docker.internal:1234 (se estiver no Docker)
 #               ou http://127.0.0.1:1234 (se estiver rodando local)
-#    - Modelo: hermes-3-llama-3.1-8b (ou o nome exato que o servidor espera)
+#    - Modelo: qwen3-4b-instruct-2507 (ou o nome exato que o servidor espera)
 #    - Tipo: Local
 ```
 
@@ -541,7 +546,12 @@ cp .env.example .env          # ajuste BLUESHIFT_LICENSE
 ./install.sh                  # docker compose up -d --build
 ```
 
-Acesse `http://localhost:8080/portal` (login: `admin` / `admin123`).
+Acesse `http://localhost:8080/portal`.
+
+> **Instalação do cliente (banco limpo):** com `BLUESHIFT_SEED_DEMO=0` a primeira
+> entrada abre a tela **Configuração inicial**, que cria a empresa e o primeiro
+> admin (não existem dados de demonstração). O `admin` / `admin123` é apenas o
+> usuário de demonstração do modo dev (`BLUESHIFT_SEED_DEMO=1`).
 
 > **Modelos de IA não vêm embutidos.** Após subir a plataforma, cadastre os modelos na tela **Modelos IA** — local (vLLM/LM Studio/Ollama) ou externo (DeepSeek/OpenRouter/OpenAI).
 >
@@ -703,6 +713,18 @@ blueshift_layer/                    ← Código principal da plataforma
     ├── financeiro/SKILL.md
     ├── rh/SKILL.md
     └── operacoes/SKILL.md
+
+docs/                               ← 📚 Documentação (páginas navegáveis — Docs + Ajuda IA)
+├── README.md                       ← Convenção de escrita (onde documentar cada mudança)
+├── 00-…13-*.md                     ← Conteúdo (uma página por assunto/tela) + API Reference + Changelog
+├── _TEMPLATE.md                    ← Modelo para página nova
+├── _mapa_apelidos.json             ← Campo técnico ↔ rótulo da tela (checagem automática)
+├── _pendentes.json                 ← Dívida conhecida da checagem
+└── _publico.txt                    ← Curadoria do site interno de documentação
+
+tools/
+├── doc_check.py                    ← Gate doc × código (rotas, campos, variáveis, tabelas, versões)
+└── docs_site.py                    ← Gera o site de documentação para uso interno (não publicado)
 
 docker/
 ├── Dockerfile                      ← Imagem do container
@@ -897,6 +919,44 @@ Existem duas formas de controlar o crescimento — manuais e com critérios dife
 Nunca entram: `metricas_diarias` (agregado perpétuo) e dados mestres (clientes, usuarios, agentes, modelos, skills, conectores, canais, áreas, api_keys, configs). Cada execução — sucesso **ou falha** — fica no histórico da tela (execução, corte, arquivo, movidos) **e na Auditoria** (menu Operação, `acao=arquivo_morto`: usuário, corte, arquivo, total movido). Snapshot duplicado no mesmo dia/corte é rejeitado (nada é sobrescrito).
 
 **2. Limpeza automática (tela LGPD):** opcional (`retencao_auto`), roda a cada hora e faz **DELETE físico** com retenções configuráveis (auditoria 90d, tracing/uso_tokens 180d, memórias 365d). Desligada por padrão — só ativa se o cliente quiser descartar sem snapshot.
+
+---
+
+## 📚 Documentação
+
+A documentação vive em **`docs/`** (uma página por assunto/tela) e é a **fonte
+única** de três lugares: o menu **Docs** do portal, o popup **Ajuda IA** e o site
+interno de documentação.
+
+| Página | Para quem | Conteúdo |
+|:-------|:----------|:---------|
+| `docs/00-…03-*.md` | operador | visão geral, arquitetura, como executar, acesso e papéis |
+| `docs/04-*.md` | operador | **uma página por tela** do portal (campos, passo a passo, exemplos, pitfalls) |
+| `docs/05-…07-*.md` | operador/TI | API de canal, conectores e fluxo do agente/RAG |
+| `docs/12-api-reference.md` | **TI do cliente** | referência de integração: API do portal, Gateway OpenAI, autenticação, erros e limites |
+| `docs/13-changelog.md` | todos | histórico de versões (toda release entra no topo) |
+
+**Ao mexer no produto, documente no mesmo commit:**
+
+```bash
+python tools/doc_check.py            # falha se algo do código ficar sem documentação
+python tools/doc_check.py --lista    # dívida conhecida
+```
+
+A checagem compara **rotas, campos de formulário, variáveis de ambiente, tabelas
+do banco e tags de versão** com as páginas — hoje com cobertura total. Convenção
+de escrita, template de página e "onde documentar cada tipo de mudança":
+**`docs/README.md`**.
+
+**Site interno de documentação** (apresentar/imprimir/levar offline em demo):
+
+```bash
+./bp-venv/bin/python tools/docs_site.py       # gera dist/docs_site/ (autocontido, com busca)
+./bp-venv/bin/python tests/test_docs_site.py  # valida curadoria, links e JS
+```
+
+A curadoria do que entra no site é explícita em `docs/_publico.txt`. **O site não
+é publicado** — uso interno.
 
 ---
 

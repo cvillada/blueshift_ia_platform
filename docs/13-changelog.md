@@ -25,7 +25,12 @@ momento do release aparecem como `—`.
   tabelas do banco e versões entregues;
 - a **Ajuda IA** continua respondendo a partir das mesmas páginas (uma fonte só);
 - **gerador de site de documentação** para uso interno (apresentar/imprimir/levar
-  offline na demo), com curadoria do que entra — **sem publicação pública**.
+  offline na demo), com curadoria do que entra — **sem publicação pública**;
+- **README e PRD alinhados ao produto**: README com a seção de Documentação,
+  estrutura atualizada e o modelo de roteamento validado; PRD revisado para a
+  **versão 0.3** — licença source-available (não mais MIT), marca **CL Agents**,
+  conectores corporativos (API/A2A/MCP/SQL), Modo da API `responses`, roteamento
+  por IA e pendências de 0.9 a 0.11.1.
 
 **v0.11.0 (2026-09-12) — Connector Pack: integrações corporativas**
 - Conector **API**: autenticação `none` / `bearer` / `oauth2` (client_credentials
