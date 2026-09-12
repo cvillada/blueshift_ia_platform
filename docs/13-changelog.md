@@ -12,6 +12,21 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.1 (2026-09-12) — documentação navegável dentro do produto**
+- **Docs do portal** reorganizado em páginas: sidebar agrupada (Começando · Telas do
+  Portal · Como funciona · Referência), **busca** na documentação, uma página por
+  tela/assunto, índice "Nesta página", botão de copiar nos blocos de código,
+  impressão limpa e links antigos (`#5-9-conectores`) continuando válidos;
+- páginas novas: **API Reference** (integração do TI do cliente: API do portal e
+  Gateway OpenAI, autenticação, erros e limites) e **Changelog** por versão;
+- **rotina de documentação**: template de página, mapa nome-técnico ↔ rótulo da
+  tela e checagem automática (`tools/doc_check.py`) que barra alteração de código
+  sem documentação — cobre rotas, campos de formulário, variáveis de ambiente,
+  tabelas do banco e versões entregues;
+- a **Ajuda IA** continua respondendo a partir das mesmas páginas (uma fonte só);
+- **gerador de site de documentação** para uso interno (apresentar/imprimir/levar
+  offline na demo), com curadoria do que entra — **sem publicação pública**.
+
 **v0.11.0 (2026-09-12) — Connector Pack: integrações corporativas**
 - Conector **API**: autenticação `none` / `bearer` / `oauth2` (client_credentials
   com cache e renovação automática), timeout configurável, **job assíncrono
@@ -51,6 +66,7 @@ momento do release aparecem como `—`.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
+| v0.11.1 | 2026-09-12 | documentação navegável no produto (páginas, busca, API Reference, Changelog) + checagem automática doc × código e gerador de site interno |
 | v0.11.0 | 2026-09-12 | Connector Pack (auth OAuth2/bearer, polling + mapeamento, tipo A2A, SSL/wallet, modelo Modo=responses) e guia completo de conectores |
 | v0.10.16 | 2026-09-09 | corpo das skills vai ao prompt (regras de formato valem) |
 | v0.10.15 | 2026-09-08 | guard de resposta (tool_call/think nunca chegam ao usuario) |
