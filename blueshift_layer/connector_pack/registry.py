@@ -15,10 +15,13 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
+import uuid
 
+from .. import http_auth
 from ..portal import db
 
 
@@ -63,6 +66,8 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
         try:
             if tipo == "api":
                 res = _executar_api(nome, config, params, pergunta)
+            elif tipo == "a2a":
+                res = _executar_a2a(nome, config, params, pergunta)
             elif tipo == "mcp":
                 res = _executar_mcp(nome, config, params, pergunta)
             elif tipo == "sql":
@@ -102,6 +107,83 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
 # Executor: API REST                                                         #
 # --------------------------------------------------------------------------- #
 
+# OAuth2/bearer: implementacao compartilhada em blueshift_layer.http_auth
+# (usada tambem pelo conector A2A e pelos modelos externos). Os aliases abaixo
+# mantem os nomes historicos deste modulo.
+_TOKEN_CACHE = http_auth.TOKEN_CACHE
+_token_oauth2 = http_auth.token_oauth2
+_aplicar_auth = http_auth.aplicar_auth
+
+
+# --------------------------------------------------------------------------- #
+# Helpers de resposta (polling de jobs + mapeamento)                          #
+# --------------------------------------------------------------------------- #
+
+def _buscar_caminho(obj, caminho: str):
+    """Navega dict/list por caminho pontilhado (ex.: 'data.rows.0.nome').
+
+    Retorna None quando o caminho nao existe (nunca levanta).
+    """
+    atual = obj
+    for parte in (caminho or "").split("."):
+        if not parte:
+            continue
+        if isinstance(atual, dict):
+            if parte not in atual:
+                return None
+            atual = atual[parte]
+        elif isinstance(atual, list):
+            try:
+                atual = atual[int(parte)]
+            except (ValueError, IndexError):
+                return None
+        else:
+            return None
+    return atual
+
+
+def _aguardar_job(config: dict, primeira, params: dict, headers: dict,
+                  timeout: int) -> tuple[object, str]:
+    """Acompanha uma API assincrona ate concluir. Retorna (dados, erro).
+
+    Config: poll_url (aceita {job_id}/{id}), poll_campo (campo com o id na 1a
+    resposta), poll_estado_campo (default 'status'), poll_estado_concluido
+    (default 'SUCCEEDED'), poll_estado_erro (default 'FAILED'), poll_intervalo
+    (s, default 2), poll_max (s, default 60).
+    """
+    campo = (config.get("poll_campo") or "").strip()
+    job_id = _buscar_caminho(primeira, campo) if campo else None
+    if job_id is None:
+        return primeira, ""  # sem id: mantem a resposta inicial (seguro)
+    poll_url = _aplicar_params(config.get("poll_url", ""),
+                               {**params, "job_id": str(job_id), "id": str(job_id)})
+    try:
+        intervalo = max(float(config.get("poll_intervalo") or 2), 0.5)
+        maximo = float(config.get("poll_max") or 60)
+    except (TypeError, ValueError):
+        intervalo, maximo = 2.0, 60.0
+    estado_campo = (config.get("poll_estado_campo") or "status").strip()
+    ok_val = (config.get("poll_estado_concluido") or "SUCCEEDED").strip().lower()
+    err_val = (config.get("poll_estado_erro") or "FAILED").strip().lower()
+    inicio = time.time()
+    ultimo = primeira
+    while time.time() - inicio < maximo:
+        time.sleep(intervalo)
+        try:
+            req = urllib.request.Request(poll_url, method="GET",
+                                         headers={**headers, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                ultimo = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:  # noqa: BLE001
+            return ultimo, f"polling: falha ao consultar {poll_url} ({e})"
+        estado = str(_buscar_caminho(ultimo, estado_campo) or "").lower()
+        if estado == ok_val:
+            return ultimo, ""
+        if estado == err_val:
+            return ultimo, f"polling: job {job_id} terminou como {estado}"
+    return ultimo, f"polling: timeout apos {int(maximo)}s aguardando a conclusao do job"
+
+
 def _executar_api(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     """Chama uma API REST externa."""
     url = config.get("url", "")
@@ -128,6 +210,18 @@ def _executar_api(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     url = _aplicar_params(url, params)
     headers = {k: _aplicar_params(v, params) for k, v in headers.items()}
 
+    # Autenticacao (opcional — sem config, comportamento IDENTICO ao anterior):
+    #   none   -> headers como estao (default; token manual continua valendo)
+    #   bearer -> token estatico informado no cadastro
+    #   oauth2 -> client_credentials com cache de token (helper compartilhado)
+    headers, _err_auth = _aplicar_auth(headers, config)
+    if _err_auth:
+        return {"erro": _err_auth}
+    try:
+        timeout = int(config.get("timeout") or 15)
+    except (TypeError, ValueError):
+        timeout = 15
+
     body = None
     if method in ("POST", "PUT", "PATCH"):
         if body_template:
@@ -137,17 +231,103 @@ def _executar_api(nome: str, config: dict, params: dict, pergunta: str) -> dict:
         req = urllib.request.Request(
             url, data=body, headers=headers, method=method,
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = resp.read().decode("utf-8")
             try:
                 data = json.loads(data)  # tenta parsear JSON
             except (json.JSONDecodeError, ValueError):
                 pass  # mantem string
-            return {"tool": f"api:{method}", "args": url, "resultado": data}
+        # Polling opcional: APIs assincronas (Databricks statements, Snowflake
+        # SQL API, OCI) devolvem job id e o resultado vem depois.
+        if config.get("poll_url") and isinstance(data, (dict, list)):
+            data, _err_poll = _aguardar_job(config, data, params, headers, timeout)
+            if _err_poll:
+                return {"erro": _err_poll}
+        # Mapeamento opcional: manda so o pedaco util ao prompt (ex.: data.rows)
+        _mapa = (config.get("mapear_resposta") or "").strip()
+        if _mapa and isinstance(data, (dict, list)):
+            _sel = _buscar_caminho(data, _mapa)
+            if _sel is not None:
+                data = _sel
+        return {"tool": f"api:{method}", "args": url, "resultado": data}
     except urllib.error.HTTPError as e:
         return {"erro": f"HTTP {e.code}: {e.reason}"}
     except urllib.error.URLError as e:
         return {"erro": f"Falha de conexao: {e.reason}"}
+
+
+# --------------------------------------------------------------------------- #
+# Executor: A2A (agente remoto — Oracle Autonomous/AIDP e afins)               #
+# --------------------------------------------------------------------------- #
+
+def _extrair_texto_a2a(obj) -> str:
+    """Extrai o texto de uma resposta A2A (tolerante a variacoes do spec).
+
+    Procura parts[].text em artifacts/messages/result; se nao achar, devolve
+    string vazia (o chamador cai no JSON bruto como resultado).
+    """
+    textos: list[str] = []
+
+    def _percorrer(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k == "text" and isinstance(v, str):
+                    textos.append(v)
+                else:
+                    _percorrer(v)
+        elif isinstance(x, list):
+            for it in x:
+                _percorrer(it)
+
+    _percorrer(obj)
+    return "\n".join(t for t in textos if t.strip())
+
+
+def _executar_a2a(nome: str, config: dict, params: dict, pergunta: str) -> dict:
+    """Chama um agente remoto via protocolo A2A (message/send).
+
+    Config: a2a_url (endpoint /a2a), a2a_metodo (default message/send),
+    a2a_texto (template da mensagem; default = pergunta do usuario; aceita
+    {param}), auth/token/token_url/client_id/client_secret/scope (reuso do
+    http_auth) e timeout.
+    """
+    url = (config.get("a2a_url") or config.get("url") or "").strip()
+    if not url:
+        return {"erro": "URL A2A nao configurada"}
+    metodo = (config.get("a2a_metodo") or "message/send").strip()
+    template = config.get("a2a_texto") or "{pergunta}"
+    texto = _aplicar_params(template, {**params, "pergunta": pergunta})
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers, _err_auth = _aplicar_auth(headers, config)
+    if _err_auth:
+        return {"erro": _err_auth}
+    try:
+        timeout = int(config.get("timeout") or 30)
+    except (TypeError, ValueError):
+        timeout = 30
+    payload = {
+        "jsonrpc": "2.0", "id": 1, "method": metodo,
+        "params": {"message": {"role": "user", "messageId": uuid.uuid4().hex,
+                               "parts": [{"kind": "text", "text": texto}]}},
+    }
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            out = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return {"erro": f"a2a: HTTP {e.code}: {e.reason}"}
+    except urllib.error.URLError as e:
+        return {"erro": f"a2a: falha de conexao: {e.reason}"}
+    except Exception as e:  # noqa: BLE001
+        return {"erro": f"a2a: {e}"}
+    if isinstance(out, dict) and out.get("error"):
+        erro = out["error"]
+        msg = erro.get("message") if isinstance(erro, dict) else erro
+        return {"erro": f"a2a: {msg}"}
+    resultado = out.get("result", out) if isinstance(out, dict) else out
+    texto_resp = _extrair_texto_a2a(resultado)
+    return {"tool": f"a2a:{metodo}", "args": url, "resultado": texto_resp or resultado}
 
 
 # --------------------------------------------------------------------------- #
@@ -277,14 +457,21 @@ def _conectar_sql(config: dict):
     host = _resolver_host_sql(config.get("sql_host", "127.0.0.1"))
     if driver == "postgresql":
         import psycopg
+        # sslmode opcional (ex: "require"): habilita Databricks SQL Warehouse e
+        # outros Postgres gerenciados que exigem TLS. Sem o campo, connect
+        # IDENTICO ao anterior.
+        _extra = {}
+        _ssl = (config.get("sql_sslmode") or "").strip()
+        if _ssl:
+            _extra["sslmode"] = _ssl
         if dsn:
-            return psycopg.connect(dsn, connect_timeout=5)
+            return psycopg.connect(dsn, connect_timeout=5, **_extra)
         return psycopg.connect(
             host=host, port=config.get("sql_port", "5432"),
             dbname=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
-            connect_timeout=5,
+            connect_timeout=5, **_extra
         )
     if driver == "mysql":
         import pymysql
@@ -308,12 +495,29 @@ def _conectar_sql(config: dict):
     if driver == "oracle":
         import oracledb
         oracledb.defaults.fetchmany = 50
+        # Wallet/mTLS opcional (Oracle Autonomous AI Database): quando
+        # wallet_dir for informado, conecta com o wallet descompactado no
+        # servidor (config_dir/wallet_location) + senha do wallet. Com DSN
+        # (tnsnames do wallet) usa o DSN; senao, host/servico. Sem os campos,
+        # connect IDENTICO ao anterior.
+        _extra = {}
+        _wdir = (config.get("wallet_dir") or "").strip()
+        if _wdir:
+            _extra["config_dir"] = _wdir
+            _extra["wallet_location"] = _wdir
+            _wpass = (config.get("wallet_password") or "").strip()
+            if _wpass:
+                _extra["wallet_password"] = _wpass
+        if _wdir and dsn:
+            return oracledb.connect(dsn=dsn, user=config.get("sql_user", ""),
+                                    password=config.get("sql_pass", ""),
+                                    connect_timeout=5, **_extra)
         return oracledb.connect(
             host=host, port=config.get("sql_port", "1521"),
             service_name=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
             password=config.get("sql_pass", ""),
-            connect_timeout=5,
+            connect_timeout=5, **_extra
         )
     raise ValueError(f"Driver SQL desconhecido: {driver}")
 

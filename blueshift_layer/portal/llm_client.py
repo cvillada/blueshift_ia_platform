@@ -36,18 +36,36 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
     (roteador de conectores / extrator de parametros).
     """
     base = _resolver_host(modelo["base_url"]).rstrip("/")
-    url = f"{base}/v1/chat/completions"
+    modo = (modelo.get("modo") or "openai_chat").strip().lower()
     # usa max_tokens configurado no modelo, ou padrao 4096
     mt = max_tokens or modelo.get("max_tokens") or 4096
     # temperatura: chamada explicita vence; senao usa a do modelo cadastrado
     temp = temperatura if temperatura is not None else float(modelo.get("temperatura") or 0.3)
-    payload = {
-        "model": modelo["modelo"],
-        "messages": mensagens,
-        "max_tokens": mt,
-        "temperature": temp,
-        "stream": False,
-    }
+    if modo == "responses":
+        # Modelos/agentes externos no formato OpenAI Responses (ex.: Oracle AIDP
+        # /agentendpoint/<id>/chat): posta DIRETO na base_url cadastrada.
+        url = base
+        _sistema = "\n".join(m.get("content", "") for m in mensagens
+                             if m.get("role") == "system")
+        payload = {
+            "model": modelo["modelo"],
+            "input": [{"role": m.get("role", "user"),
+                       "content": [{"type": "input_text", "text": m.get("content", "")}]}
+                      for m in mensagens if m.get("role") != "system"],
+            "max_output_tokens": mt,
+            "temperature": temp,
+        }
+        if _sistema:
+            payload["instructions"] = _sistema
+    else:
+        url = f"{base}/v1/chat/completions"
+        payload = {
+            "model": modelo["modelo"],
+            "messages": mensagens,
+            "max_tokens": mt,
+            "temperature": temp,
+            "stream": False,
+        }
     headers = {"Content-Type": "application/json"}
     if modelo.get("api_key"):
         headers["Authorization"] = f"Bearer {modelo['api_key']}"
@@ -56,6 +74,18 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             out = json.loads(resp.read().decode("utf-8"))
+        if modo == "responses":
+            content = _texto_responses(out)
+            usage = out.get("usage") or {}
+            _pin = int(usage.get("input_tokens", 0) or 0)
+            _pout = int(usage.get("output_tokens", 0) or 0)
+            tokens = {
+                "prompt_tokens": _pin,
+                "completion_tokens": _pout,
+                "total_tokens": int(usage.get("total_tokens", 0) or (_pin + _pout)),
+            }
+            return {"ok": True, "content": content, "model": modelo["modelo"],
+                    "error": None, "tokens": tokens}
         content = out["choices"][0]["message"]["content"]
         # Captura métricas de uso (OpenAI-compatible) quando o endpoint as retorna.
         # `usage` pode vir ausente em alguns servidores locais — tratamos como 0.
@@ -83,12 +113,45 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
                 "tokens": _ZERO_TOKENS()}
 
 
+def _texto_responses(out: dict) -> str:
+    """Extrai o texto de uma resposta no formato OpenAI Responses (tolerante).
+
+    Cobre: output_text (atalho), output[].content[].text, e — como fallback —
+    choices[0].message.content / response / text (variacoes de gateways).
+    """
+    if not isinstance(out, dict):
+        return ""
+    txt = out.get("output_text")
+    if isinstance(txt, str) and txt.strip():
+        return txt
+    partes: list[str] = []
+    for item in out.get("output") or []:
+        if isinstance(item, dict):
+            for c in item.get("content") or []:
+                if isinstance(c, dict):
+                    t = c.get("text") or c.get("output_text")
+                    if isinstance(t, str) and t.strip():
+                        partes.append(t)
+    if partes:
+        return "\n".join(partes)
+    try:
+        return out["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        return out.get("response") or out.get("text") or ""
+
+
 def _ZERO_TOKENS() -> dict:
     return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
 def health(modelo: dict) -> bool:
-    """Checa se o endpoint responde (GET /v1/models)."""
+    """Checa se o endpoint responde (GET /v1/models).
+
+    Modo 'responses' (agentes externos, ex.: AIDP): /v1/models nao se aplica —
+    considera "online" quando a base_url esta configurada.
+    """
+    if (modelo.get("modo") or "openai_chat").strip().lower() == "responses":
+        return bool((modelo.get("base_url") or "").strip())
     base = _resolver_host(modelo["base_url"]).rstrip("/")
     url = f"{base}/v1/models"
     headers = {}

@@ -46,7 +46,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Agentes** | Por área da empresa (vendas, suporte, financeiro, RH, operações) |
 | **Memória** | Persistente por usuário — banco vetorial local (TF-IDF + cosseno) |
 | **RAG** | Conhecimento curado: import CSV/PDF + cadastro manual (sem auto-gravação de conversas desde v0.10.14) |
-| **Conectores** | Configuráveis: API REST, servidores MCP ou consultas SQL |
+| **Conectores** | Configuráveis: API REST (com OAuth2/bearer e job assíncrono), agentes A2A, servidores MCP e consultas SQL (TLS/wallet) |
 | **Gateway OpenAI** | Chats externos (Open WebUI, LibreChat, apps) no protocolo padrão — porta 9003 |
 | **Skills IA** | Geração de skills com o próprio modelo cadastrado |
 | **Licenciamento** | Anual por empresa (não por token) |
@@ -126,7 +126,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 1   Usuário pergunta
     │
 2   ▼
-    Conectores da área  →  SQL / API REST / MCP stdio
+    Conectores da área  →  SQL / API REST / A2A / MCP
     │   Parâmetros (id_cliente, email, datas) extraídos da pergunta
     │   * Placeholder {id_cliente} substituído pelos valores extraídos
     │
@@ -167,7 +167,7 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 | **Conhecimento** | Base de conhecimento RAG (manual, política, contratos + CSV + PDF) | Login |
 | **Docs** | Documentação completa (DOCUMENTACAO_PB.md) no menu lateral — mesma fonte do popup Ajuda | Login |
 | Modelos IA | Cadastro de LLMs OpenAI-compatible (local e externo) | Admin |
-| **Conectores** | Cadastro de fontes externas (API, MCP, SQL) + Oracle + finalidade (Art. 26 LGPD) | Admin |
+| **Conectores** | Cadastro de fontes externas (API, A2A, MCP, SQL) + autenticação OAuth2/bearer, SSL/wallet, polling de jobs + finalidade (Art. 26 LGPD) | Admin |
 | **Canais** | API de integração com token + webhook de saída | Admin |
 | **Gateway** | Ativação do gateway OpenAI-compatível (canal + modo streaming/completa + limites de contexto) | Admin |
 | **LGPD** | Conformidade na saída: anonimizar LLM/RAG, aviso de privacidade, finalidade por conector, retenção de logs | Admin |
@@ -202,11 +202,12 @@ Conectores são fontes de dados configuráveis por **área** (vendas, suporte, e
 
 | Tipo | Descrição | Exemplo |
 |:-----|:----------|:--------|
-| 🌐 **API REST** | Chamada HTTP via `urllib` | `GET https://api.externa.com/dados` |
+| 🌐 **API REST** | Chamada HTTP via `urllib`, com autenticação (bearer/OAuth2 client_credentials), timeout configurável, **polling de jobs assíncronos** e mapeamento da resposta | `GET https://api.externa.com/dados` |
+| 🤝 **A2A** | Agente remoto no protocolo Agent2Agent (ex.: Oracle Autonomous/AIDP `/a2a`) | `message/send` + agent card |
 | 🔌 **MCP** | Servidor MCP via stdio (local) ou SSE (remoto, JSON-RPC 2.0) | `python mcp_server.py` / URL SSE + tool call |
-| 🗄️ **SQL** | PostgreSQL, MySQL, SQL Server, **Oracle** via `oracledb` | `SELECT * FROM vw_clientes WHERE id = %s` |
+| 🗄️ **SQL** | PostgreSQL, MySQL, SQL Server, **Oracle** via `oracledb`, com SSL mode e wallet (Autonomous) | `SELECT * FROM vw_clientes WHERE id = %s` |
 
-Os parâmetros (`{id_cliente}`, `{email}`, `{data}`) são extraídos automaticamente da pergunta do usuário.
+Os parâmetros (`{id_cliente}`, `{email}`, `{data}`, `{pergunta}`) são extraídos automaticamente da pergunta do usuário. Configuração detalhada de cada tipo: `DOCUMENTACAO_PB.md` §5.9.
 
 **Consulta inteligente (SQL):** quando a query fixa volta vazia e a pergunta pede
 análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o
@@ -226,7 +227,7 @@ LGPD.
 | **Manual** | Adicionar documentos via formulário no portal |
 | **CSV Import** | Upload de `.csv` com colunas `titulo,conteudo,fonte,area` |
 | **PDF Import** | Upload de `.pdf` com extração automática de texto (PyMuPDF) |
-| **RAG Auto-save** | Resultados de conectores são salvos automaticamente no RAG |
+| **Sem auto-save** | O RAG não recebe gravação automática de conversas/conectores (desde v0.10.14) — cresce por cadastro, CSV/PDF e skills |
 | **Skills no RAG** | Skills do catálogo podem ser indexadas no knowledge |
 | **Monitor** | KPI cards: total docs, áreas, acessos, tamanho médio |
 | **Export Fine-Tuning** | Exporta RAG como JSONL (formato `messages`) para MLX, HuggingFace, Unsloth, OpenAI |

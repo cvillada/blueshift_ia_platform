@@ -1534,6 +1534,35 @@ def conectores():
             config["method"] = request.form.get("api_method", "GET")
             config["headers"] = request.form.get("api_headers", "{}").strip()
             config["body"] = request.form.get("api_body", "").strip()
+            # Autenticacao (opcional): none = headers como estao (default)
+            config["auth"] = (request.form.get("api_auth", "none") or "none").strip().lower()
+            config["token"] = request.form.get("api_token", "").strip()
+            config["token_url"] = request.form.get("api_token_url", "").strip()
+            config["client_id"] = request.form.get("api_client_id", "").strip()
+            config["client_secret"] = request.form.get("api_client_secret", "").strip()
+            config["scope"] = request.form.get("api_scope", "").strip()
+            config["timeout"] = request.form.get("api_timeout", "").strip()
+            # Polling de jobs assincronos + mapeamento da resposta (opcional)
+            config["poll_url"] = request.form.get("api_poll_url", "").strip()
+            config["poll_campo"] = request.form.get("api_poll_campo", "").strip()
+            config["poll_estado_campo"] = request.form.get("api_poll_estado_campo", "").strip()
+            config["poll_estado_concluido"] = request.form.get("api_poll_ok", "").strip()
+            config["poll_estado_erro"] = request.form.get("api_poll_erro", "").strip()
+            config["poll_intervalo"] = request.form.get("api_poll_intervalo", "").strip()
+            config["poll_max"] = request.form.get("api_poll_max", "").strip()
+            config["mapear_resposta"] = request.form.get("api_mapear", "").strip()
+        elif tipo == "a2a":
+            config["a2a_url"] = request.form.get("a2a_url", "").strip()
+            config["a2a_metodo"] = request.form.get("a2a_metodo", "message/send").strip()
+            config["a2a_texto"] = request.form.get("a2a_texto", "").strip()
+            config["agent_card_url"] = request.form.get("a2a_card", "").strip()
+            config["auth"] = (request.form.get("a2a_auth", "none") or "none").strip().lower()
+            config["token"] = request.form.get("a2a_token", "").strip()
+            config["token_url"] = request.form.get("a2a_token_url", "").strip()
+            config["client_id"] = request.form.get("a2a_client_id", "").strip()
+            config["client_secret"] = request.form.get("a2a_client_secret", "").strip()
+            config["scope"] = request.form.get("a2a_scope", "").strip()
+            config["timeout"] = request.form.get("a2a_timeout", "").strip()
         elif tipo == "mcp":
             config["transport"] = request.form.get("mcp_transport", "stdio").strip()
             config["url"] = request.form.get("mcp_url", "").strip()
@@ -1555,6 +1584,10 @@ def conectores():
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
             config["sql_analise"] = "1" if request.form.get("sql_analise") else "0"
+            # TLS/wallet (opcional): vazio = comportamento anterior
+            config["sql_sslmode"] = request.form.get("sql_sslmode", "").strip()
+            config["wallet_dir"] = request.form.get("sql_wallet_dir", "").strip()
+            config["wallet_password"] = request.form.get("sql_wallet_password", "").strip()
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -1577,7 +1610,7 @@ def conectores():
     body = ""
     for k in rows:
         cfg = _parse_config(k.get("config", "{}"))
-        tipo_icon = {"api": "🌐", "mcp": "🔌", "sql": "🗄️"}.get(k["tipo"], "❓")
+        tipo_icon = {"api": "🌐", "a2a": "🤝", "mcp": "🔌", "sql": "🗄️"}.get(k["tipo"], "❓")
         cfg_resumo = cfg.get("descricao") or cfg.get("url") or cfg.get("tool") or cfg.get("query", "")[:60]
         finalidade = k.get("finalidade") or cfg.get("finalidade", "")
         body += f"""<tr>
@@ -1609,6 +1642,7 @@ def conectores():
           <div><label>Tipo</label>
             <select name="tipo" id="conn-tipo" onchange="toggleConnFields()">
               <option value="api">🌐 API REST</option>
+              <option value="a2a">🤝 A2A (agente remoto)</option>
               <option value="mcp">🔌 MCP (stdio)</option>
               <option value="sql">🗄️ SQL View</option>
             </select></div>
@@ -1620,6 +1654,63 @@ def conectores():
             <div><label>Headers (JSON) <span class="info-tip" title='{{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}' style="cursor:help;color:var(--muted);font-size:13px">ⓘ</span></label><input name="api_headers" placeholder='{{"User-Agent": "Mozilla/5.0"}}'></div>
           </div>
           <label>Body (JSON, só POST)</label><input name="api_body" placeholder='{{"id": "{{id_cliente}}"}}'>
+          <details style="margin-top:10px;font-size:12px"><summary>Autenticação / avançado (opcional)</summary>
+            <label>Autenticação</label>
+            <select name="api_auth">
+              <option value="none">Nenhuma (usar headers acima)</option>
+              <option value="bearer">Bearer — token fixo</option>
+              <option value="oauth2">OAuth2 — client_credentials</option>
+            </select>
+            <label>Token (só p/ Bearer)</label><input name="api_token" placeholder="token fixo">
+            <label>Token URL (só p/ OAuth2)</label><input name="api_token_url" placeholder="https://login.exemplo.com/oauth2/token">
+            <div class="form-row">
+              <div><label>Client ID</label><input name="api_client_id" placeholder="client_id"></div>
+              <div><label>Client Secret</label><input name="api_client_secret" type="password" placeholder="client_secret"></div>
+            </div>
+            <label>Scope (opcional)</label><input name="api_scope" placeholder="api://escopo/.default">
+            <label>Timeout em segundos (opcional)</label><input name="api_timeout" placeholder="15">
+            <details style="margin-top:8px"><summary>Job assíncrono (polling) e mapeamento — opcional</summary>
+              <label>URL de consulta do job</label><input name="api_poll_url" placeholder="https://api.exemplo.com/v1/jobs/{{job_id}}">
+              <div class="form-row">
+                <div><label>Campo do id na 1ª resposta</label><input name="api_poll_campo" placeholder="statementHandle"></div>
+                <div><label>Campo do status</label><input name="api_poll_estado_campo" placeholder="status"></div>
+              </div>
+              <div class="form-row">
+                <div><label>Status concluído</label><input name="api_poll_ok" placeholder="SUCCEEDED"></div>
+                <div><label>Status de erro</label><input name="api_poll_erro" placeholder="FAILED"></div>
+              </div>
+              <div class="form-row">
+                <div><label>Intervalo (s)</label><input name="api_poll_intervalo" placeholder="2"></div>
+                <div><label>Máximo (s)</label><input name="api_poll_max" placeholder="60"></div>
+              </div>
+              <label>Mapear resposta (só o útil ao modelo)</label><input name="api_mapear" placeholder="data.rows">
+              <div class="muted" style="font-size:11px">Use o mapeamento para enviar apenas o pedaço relevante do JSON ao modelo (ex.: <code>data.rows</code>) — evita poluir o contexto.</div>
+            </details>
+          </details>
+        </div>
+        <div id="conn-fields-a2a" style="display:none">
+          <label>URL do agente A2A</label><input name="a2a_url" placeholder="https://gateway.aidp.&lt;região&gt;.oci.oraclecloud.com/agentendpoint/&lt;id&gt;/a2a">
+          <div class="form-row">
+            <div><label>Método</label><input name="a2a_metodo" value="message/send"></div>
+            <div><label>Timeout (s)</label><input name="a2a_timeout" placeholder="30"></div>
+          </div>
+          <label>Agent Card (opcional, só registro)</label><input name="a2a_card" placeholder="https://.../agent-card.json">
+          <label>Mensagem (template)</label><input name="a2a_texto" placeholder="Vazio = envia a pergunta do usuário ({{pergunta}})">
+          <details style="margin-top:10px;font-size:12px"><summary>Autenticação (opcional)</summary>
+            <label>Autenticação</label>
+            <select name="a2a_auth">
+              <option value="none">Nenhuma</option>
+              <option value="bearer">Bearer — token fixo</option>
+              <option value="oauth2">OAuth2 — client_credentials</option>
+            </select>
+            <label>Token (só p/ Bearer)</label><input name="a2a_token" placeholder="token fixo">
+            <label>Token URL (só p/ OAuth2)</label><input name="a2a_token_url" placeholder="https://login.exemplo.com/oauth2/token">
+            <div class="form-row">
+              <div><label>Client ID</label><input name="a2a_client_id"></div>
+              <div><label>Client Secret</label><input name="a2a_client_secret" type="password"></div>
+            </div>
+            <label>Scope (opcional)</label><input name="a2a_scope">
+          </details>
         </div>
         <div id="conn-fields-mcp" style="display:none">
           <label>Transporte</label>
@@ -1656,6 +1747,12 @@ def conectores():
           <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
             <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" placeholder="ERP_DSN">
             <label>DSN direto (opcional)</label><input name="sql_dsn" placeholder="host=... dbname=...">
+          </details>
+          <details style="margin-top:10px;font-size:12px"><summary>TLS / Wallet (avançado)</summary>
+            <label>SSL mode (PostgreSQL / Databricks)</label><input name="sql_sslmode" placeholder="require">
+            <div class="muted" style="font-size:11px">Databricks SQL Warehouse: porta <code>443</code>, usuário <code>token</code>, senha = PAT, banco <code>/sql/1.0/warehouses/&lt;id&gt;</code>, SSL mode <code>require</code>.</div>
+            <label>Pasta do wallet (Oracle Autonomous)</label><input name="sql_wallet_dir" placeholder="/opt/blueshift/wallets/meuadb">
+            <label>Senha do wallet (opcional)</label><input name="sql_wallet_password" type="password" placeholder="senha do wallet">
           </details>
           <div style="text-align:center;margin:10px 0">
             <button type="button" class="btn ghost" onclick="testarConexaoSQL()" style="font-size:12px" id="btn-testar-conexao">🔌 Testar Conexão</button>
@@ -1699,6 +1796,8 @@ def conectores():
     function toggleConnFields() {{
       var t = document.getElementById('conn-tipo').value;
       document.getElementById('conn-fields-api').style.display = t === 'api' ? '' : 'none';
+      var _fa = document.getElementById('conn-fields-a2a');
+      if(_fa) _fa.style.display = t === 'a2a' ? '' : 'none';
       document.getElementById('conn-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('conn-fields-sql').style.display = t === 'sql' ? '' : 'none';
     }}
@@ -1722,6 +1821,12 @@ def conectores():
       fd.append('password', document.querySelector('[name=sql_pass]').value);
       fd.append('dsn', document.querySelector('[name=sql_dsn]').value);
       fd.append('query', document.querySelector('[name=sql_query]').value);
+      var _ssl = document.querySelector('[name=sql_sslmode]');
+      fd.append('sslmode', _ssl ? _ssl.value : '');
+      var _wd = document.querySelector('[name=sql_wallet_dir]');
+      fd.append('wallet_dir', _wd ? _wd.value : '');
+      var _wp = document.querySelector('[name=sql_wallet_password]');
+      fd.append('wallet_password', _wp ? _wp.value : '');
       fetch('/portal/conectores/testar-conexao', {{method:'POST',body:fd}})
         .then(function(r){{return r.json()}})
         .then(function(d){{
@@ -1788,6 +1893,9 @@ def conector_testar_conexao():
     user = request.form.get("user", "").strip()
     password = request.form.get("password", "").strip()
     dsn = request.form.get("dsn", "").strip()
+    sslmode = request.form.get("sslmode", "").strip()
+    wallet_dir = request.form.get("wallet_dir", "").strip()
+    wallet_password = request.form.get("wallet_password", "").strip()
     query = request.form.get("query", "SELECT 1").strip()
     if not query:
         query = "SELECT 1"
@@ -1795,12 +1903,32 @@ def conector_testar_conexao():
     try:
         if driver == "postgresql":
             import psycopg
+            _extra = {"sslmode": sslmode} if sslmode else {}
             if dsn:
-                conn = psycopg.connect(dsn, connect_timeout=5)
+                conn = psycopg.connect(dsn, connect_timeout=5, **_extra)
             else:
                 conn = psycopg.connect(host=host or "127.0.0.1", port=port or "5432",
                                        dbname=db_name, user=user, password=password,
-                                       connect_timeout=5)
+                                       connect_timeout=5, **_extra)
+        elif driver == "oracle":
+            import oracledb
+            _extra = {}
+            if wallet_dir:
+                _extra["config_dir"] = wallet_dir
+                _extra["wallet_location"] = wallet_dir
+                if wallet_password:
+                    _extra["wallet_password"] = wallet_password
+                if dsn:
+                    conn = oracledb.connect(dsn=dsn, user=user, password=password,
+                                            connect_timeout=5, **_extra)
+                else:
+                    conn = oracledb.connect(host=host or "127.0.0.1", port=port or "1521",
+                                            service_name=db_name, user=user, password=password,
+                                            connect_timeout=5, **_extra)
+            else:
+                conn = oracledb.connect(host=host or "127.0.0.1", port=port or "1521",
+                                        service_name=db_name, user=user, password=password,
+                                        connect_timeout=5)
         elif driver == "mysql":
             import pymysql
             conn = pymysql.connect(host=host or "127.0.0.1", port=int(port or "3306"),
@@ -1886,6 +2014,37 @@ def conector_editar(cid: int):
             config["method"] = request.form.get("api_method", "GET")
             config["headers"] = request.form.get("api_headers", "{}").strip()
             config["body"] = request.form.get("api_body", "").strip()
+            # Autenticacao (opcional). Segredo em branco = mantem o anterior.
+            config["auth"] = (request.form.get("api_auth", "none") or "none").strip().lower()
+            config["token"] = request.form.get("api_token", "").strip() or cfg.get("token", "")
+            config["token_url"] = request.form.get("api_token_url", "").strip()
+            config["client_id"] = request.form.get("api_client_id", "").strip()
+            config["client_secret"] = (request.form.get("api_client_secret", "").strip()
+                                       or cfg.get("client_secret", ""))
+            config["scope"] = request.form.get("api_scope", "").strip()
+            config["timeout"] = request.form.get("api_timeout", "").strip()
+            # Polling de jobs assincronos + mapeamento da resposta (opcional)
+            config["poll_url"] = request.form.get("api_poll_url", "").strip()
+            config["poll_campo"] = request.form.get("api_poll_campo", "").strip()
+            config["poll_estado_campo"] = request.form.get("api_poll_estado_campo", "").strip()
+            config["poll_estado_concluido"] = request.form.get("api_poll_ok", "").strip()
+            config["poll_estado_erro"] = request.form.get("api_poll_erro", "").strip()
+            config["poll_intervalo"] = request.form.get("api_poll_intervalo", "").strip()
+            config["poll_max"] = request.form.get("api_poll_max", "").strip()
+            config["mapear_resposta"] = request.form.get("api_mapear", "").strip()
+        elif tipo == "a2a":
+            config["a2a_url"] = request.form.get("a2a_url", "").strip()
+            config["a2a_metodo"] = request.form.get("a2a_metodo", "message/send").strip()
+            config["a2a_texto"] = request.form.get("a2a_texto", "").strip()
+            config["agent_card_url"] = request.form.get("a2a_card", "").strip()
+            config["auth"] = (request.form.get("a2a_auth", "none") or "none").strip().lower()
+            config["token"] = request.form.get("a2a_token", "").strip() or cfg.get("token", "")
+            config["token_url"] = request.form.get("a2a_token_url", "").strip()
+            config["client_id"] = request.form.get("a2a_client_id", "").strip()
+            config["client_secret"] = (request.form.get("a2a_client_secret", "").strip()
+                                       or cfg.get("client_secret", ""))
+            config["scope"] = request.form.get("a2a_scope", "").strip()
+            config["timeout"] = request.form.get("a2a_timeout", "").strip()
         elif tipo == "mcp":
             config["transport"] = request.form.get("mcp_transport", "stdio").strip()
             config["url"] = request.form.get("mcp_url", "").strip()
@@ -1907,6 +2066,11 @@ def conector_editar(cid: int):
             config["dsn"] = request.form.get("sql_dsn", "").strip()
             config["query"] = request.form.get("sql_query", "").strip()
             config["sql_analise"] = "1" if request.form.get("sql_analise") else "0"
+            # TLS/wallet (opcional). Senha do wallet em branco = mantem a anterior.
+            config["sql_sslmode"] = request.form.get("sql_sslmode", "").strip()
+            config["wallet_dir"] = request.form.get("sql_wallet_dir", "").strip()
+            config["wallet_password"] = (request.form.get("sql_wallet_password", "").strip()
+                                         or cfg.get("wallet_password", ""))
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -1931,12 +2095,36 @@ def conector_editar(cid: int):
     api_method = cfg.get("method", "GET")
     api_headers = cfg.get("headers", "{}")
     api_body = cfg.get("body", "")
+    api_auth = cfg.get("auth", "none")
+    api_token_url = cfg.get("token_url", "")
+    api_client_id = cfg.get("client_id", "")
+    api_scope = cfg.get("scope", "")
+    api_timeout = cfg.get("timeout", "")
+    poll_url = cfg.get("poll_url", "")
+    poll_campo = cfg.get("poll_campo", "")
+    poll_estado_campo = cfg.get("poll_estado_campo", "")
+    poll_estado_concluido = cfg.get("poll_estado_concluido", "")
+    poll_estado_erro = cfg.get("poll_estado_erro", "")
+    poll_intervalo = cfg.get("poll_intervalo", "")
+    poll_max = cfg.get("poll_max", "")
+    mapear_resposta = cfg.get("mapear_resposta", "")
+    a2a_url = cfg.get("a2a_url", "")
+    a2a_metodo = cfg.get("a2a_metodo", "message/send")
+    a2a_texto = cfg.get("a2a_texto", "")
+    a2a_card = cfg.get("agent_card_url", "")
+    a2a_auth = cfg.get("auth", "none")
+    a2a_token_url = cfg.get("token_url", "")
+    a2a_client_id = cfg.get("client_id", "")
+    a2a_scope = cfg.get("scope", "")
+    a2a_timeout = cfg.get("timeout", "")
     mcp_cmd = cfg.get("command", "")
     mcp_tool = cfg.get("tool", "")
     mcp_transport = cfg.get("transport", "stdio")
     mcp_url = cfg.get("url", "")
     mcp_args = json.dumps(cfg.get("args", {}), ensure_ascii=False)
     sql_driver = cfg.get("sql_driver", "postgresql")
+    sql_sslmode = cfg.get("sql_sslmode", "")
+    wallet_dir = cfg.get("wallet_dir", "")
     sql_host = cfg.get("sql_host", "")
     sql_port = cfg.get("sql_port", "")
     sql_db = cfg.get("sql_db", "")
@@ -1966,6 +2154,7 @@ def conector_editar(cid: int):
           <div><label>Tipo</label>
             <select name="tipo" id="edit-conn-tipo" onchange="toggleEditConnFields()">
               <option value="api" {api_sel["api"]}>API</option>
+              <option value="a2a" {api_sel.get("a2a", "")}>A2A</option>
               <option value="mcp" {api_sel["mcp"]}>MCP</option>
               <option value="sql" {api_sel["sql"]}>SQL</option>
             </select></div>
@@ -1978,6 +2167,64 @@ def conector_editar(cid: int):
           </div>
           <label>Headers (JSON) <span class="info-tip" title='{{"User-Agent": "Mozilla/5.0", "Authorization": "Bearer token"}}' style="cursor:help;color:var(--muted);font-size:13px">ⓘ</span></label><input name="api_headers" value='{templates.h(api_headers)}' placeholder='{{"User-Agent": "Mozilla/5.0"}}'>
           <label>Body (JSON, só POST)</label><input name="api_body" value='{templates.h(api_body)}' placeholder='{{"id": "{{id_cliente}}"}}'>
+          <details style="margin-top:10px;font-size:12px"><summary>Autenticação / avançado (opcional)</summary>
+            <label>Autenticação</label>
+            <select name="api_auth">
+              <option value="none" {"selected" if api_auth not in ("bearer", "oauth2") else ""}>Nenhuma (usar headers acima)</option>
+              <option value="bearer" {"selected" if api_auth == "bearer" else ""}>Bearer — token fixo</option>
+              <option value="oauth2" {"selected" if api_auth == "oauth2" else ""}>OAuth2 — client_credentials</option>
+            </select>
+            <label>Token (só p/ Bearer)</label><input name="api_token" placeholder="deixar em branco para manter">
+            <label>Token URL (só p/ OAuth2)</label><input name="api_token_url" value="{api_token_url}" placeholder="https://login.exemplo.com/oauth2/token">
+            <div class="form-row">
+              <div><label>Client ID</label><input name="api_client_id" value="{api_client_id}" placeholder="client_id"></div>
+              <div><label>Client Secret</label><input name="api_client_secret" type="password" placeholder="deixar em branco para manter"></div>
+            </div>
+            <label>Scope (opcional)</label><input name="api_scope" value="{api_scope}" placeholder="api://escopo/.default">
+            <label>Timeout em segundos (opcional)</label><input name="api_timeout" value="{api_timeout}" placeholder="15">
+            <details style="margin-top:8px"><summary>Job assíncrono (polling) e mapeamento — opcional</summary>
+              <label>URL de consulta do job</label><input name="api_poll_url" value="{poll_url}" placeholder="https://api.exemplo.com/v1/jobs/{{job_id}}">
+              <div class="form-row">
+                <div><label>Campo do id na 1ª resposta</label><input name="api_poll_campo" value="{poll_campo}" placeholder="statementHandle"></div>
+                <div><label>Campo do status</label><input name="api_poll_estado_campo" value="{poll_estado_campo}" placeholder="status"></div>
+              </div>
+              <div class="form-row">
+                <div><label>Status concluído</label><input name="api_poll_ok" value="{poll_estado_concluido}" placeholder="SUCCEEDED"></div>
+                <div><label>Status de erro</label><input name="api_poll_erro" value="{poll_estado_erro}" placeholder="FAILED"></div>
+              </div>
+              <div class="form-row">
+                <div><label>Intervalo (s)</label><input name="api_poll_intervalo" value="{poll_intervalo}" placeholder="2"></div>
+                <div><label>Máximo (s)</label><input name="api_poll_max" value="{poll_max}" placeholder="60"></div>
+              </div>
+              <label>Mapear resposta (só o útil ao modelo)</label><input name="api_mapear" value="{mapear_resposta}" placeholder="data.rows">
+              <div class="muted" style="font-size:11px">Use o mapeamento para enviar apenas o pedaço relevante do JSON ao modelo (ex.: <code>data.rows</code>) — evita poluir o contexto.</div>
+            </details>
+          </details>
+        </div>
+
+        <div id="edit-fields-a2a" style="display:{'block' if tipo=='a2a' else 'none'}">
+          <label>URL do agente A2A</label><input name="a2a_url" value="{a2a_url}" placeholder="https://gateway.aidp.&lt;região&gt;.oci.oraclecloud.com/agentendpoint/&lt;id&gt;/a2a">
+          <div class="form-row">
+            <div><label>Método</label><input name="a2a_metodo" value="{a2a_metodo}"></div>
+            <div><label>Timeout (s)</label><input name="a2a_timeout" value="{a2a_timeout}" placeholder="30"></div>
+          </div>
+          <label>Agent Card (opcional, só registro)</label><input name="a2a_card" value="{a2a_card}">
+          <label>Mensagem (template)</label><input name="a2a_texto" value="{a2a_texto}" placeholder="Vazio = envia a pergunta do usuário ({{pergunta}})">
+          <details style="margin-top:10px;font-size:12px"><summary>Autenticação (opcional)</summary>
+            <label>Autenticação</label>
+            <select name="a2a_auth">
+              <option value="none" {"selected" if a2a_auth not in ("bearer", "oauth2") else ""}>Nenhuma</option>
+              <option value="bearer" {"selected" if a2a_auth == "bearer" else ""}>Bearer — token fixo</option>
+              <option value="oauth2" {"selected" if a2a_auth == "oauth2" else ""}>OAuth2 — client_credentials</option>
+            </select>
+            <label>Token (só p/ Bearer)</label><input name="a2a_token" placeholder="deixar em branco para manter">
+            <label>Token URL (só p/ OAuth2)</label><input name="a2a_token_url" value="{a2a_token_url}">
+            <div class="form-row">
+              <div><label>Client ID</label><input name="a2a_client_id" value="{a2a_client_id}"></div>
+              <div><label>Client Secret</label><input name="a2a_client_secret" type="password" placeholder="deixar em branco para manter"></div>
+            </div>
+            <label>Scope (opcional)</label><input name="a2a_scope" value="{a2a_scope}">
+          </details>
         </div>
 
         <div id="edit-fields-mcp" style="display:{'block' if tipo=='mcp' else 'none'}">
@@ -2010,6 +2257,12 @@ def conector_editar(cid: int):
           <details style="margin-top:10px;font-size:12px"><summary>DSN alternativo (avançado)</summary>
             <label>DSN (variável de ambiente)</label><input name="sql_dsn_env" value="{sql_dsn_env}">
             <label>DSN direto (opcional)</label><input name="sql_dsn" value="{sql_dsn}">
+          </details>
+          <details style="margin-top:10px;font-size:12px"><summary>TLS / Wallet (avançado)</summary>
+            <label>SSL mode (PostgreSQL / Databricks)</label><input name="sql_sslmode" value="{sql_sslmode}" placeholder="require">
+            <div class="muted" style="font-size:11px">Databricks SQL Warehouse: porta <code>443</code>, usuário <code>token</code>, senha = PAT, banco <code>/sql/1.0/warehouses/&lt;id&gt;</code>, SSL mode <code>require</code>.</div>
+            <label>Pasta do wallet (Oracle Autonomous)</label><input name="sql_wallet_dir" value="{wallet_dir}" placeholder="/opt/blueshift/wallets/meuadb">
+            <label>Senha do wallet (opcional)</label><input name="sql_wallet_password" type="password" placeholder="deixar em branco para manter">
           </details>
           <div style="text-align:center;margin:10px 0">
             <button type="button" class="btn ghost" onclick="testarConexaoEdit()" style="font-size:12px" id="btn-testar-conexao">🔌 Testar Conexão</button>
@@ -2059,6 +2312,8 @@ def conector_editar(cid: int):
     function toggleEditConnFields() {{
       var t = document.getElementById('edit-conn-tipo').value;
       document.getElementById('edit-fields-api').style.display = t === 'api' ? '' : 'none';
+      var _fea = document.getElementById('edit-fields-a2a');
+      if(_fea) _fea.style.display = t === 'a2a' ? '' : 'none';
       document.getElementById('edit-fields-mcp').style.display = t === 'mcp' ? '' : 'none';
       document.getElementById('edit-fields-sql').style.display = t === 'sql' ? '' : 'none';
     }}
@@ -2083,6 +2338,9 @@ def conector_editar(cid: int):
       fd.append('password', (document.querySelector('[name=sql_pass]')||{{}}).value||'');
       fd.append('dsn', (document.querySelector('[name=sql_dsn]')||{{}}).value||'');
       fd.append('query', (document.querySelector('[name=sql_query]')||{{}}).value||'');
+      fd.append('sslmode', (document.querySelector('[name=sql_sslmode]')||{{}}).value||'');
+      fd.append('wallet_dir', (document.querySelector('[name=sql_wallet_dir]')||{{}}).value||'');
+      fd.append('wallet_password', (document.querySelector('[name=sql_wallet_password]')||{{}}).value||'');
       fetch('/portal/conectores/testar-conexao', {{method:'POST',body:fd}})
         .then(function(r){{return r.json()}})
         .then(function(d){{
@@ -3802,7 +4060,8 @@ def modelos():
                             tipo=request.form.get("tipo", "local"),
                             api_key=request.form.get("api_key") or None,
                             max_tokens=request.form.get("max_tokens") or None,
-                            temperatura=temperatura)
+                            temperatura=temperatura,
+                            modo=(request.form.get("modo") or "openai_chat").strip().lower())
             db.registrar_auditoria(_user()["login"], _user()["papel"], "cadastrar_modelo",
                                    alvo=nome, cliente_id=cid, ip=request.remote_addr)
             flash("Modelo de IA cadastrado.", "ok")
@@ -3846,6 +4105,12 @@ def modelos():
         <label>Modelo</label><input name="modelo" placeholder="ex: bonsai-8b">
         <label>Tipo</label>
           <select name="tipo"><option value="local">Local (LM Studio)</option><option value="hibrido">Híbrido externo</option></select>
+        <label>Modo da API</label>
+          <select name="modo">
+            <option value="openai_chat">OpenAI chat/completions (padrão — LM Studio, vLLM, Ollama, OpenAI)</option>
+            <option value="responses">OpenAI Responses — agente externo (ex: Oracle AIDP /chat)</option>
+          </select>
+        <div class="muted" style="font-size:11px;margin-top:4px">No modo Responses a base_url é o endpoint completo do agente (ex: <code>https://gateway.aidp.&lt;região&gt;.oci.oraclecloud.com/agentendpoint/&lt;id&gt;/chat</code>) — a plataforma posta direto nele, sem acrescentar /v1/chat/completions.</div>
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
         <label>Max tokens</label><input name="max_tokens" type="number" value="4096" placeholder="4096" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking/reasoning (ex: 8192, 16384). Timeout: 180s.</div>
@@ -3870,7 +4135,7 @@ def modelo_editar(mid: int):
         return redirect(url_for("portal.modelos"))
     if request.method == "POST":
         campos = {}
-        for field in ("nome", "base_url", "modelo", "tipo"):
+        for field in ("nome", "base_url", "modelo", "tipo", "modo"):
             v = request.form.get(field, "").strip()
             if v:
                 campos[field] = v
@@ -3920,6 +4185,11 @@ def modelo_editar(mid: int):
         <label>Modelo</label><input name="modelo" value="{m['modelo']}">
         <label>Tipo</label>
           <select name="tipo"><option value="local" {"selected" if m['tipo']=='local' else ""}>Local</option><option value="hibrido" {"selected" if m['tipo']=='hibrido' else ""}>Híbrido</option></select>
+        <label>Modo da API</label>
+          <select name="modo">
+            <option value="openai_chat" {"selected" if (m.get('modo') or 'openai_chat')!='responses' else ""}>OpenAI chat/completions (padrão)</option>
+            <option value="responses" {"selected" if (m.get('modo') or 'openai_chat')=='responses' else ""}>OpenAI Responses — agente externo (ex: Oracle AIDP /chat)</option>
+          </select>
         <label>API Key</label><input name="api_key" value="" placeholder="deixe em branco para manter a atual" autocomplete="off">
         <div class="muted" style="font-size:11px;margin-top:4px">Chave atual: {_mascara or 'nenhuma (modelo local — sem chave)'}. Preencha apenas para trocar; vazio mantém a atual.</div>
         <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
