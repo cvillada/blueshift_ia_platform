@@ -342,12 +342,19 @@ def _extrair_parametros_ia(pergunta: str, placeholders: set[str],
 
 def _selecionar_conectores(pergunta: str, conectores: list[dict],
                            modelo_roteador: dict) -> list[int] | None:
-    """Roteia conectores por relevancia via LLM (a mesma IA do agente).
+    """Roteia conectores por relevancia E classifica a intencao da pergunta.
 
-    Retorno:
-      []     -> nenhum conector relevante (responde so com RAG)
-      [ids]  -> executar apenas estes conectores
-      None   -> falha na selecao -> executa TODOS (comportamento antigo)
+    Retorno: (ids, intencao)
+      ([]  , _)    -> nenhum conector relevante (responde so com RAG)
+      ([ids], _)   -> executar apenas estes conectores
+      (None, _)    -> falha na selecao -> executa TODOS (comportamento antigo)
+      intencao     -> "analise" | "dado" | None (None = nao classificou; o
+                      motor cai no marcador lexico como fallback)
+
+    A intencao decide o caminho do conector SQL: analise -> SELECT dinamico
+    sobre o schema real; dado -> query fixa (rapida e exata). A classificacao
+    viaja no MESMO voto do roteador (custo zero de latencia) e e robusta a
+    flexao do verbo ("liste", "lista", "mostre"), que a lista lexica errava.
 
     Conectores SEM descricao nunca sao excluidos (entram sempre).
     """
@@ -366,9 +373,13 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
     mensagens = [
         {"role": "system", "content": (
             "Voce e o roteador de ferramentas de um agente de IA corporativo. "
-            "Escolha UMA opcao da lista que ajudaria a responder a pergunta "
-            "do usuario. Responda APENAS com o numero da opcao (0 se nenhuma "
-            "ajudar).")},
+            "Escolha UMA opcao da lista que ajudaria a responder a pergunta do "
+            "usuario e classifique a INTENCAO dela. Responda APENAS no formato "
+            "'<numero> <dado|analise>' — exemplo: '3 analise'. Use 'dado' para "
+            "pedido de dado especifico, cadastro, consulta pontual ou lista "
+            "simples; use 'analise' para analise, agregacao, ranking, "
+            "comparacao, contagem ('quantos'), media, total, resumo ou "
+            "distribuicao. Se nenhuma opcao ajudar, use 0 (ex.: '0 dado').")},
         {"role": "user", "content": f"Pergunta: {pergunta}\n\nOpcoes:\n0. nenhum\n{linhas}\n\nNumero:"},
     ]
     out = None
@@ -377,6 +388,7 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
     # reasoning) sao NAO-DETERMINISTICOS mesmo com temperatura 0.0. A
     # resposta valida e a que se repete; incompreensivel/erro nao e voto.
     votos: list = []  # "nenhum" | id(int) | None(incompreensivel)
+    votos_int: list = []  # "analise" | "dado" (por voto valido)
     for _ in range(3):
         # max_tokens generoso + retry (mesmo tratamento do extrator P2):
         # modelos locais (ex: 9B llama.cpp) devolvem VAZIO com max_tokens=100
@@ -391,22 +403,39 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
             continue
         texto = (out.get("content") or "").strip().lower()
         nums = [int(n) for n in _re.findall(r"\d+", texto)]
+        # intencao: normaliza acento ("análise" nao casaria com "analis" cru)
+        import unicodedata as _unic
+        _sacento = _unic.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+        if "analis" in _sacento:
+            votos_int.append("analise")
+        elif "dado" in _sacento:
+            votos_int.append("dado")
         if "nenhum" in texto or 0 in nums:
             votos.append("nenhum")
         else:
             sel = [com_desc[i - 1]["id"] for i in nums if 1 <= i <= len(com_desc)]
             votos.append(sel[0] if sel else None)
+    # intencao: maioria simples; empate -> "dado" (caminho deterministico)
+    intencao = None
+    if votos_int:
+        n_an = votos_int.count("analise")
+        n_da = votos_int.count("dado")
+        if n_an > n_da:
+            intencao = "analise"
+        elif n_da:
+            intencao = "dado"
+
     ids_ok = {v for v in votos if isinstance(v, int)}
     viu_nenhum = "nenhum" in votos
     if ids_ok and not viu_nenhum:
-        return sorted(set(sempre + list(ids_ok)))
+        return sorted(set(sempre + list(ids_ok))), intencao
     if viu_nenhum and not ids_ok:
         # Reforco por NOME: se o nome de um conector aparece na pergunta,
         # executa mesmo assim (match deterministico e forte — ex: "CEP").
         pergunta_l = pergunta.lower()
         reforco = [c["id"] for c in com_desc if c["nome"].lower() in pergunta_l]
-        return sorted(set(sempre + reforco))
-    return None  # ambiguo ou falha total -> executa todos (seguro)
+        return sorted(set(sempre + reforco)), intencao
+    return None, intencao  # ambiguo ou falha total -> executa todos (seguro)
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
@@ -470,9 +499,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             else:
                 modelo_roteador = None
             modelo_roteador = modelo_roteador or modelo
-            conectores_area = db.listar_conectores(cliente_id=cliente_id, area=area)
+            # Conectores inativos (ativo=0) ficam FORA do pipeline: nao entram
+            # nas opcoes do roteador (nao gastam voto) nem sao executados.
+            conectores_area = [c for c in db.listar_conectores(cliente_id=cliente_id, area=area)
+                               if c.get("ativo", 1)]
             _marca = _time.time()  # inicio: roteador (3 votos + extracao IA)
-            somente_ids = _selecionar_conectores(pergunta, conectores_area, modelo_roteador)
+            somente_ids, intencao = _selecionar_conectores(pergunta, conectores_area,
+                                                           modelo_roteador)
             # P1: determinístico por placeholder — roda SEMPRE, inclusive quando
             # o roteador falha (None -> executa TODOS os conectores da área):
             # ph = placeholders dos escolhidos ou de todos da área. A definição
@@ -495,7 +528,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             _marca = _time.time()  # inicio: execucao dos conectores
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
-                somente_ids=somente_ids, modelo=modelo_roteador,
+                somente_ids=somente_ids, modelo=modelo_roteador, intencao=intencao,
             )
             _ms_conn = (_time.time() - _marca) * 1000
         except Exception as e:  # noqa: BLE001
@@ -541,16 +574,25 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         "— responda apenas em texto corrido.\n\n"
     )
     ausentes_nota: list = []
+    motivos_nota: list = []      # diagnostico honesto: consulta nao feita e por que
+    truncado_nota = False        # consulta bateu no teto de linhas
     if ferramentas:
         blocos = []
         for f in ferramentas:
+            if f.get("truncado"):
+                truncado_nota = True
             if "erro" in f:
                 # erro vai pro trace; parametro_ausente vira AVISO no prompt
                 _e = str(f.get("erro", ""))
                 if _e.startswith("parametro_ausente:"):
                     ausentes_nota.extend(
                         x.strip() for x in _e.split(":", 1)[1].split(",") if x.strip())
+                else:
+                    # sem isto o modelo recebia ZERO sinal e improvisava dados
+                    motivos_nota.append(f"{f.get('conector')}: {f.get('motivo') or _e}")
                 continue
+            if f.get("motivo"):
+                motivos_nota.append(f"{f.get('conector')}: {f['motivo']}")
             blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
                           f"args={f.get('args')} -> {f.get('resultado')}")
         if blocos:
@@ -566,6 +608,19 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "tool_call nem tags (<tool_call>, <function=, <parameter=) — "
             "responda apenas em texto corrido pedindo o dado.\n"
         )
+    if motivos_nota:
+        # Diagnostico honesto (v0.11.2): quando a consulta nao foi feita, o
+        # modelo PRECISA saber disso — antes o erro so existia no trace, o
+        # prompt ficava sem sinal e o modelo inventava ("liste os vendedores").
+        system += ("\nOBSERVACAO SOBRE CONECTORES: " + "; ".join(motivos_nota)
+                   + ". Explique ao usuario o motivo real quando for relevante e "
+                   "NUNCA invente valores, nomes, numeros ou IDs para preencher a "
+                   "lacuna.\n")
+    if truncado_nota:
+        system += ("\nOBSERVACAO SOBRE VOLUME: a consulta foi limitada a 50 linhas. "
+                   "Se a pergunta pedir total/contagem, deixe claro que a listagem "
+                   "pode estar limitada — nao afirme que existem exatamente os "
+                   "registros listados.\n")
     if not tem_dados_vivos:
         # C: guardrail anti-alucinacao — conectores rodaram sem dados vivos
         system += (

@@ -698,15 +698,21 @@ def excluir_area(aid: int) -> None:
         conn.execute("DELETE FROM areas WHERE id=?", (aid,))
 
 
-def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online", finalidade="") -> int:
-    """Cadastra uma nova fonte externa de dados por cliente + área."""
+def criar_conector(cliente_id, nome, tipo="api", area="", config=None, status="online",
+                   finalidade="", ativo: int = 1) -> int:
+    """Cadastra uma nova fonte externa de dados por cliente + área.
+
+    ativo=0 cadastra o conector DESLIGADO: ele aparece na lista (com badge
+    inativo) mas não é executado nem entra no roteador de conectores.
+    """
     ts = now_iso()
     cfg_json = json.dumps(config or {})
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO conectores (cliente_id, area, nome, tipo, config, finalidade, status, ativo, ultimo_heartbeat, criado_em)
-               VALUES (?,?,?,?,?,?,?,1,?,?)""",
-            (cliente_id, area, nome, tipo, cfg_json, finalidade, status, ts, ts),
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (cliente_id, area, nome, tipo, cfg_json, finalidade, status,
+             1 if ativo else 0, ts, ts),
         )
         return cur.lastrowid
 

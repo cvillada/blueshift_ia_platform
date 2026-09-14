@@ -1597,7 +1597,8 @@ def conectores():
             flash("Finalidade do tratamento é obrigatória quando LGPD está ativo.", "warn")
             return redirect(url_for("portal.conectores"))
 
-        db.criar_conector(cid, nome, tipo=tipo, area=area, config=config, finalidade=finalidade)
+        db.criar_conector(cid, nome, tipo=tipo, area=area, config=config, finalidade=finalidade,
+                          ativo=1 if request.form.get("ativo") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "criar_conector",
                                alvo=nome, cliente_id=cid, ip=request.remote_addr)
         flash(f"Conector '{nome}' criado na area {area}.", "ok")
@@ -1613,16 +1614,27 @@ def conectores():
         tipo_icon = {"api": "🌐", "a2a": "🤝", "mcp": "🔌", "sql": "🗄️"}.get(k["tipo"], "❓")
         cfg_resumo = cfg.get("descricao") or cfg.get("url") or cfg.get("tool") or cfg.get("query", "")[:60]
         finalidade = k.get("finalidade") or cfg.get("finalidade", "")
+        _ativo = 1 if k.get("ativo", 1) else 0
+        _status_cell = (templates.badge("inativo") if not _ativo
+                        else templates.badge(k['status']))
+        if not _ativo:
+            # inativo nao executa: o heartbeat fica congelado (ultimo dia que rodou)
+            _hb_cell = (f'<span class="muted" title="última execução antes de ser desativado">'
+                        f'{k["ultimo_heartbeat"] or "-"} (parado)</span>')
+        else:
+            _hb_cell = f'<span class="muted">{k["ultimo_heartbeat"] or "-"}</span>'
+        _acao_ativo = ("ativar" if not _ativo else "desativar")
         body += f"""<tr>
           <td><b>{k['nome']}</b></td>
           <td>{tipo_icon} {k['tipo']}</td>
           <td>{k['area'] or '-'}</td>
           <td class="muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{cfg_resumo}</td>
           <td style="font-size:11px;color:var(--muted-soft)">{finalidade[:40] or '-'}</td>
-          <td>{templates.badge(k['status'])}</td>
-          <td class="muted">{k['ultimo_heartbeat'] or '-'}</td>
+          <td>{_status_cell}</td>
+          <td>{_hb_cell}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conector_editar', cid=k['id'])}">editar</a>
+            <a href="{url_for('portal.conector_alternar', cid=k['id'])}" onclick="return confirm('{_acao_ativo.capitalize()} o conector \'{k['nome']}\'?')">{_acao_ativo}</a>
             <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
 
@@ -1766,6 +1778,8 @@ def conectores():
           <div class="muted" style="font-size:11px;margin-top:4px">Quando a query fixa voltar vazia e a pergunta pedir análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o SELECT sozinho olhando o schema real da fonte (somente leitura, com LIMIT).</div>
         </div>
         <label>Descrição</label><input name="descricao" placeholder="O que este conector faz">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" value="1" checked style="width:auto;margin:0;vertical-align:middle"> Ativo (desmarque para cadastrar desligado)</label>
+        <div class="muted" style="font-size:11px;margin-top:4px">Conector inativo fica na lista, mas não é executado nem entra no roteamento do agente.</div>
         <div id="conn-finalidade" style="margin-top:8px">
           <label>Finalidade do tratamento <span class="muted" style="font-weight:400;font-size:11px">(Art. 26 LGPD)</span></label>
           <input name="finalidade" placeholder="Ex: Consultar dados cadastrais do cliente para agente de vendas">
@@ -2079,7 +2093,9 @@ def conector_editar(cid: int):
             flash("Nome é obrigatório.", "warn")
             return redirect(url_for("portal.conector_editar", cid=cid))
 
-        db.atualizar_conector(cid, nome=nome, area=area, tipo=tipo, config=config, finalidade=finalidade)
+        db.atualizar_conector(cid, nome=nome, area=area, tipo=tipo, config=config,
+                              finalidade=finalidade,
+                              ativo=1 if request.form.get("ativo") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "editar_conector",
                                alvo=nome, ip=request.remote_addr)
         flash(f"Conector '{nome}' atualizado.", "ok")
@@ -2281,6 +2297,8 @@ def conector_editar(cid: int):
         </div>
 
         <label>Descrição</label><input name="descricao" value="{descricao}">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" value="1" {"checked" if con.get('ativo', 1) else ""} style="width:auto;margin:0;vertical-align:middle"> Ativo (desmarque para desligar sem excluir)</label>
+        <div class="muted" style="font-size:11px;margin-top:4px">Conector inativo fica na lista, mas não é executado nem entra no roteamento do agente.</div>
         <label style="margin-top:10px">Finalidade do tratamento <span class="muted" style="font-weight:400;font-size:11px">(Art. 26 LGPD)</span></label>
         <input name="finalidade" value="{con.get('finalidade','')}" placeholder="Ex: Consultar dados cadastrais do cliente para agente de vendas">
         <div style="margin-top:16px;display:flex;gap:10px">
@@ -2380,6 +2398,23 @@ def conector_editar(cid: int):
     }}
     </script>"""
     return templates.page("Editar conector", content, active="conectores", user=_user())
+
+
+@bp.route("/conectores/<int:cid>/alternar")
+@auth.admin_required
+def conector_alternar(cid: int):
+    """Liga/desliga o conector sem excluir (ativo=0 = nao executa e nao roteia)."""
+    con = db.buscar_conector(cid)
+    if not con:
+        flash("Conector não encontrado.", "bad")
+        return redirect(url_for("portal.conectores"))
+    novo = 0 if con.get("ativo", 1) else 1
+    db.atualizar_conector(cid, ativo=novo)
+    db.registrar_auditoria(_user()["login"], "admin",
+                           "ativar_conector" if novo else "desativar_conector",
+                           alvo=con["nome"], ip=request.remote_addr)
+    flash(f"Conector '{con['nome']}' " + ("ativado." if novo else "desativado (não executa nem entra no roteamento)."), "ok")
+    return redirect(url_for("portal.conectores"))
 
 
 @bp.route("/conectores/<int:cid>/excluir")

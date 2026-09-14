@@ -359,7 +359,7 @@ def badge(status: str) -> str:
         "ativo": "ok", "online": "ok", "saudavel": "ok", "ok": "ok",
         "suspenso": "warn", "pausado": "warn", "degradado": "warn",
         "expirado": "offline", "offline": "bad", "parado": "bad", "indisponivel": "bad",
-        "sobrecarregado": "warn",
+        "sobrecarregado": "warn", "inativo": "neutral",
     }.get(s, "neutral")
     return f'<span class="badge {cor}">{status}</span>'
 

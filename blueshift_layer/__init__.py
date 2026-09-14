@@ -1,2 +1,2 @@
 """BlueShift IA Platform — Flask standalone, 100% Python puro."""
-__version__ = "0.11.1"
+__version__ = "0.11.2"

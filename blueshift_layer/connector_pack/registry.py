@@ -32,7 +32,8 @@ from ..portal import db
 def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                              parametros: dict | None = None,
                              somente_ids: list[int] | None = None,
-                             modelo: dict | None = None) -> list[dict]:
+                             modelo: dict | None = None,
+                             intencao: str | None = None) -> list[dict]:
     """Executa conectores ATIVOS de uma area, passando parametros.
 
     Args:
@@ -71,17 +72,12 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
             elif tipo == "mcp":
                 res = _executar_mcp(nome, config, params, pergunta)
             elif tipo == "sql":
-                # Consulta inteligente DIRETA para perguntas de analise:
-                # a query fixa nao faz sentido (placeholders virariam lixo
-                # — ex: title='grafico de barras' quebra o SQL). O SELECT e
-                # montado sobre o schema real. Fallback: query fixa.
-                if (modelo and config.get("sql_analise", "1") != "0"
-                        and _pergunta_analise(pergunta)):
-                    res = _executar_sql_dinamico(nome, config, pergunta, modelo)
-                    if not res.get("resultado"):
-                        res = _executar_sql(nome, config, params, pergunta)
-                else:
-                    res = _executar_sql(nome, config, params, pergunta)
+                # Caminho decidido em _executar_sql_conector: conector
+                # só-inteligente roda o dinâmico sempre; intenção "analise"
+                # (IA) roda o dinâmico primeiro; dado específico roda a query
+                # fixa primeiro. Motivos de descarte voltam no resultado.
+                res = _executar_sql_conector(nome, config, params, pergunta,
+                                             modelo=modelo, intencao=intencao)
             else:
                 res = {"erro": f"Tipo de conector desconhecido: {tipo}"}
 
@@ -540,7 +536,13 @@ def _com_timeout(fn, *args, timeout: int = 30):
         pool.shutdown(wait=False)
 
 
-def _rodar_select(conn, sql: str, driver: str, limite: int = 50) -> list[dict]:
+# Teto de linhas por consulta (query fixa E consulta inteligente). Um valor
+# unico evita divergencia entre os dois caminhos; quem leva o resultado ao
+# modelo recebe o aviso de truncamento quando a consulta bate no teto.
+_LIMITE_LINHAS = 50
+
+
+def _rodar_select(conn, sql: str, driver: str, limite: int = _LIMITE_LINHAS) -> list[dict]:
     """Executa um SELECT e devolve as linhas (dicts), limitadas a `limite`."""
     kwargs = {"as_dict": True} if driver == "sqlserver" else {}
     with conn.cursor(**kwargs) as cur:
@@ -549,6 +551,83 @@ def _rodar_select(conn, sql: str, driver: str, limite: int = 50) -> list[dict]:
             return cur.fetchmany(limite)
         cols = [desc[0] for desc in cur.description] if cur.description else []
         return [dict(zip(cols, r)) for r in cur.fetchmany(limite)]
+
+
+def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
+                            modelo: dict | None = None, intencao: str | None = None) -> dict:
+    """Decide o caminho do conector SQL: query fixa x consulta inteligente.
+
+    Regras (v0.11.2):
+
+    1. Conector **sem query fixa** com consulta inteligente ligada -> dinâmico
+       SEMPRE (não depende de marcador na pergunta). É o caso "listar os
+       vendedores" x "liste os vendedores": antes a variação do verbo caía na
+       query fixa inexistente e devolvia "SQL query nao configurada".
+    2. Intenção **análise** (classificada pela IA no roteador; fallback léxico)
+       -> consulta inteligente primeiro; a query fixa vira fallback.
+    3. Caso contrário (dado específico) -> query fixa primeiro (rápida e exata);
+       se voltar vazia e houver consulta inteligente, tenta o SELECT sobre o
+       schema real.
+
+    O resultado carrega `motivo` quando algum caminho foi descartado, para o
+    trace e o prompt dizerem a verdade (nada de "SQL query nao configurada"
+    enganoso).
+    """
+    qfixa = (config.get("query") or "").strip()
+    smart = bool(modelo) and str(config.get("sql_analise", "1")) != "0"
+    if intencao in ("analise", "dado"):
+        analise = intencao == "analise"
+    else:
+        analise = _pergunta_analise(pergunta)          # fallback: lista léxica
+
+    # 1) conector só-inteligente OU pergunta de análise -> dinâmico primeiro
+    if smart and (not qfixa or analise):
+        ausentes_fixa = _placeholders_ausentes([qfixa], params) if qfixa else []
+        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo)
+        if dyn.get("resultado"):
+            if ausentes_fixa:
+                # a query fixa do conector NAO foi usada (faltam parametros):
+                # o resultado diz isso para o modelo nao apresentar como se
+                # fosse a consulta oficial do conector
+                dyn["motivo"] = ("analise montada sobre o schema real (a query fixa "
+                                 f"deste conector exige parametros ausentes: {', '.join(ausentes_fixa)})")
+            return dyn
+        if qfixa:
+            ausentes = _placeholders_ausentes([qfixa], params)
+            if not ausentes:
+                fixa = _executar_sql(nome, config, params, pergunta)
+                if fixa.get("resultado"):
+                    fixa["motivo"] = "consulta inteligente sem dados; usei a query fixa do conector"
+                    return fixa
+                fixa["motivo"] = ("consulta inteligente sem dados; query fixa tambem sem dados"
+                                  if "erro" not in fixa else
+                                  f"consulta inteligente sem dados; {fixa.get('erro')}")
+                return fixa
+            dyn["motivo"] = ("consulta inteligente sem dados; query fixa exige "
+                             f"parametros ausentes: {', '.join(ausentes)}")
+            return dyn
+        dyn["motivo"] = "consulta inteligente sem dados (conector sem query fixa)"
+        return dyn
+
+    # 2) caminho da query fixa
+    if not qfixa:
+        return {"erro": "Conector sem consulta configurada para esta pergunta "
+                        "(sem query fixa e sem consulta inteligente aplicavel)",
+                "motivo": "sem_query_fixa_e_consulta_inteligente_nao_aplicavel"}
+    fixa = _executar_sql(nome, config, params, pergunta)
+    if fixa.get("resultado"):
+        return fixa
+
+    # 3) query fixa vazia/erro: tenta o dinâmico (menos quando falta parâmetro —
+    #    nesse caso pedir o dado ao usuário é o comportamento correto)
+    _falta_param = str(fixa.get("erro", "")).startswith("parametro_ausente")
+    if smart and not _falta_param:
+        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo)
+        if dyn.get("resultado"):
+            dyn["motivo"] = "query fixa sem dados; consulta inteligente montou o SELECT sobre o schema real"
+            return dyn
+        fixa["motivo"] = "query fixa sem dados e consulta inteligente sem dados"
+    return fixa
 
 
 def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
@@ -571,7 +650,8 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
         try:
             rows = _rodar_select(conn, query, driver)
             conn.commit()
-            return {"tool": "sql:query", "args": query, "resultado": rows}
+            return {"tool": "sql:query", "args": query, "resultado": rows,
+                    "truncado": len(rows) >= _LIMITE_LINHAS}
         finally:
             conn.close()
 
@@ -669,7 +749,7 @@ def _validar_sql_gerado(sql: str) -> list[str] | None:
         if not any(k in low for k in ("limit", "fetch first", "rownum")):
             # SQL Server usa TOP logo apos o SELECT (nao adiciona LIMIT)
             if " top " not in (" " + limpo[:24].lower()):
-                limpo += " LIMIT 50"
+                limpo += f" LIMIT {_LIMITE_LINHAS}"
         validados.append(limpo)
     return validados
 
@@ -738,7 +818,8 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
                 rows = _rodar_select(conn, s, driver)
                 blocos.append({"sql": s, "linhas": rows})
             conn.commit()
-            return {"tool": "sql:analise", "args": sqls, "resultado": blocos}
+            return {"tool": "sql:analise", "args": sqls, "resultado": blocos,
+                    "truncado": any(len(b["linhas"]) >= _LIMITE_LINHAS for b in blocos)}
         finally:
             conn.close()
 

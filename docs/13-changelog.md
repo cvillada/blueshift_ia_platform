@@ -12,6 +12,25 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.2 (2026-09-14) — roteamento do SQL por intenção + conector ativo/desligado**
+- **Conector Ativo/Desligado ganhou interface**: caixa *Ativo* no cadastro e na
+  edição, ação **ativar/desativar** na lista (auditada) e badge **inativo**;
+  conector inativo não é executado, **não entra no roteamento** (não gasta voto do
+  modelo pequeno) e o heartbeat aparece como *(parado)* em vez de "online";
+- **Roteamento do conector SQL decidido por INTENÇÃO** (classificada pela IA no
+  mesmo voto do roteador, sem custo extra de latência): conector **sem query
+  fixa** passa a usar sempre a Consulta inteligente — "listar", "liste", "lista"
+  ou "mostre" dão no mesmo (antes a variação do verbo caía em "SQL query nao
+  configurada" e o modelo improvisava); pergunta de **análise** usa o SELECT
+  montado sobre o schema; pergunta de **dado** usa a query fixa (rápida e exata);
+- **Diagnóstico honesto**: quando a consulta não é feita (ou a query fixa é
+  dispensada), o motivo real vai para o trace **e** para o prompt — o agente passa
+  a explicar a lacuna em vez de inventar dados;
+- **Limite de linhas**: teto único de **50 linhas** por consulta com aviso de
+  truncamento (o agente não afirma mais "existem exatamente esses registros");
+- testes novos de roteamento SQL e de **compatibilidade** (provam que o
+  comportamento anterior continua igual), além do teste do campo ativo.
+
 **v0.11.1 (2026-09-12) — documentação navegável dentro do produto**
 - **Docs do portal** reorganizado em páginas: sidebar agrupada (Começando · Telas do
   Portal · Como funciona · Referência), **busca** na documentação, uma página por
@@ -71,6 +90,7 @@ momento do release aparecem como `—`.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
+| v0.11.2 | 2026-09-14 | roteamento do SQL por intenção (fim do "liste"/"lista" quebrado), conector ativo/desligado com interface, diagnóstico honesto do motivo e teto de 50 linhas com aviso |
 | v0.11.1 | 2026-09-12 | documentação navegável no produto (páginas, busca, API Reference, Changelog) + checagem automática doc × código e gerador de site interno |
 | v0.11.0 | 2026-09-12 | Connector Pack (auth OAuth2/bearer, polling + mapeamento, tipo A2A, SSL/wallet, modelo Modo=responses) e guia completo de conectores |
 | v0.10.16 | 2026-09-09 | corpo das skills vai ao prompt (regras de formato valem) |

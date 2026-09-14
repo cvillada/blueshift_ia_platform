@@ -8,6 +8,20 @@
 conector↔agente; para um conector valer para o agente de vendas, basta
 cadastrá-lo na área `vendas`.
 
+**Conector inativo (`ativo=0`):** é um conector cadastrado mas **desligado**. Ele
+continua na lista (com o badge *inativo*) para não perder a configuração, porém:
+
+- **não é executado** pelo pipeline (não roda query, não gera erro e não aparece
+  nos dados da resposta);
+- **não é enviado ao roteador** de conectores — o modelo pequeno não gasta voto
+  com quem não vai rodar;
+- o **heartbeat congela** no último dia em que ele executou (a lista mostra o
+  horário seguido de *(parado)*, para não parecer "online");
+- o campo técnico no banco é `ativo` (`1` = ligado, `0` = desligado).
+
+Para ligar/desligar use a ação **ativar/desativar** na lista de conectores ou a
+caixa **Ativo** no cadastro/edição — a mudança é registrada na Auditoria.
+
 **Como o agente usa o conector (fluxo):**
 1. O usuário pergunta (API, Open WebUI, teste do portal).
 2. A plataforma extrai os parâmetros da pergunta (`{id_cliente}`, `{email}`,
@@ -39,7 +53,8 @@ cadastrá-lo na área `vendas`.
 | Área | ✅ | Área do agente que vai herdar o conector | `vendas` |
 | Nome | ✅ | Nome de exibição na lista | `API Câmbio` |
 | Tipo | ✅ | `api` · `a2a` · `mcp` · `sql` | `api` |
-| Descrição | ❌ | Resumo do que o conector faz | Cotações de câmbio do dia |
+| Descrição | ❌ | Resumo do que o conector faz (é o que o roteador de IA lê para escolher) | Cotações de câmbio do dia |
+| Ativo | ✅ | Liga/desliga o conector **sem excluir**. Inativo = fica na lista, mas **não executa** e **não entra no roteamento** do agente | marcado |
 | Finalidade do tratamento (Art. 26 LGPD) | ⚠️ se exigido | Para que os dados são tratados | Consultar dados cadastrais do cliente |
 
 ---
@@ -166,8 +181,9 @@ em **30 s**; erro/timeout devolve `{"erro": ...}` sem derrubar a resposta.
 #### 🗄️ Tipo SQL (`sql`)
 
 **Quando usar:** consultar diretamente o banco do cliente (ou um banco
-gerenciado) com uma query fixa que aceita parâmetros da pergunta. Quando a query
-volta vazia e a pergunta pede análise, entra a **Consulta inteligente** (abaixo).
+gerenciado) com uma query fixa que aceita parâmetros da pergunta — e/ou deixar a
+**Consulta inteligente** montar o SELECT quando a pergunta pedir análise. As duas
+coisas convivem: veja "Como o agente decide o caminho" logo abaixo.
 
 | Campo | Obrigatório | O que é | Exemplo |
 |:------|:-----------:|:--------|:--------|
@@ -182,8 +198,32 @@ volta vazia e a pergunta pede análise, entra a **Consulta inteligente** (abaixo
 | SSL mode | ❌ | TLS do PostgreSQL — **necessário** para Databricks SQL Warehouse e Postgres gerenciados | `require` |
 | Pasta do wallet (Oracle) | ❌ | Wallet descompactado no servidor (mTLS do Autonomous) | `/opt/blueshift/wallets/meuadb` |
 | Senha do wallet | ❌ | Senha do wallet (quando aplicável) | •••• |
-| Query SQL | ✅ | Consulta com placeholders | `SELECT * FROM clientes WHERE id = {id_cliente}` |
+| Query SQL | ⚠️ | Consulta com placeholders. **Obrigatória** para consulta pontual; **pode ficar vazia** quando o conector existe só para a Consulta inteligente (aí ele responde sempre pelo SELECT montado sobre o schema) | `SELECT * FROM clientes WHERE id = {id_cliente}` ou vazio |
 | Consulta inteligente | ❌ | Checkbox (padrão LIGADO) — análise automática sobre o schema real | ✅ |
+
+**Como o agente decide o caminho (query fixa x Consulta inteligente):** a decisão
+não depende do verbo que o usuário digitou. O roteador (a mesma chamada que escolhe
+o conector, sem custo extra de latência) também classifica a **intenção** da
+pergunta — `dado` (consulta pontual/cadastro/lista simples) ou `analise`
+(agregação, ranking, contagem, média, total, distribuição). Com isso:
+
+| Situação do conector | O que o agente faz |
+|:---------------------|:-------------------|
+| **Sem query fixa** (só Consulta inteligente ligada) | Usa **sempre** o SELECT montado sobre o schema real — "listar", "liste", "mostre" ou "lista" dão no mesmo |
+| Com query fixa **e** pergunta de **análise** | Tenta a Consulta inteligente primeiro; se ela não trouxer dados, usa a query fixa |
+| Com query fixa e pergunta de **dado** (pontual) | Usa a **query fixa** primeiro (rápida e exata); se voltar vazia, tenta a Consulta inteligente |
+| Query fixa exige parâmetro que a pergunta não trouxe · pergunta de **dado** | **Não executa** e o agente pede o dado ao usuário (nunca inventa) |
+| Query fixa exige parâmetro que a pergunta não trouxe · pergunta de **análise** | A Consulta inteligente responde sobre o schema real e o resultado **avisa que a query fixa não foi usada** (e quais parâmetros faltaram) |
+
+Se a intenção não for classificada, o sistema cai num marcador textual interno —
+e, em qualquer caso em que a consulta não seja feita, o **motivo real** é
+registrado e informado ao modelo (que passa a explicar a lacuna em vez de
+improvisar dados).
+
+**Limite de linhas:** toda consulta (fixa ou inteligente) é limitada a **50
+linhas** por execução. Quando a consulta bate no teto, o agente é avisado de que o
+resultado pode estar truncado — então ele não afirma "existem exatamente esses
+registros" quando a pergunta pede contagem/total.
 
 **Driver x biblioteca x caminho:** PostgreSQL usa `psycopg`; MySQL, `pymysql`;
 SQL Server, `pymssql`; Oracle, `oracledb`. Se o driver não estiver instalado na
@@ -191,10 +231,12 @@ imagem, o conector responde com erro (`ImportError`) e o agente segue — o
 instalador do cliente já traz os quatro. Toda conexão tem **connect_timeout de
 5 s** (conector pendurado não trava o agente).
 
-**Consulta inteligente:** quando a query fixa volta vazia **E** a pergunta pede
+**Consulta inteligente:** o agente monta o SELECT sozinho olhando o **schema real
+da fonte** (tabelas/views + colunas — nunca os dados) quando a pergunta é de
 análise/agregação ("quem alugou mais e menos", "quantos por categoria", "top 5",
-"total por..."), o agente monta o SELECT sozinho olhando o **schema real da fonte**
-(tabelas/views + colunas — nunca os dados):
+"total por...") **ou** quando o conector não tem query fixa (ver as regras de
+decisão acima):
+
 1. Descobre o schema por driver (information_schema / user_tab_columns),
    priorizando a tabela/view usada na query do conector;
 2. O LLM (modelo de roteamento) monta o SELECT no dialeto do banco;
@@ -203,7 +245,7 @@ análise/agregação ("quem alugou mais e menos", "quantos por categoria", "top 
    UNION, INTO; força `LIMIT 50` quando faltar;
 4. Executa e devolve os dados ao LLM final (fonte primária).
 
-Desligar o checkbox = comportamento antigo (só a query fixa).
+Desligar o checkbox = só a query fixa (a análise automática não entra).
 
 **Exemplos de configuração SQL:**
 
