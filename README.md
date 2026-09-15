@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔷 BlueShift IA Platform
+# 🔷 CL Agents - BlueShift IA Platform
 
 **Plataforma própria de Inteligência Artificial on-premise — 100% Python, Flask standalone.**
 
