@@ -74,6 +74,40 @@ O mesmo `docs/` gera um site estático para pré-venda, com menu curado:
 - Páginas internas (fora da lista) podem ser marcadas com `<!-- interno -->` no
   topo, como reforço de leitura humana.
 
+## Idiomas (README e páginas traduzidas)
+
+A documentação do produto é escrita em **pt-BR** — é a fonte única que o portal
+renderiza (menu Docs + Ajuda IA). O que tem tradução é só a **vitrine**, o que o
+cliente estrangeiro lê antes de comprar: o `README.md` da raiz e 4 páginas.
+
+| Origem (pt-BR) | Traduções |
+|:---------------|:----------|
+| `README.md` | `README.en.md`, `README.es.md` |
+| `docs/00-visao-geral.md` | `docs/en/00-visao-geral.md`, `docs/es/00-visao-geral.md` |
+| `docs/01-arquitetura.md` | `docs/en/…`, `docs/es/…` |
+| `docs/02-como-executar.md` | `docs/en/…`, `docs/es/…` |
+| `docs/12-api-reference.md` | `docs/en/…`, `docs/es/…` |
+
+- **Barra de idiomas na 1ª linha de todos os arquivos.** É o único jeito: o GitHub
+  mostra sempre o `README.md` — não escolhe o idioma pelo visitante.
+- Cada tradução carrega `<!-- sync: <origem>@<hash> -->` no topo. Se a origem mudar
+  e a tradução não, a checagem falha — o leitor estrangeiro nunca vê versão velha:
+
+```bash
+python tools/readme_check.py          # falha se alguma tradução estiver fora de sincronia
+python tools/readme_check.py --lista  # só mostra o estado
+python tools/readme_check.py --sync   # regrava os hashes (SÓ depois de revisar a tradução)
+```
+
+- É **alarme, não prova** — igual ao `doc_check.py`: ele não julga a qualidade do
+  texto, garante que ninguém esqueceu de atualizar.
+- Traduzir página nova: crie o arquivo em `docs/en/` e `docs/es/` (barra + marcador),
+  acrescente a linha no mapa `PARES` de `tools/readme_check.py` e cite na tabela acima.
+- `docs/en/` e `docs/es/` ficam **fora do render do produto e do `doc_check.py`**
+  (os dois varrem `docs/*.md`, sem recursão) — tradução não vira página do portal.
+- O `LICENSE` fica só em português (versão que prevalece). Tradução de licença é
+  decisão jurídica, não editorial.
+
 ## Convenções de escrita
 
 - Rótulos **exatos** da interface (`Endpoint (base_url)`, `SSL mode`) — é o que o

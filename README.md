@@ -1,5 +1,8 @@
 <div align="center">
 
+<!-- sync: docs-as-code | traducoes: README.en.md (EN), README.es.md (ES) | checar: python tools/readme_check.py -->
+🌐 **Português** · [English](README.en.md) · [Español](README.es.md)
+
 # 🔷 CL Agents - BlueShift IA Platform
 
 **Plataforma própria de Inteligência Artificial on-premise — 100% Python, Flask standalone.**
@@ -23,13 +26,13 @@
 - [Funcionalidades](#-funcionalidades)
 - [Começando](#-começando)
 - [Comandos CLI](#-comandos-cli)
-- [Portal do Cliente](#-portal-do-cliente)
-- [Agentes e Conectores](#-agentes-e-conectores)
+- [Modelos Locais de IA](#-modelos-locais-de-ia)
 - [Docker](#-docker)
 - [Instalação sem Docker (Linux direto)](#-instalação-sem-docker-linux-direto)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Documentação](#-documentação)
 - [Stack Tecnológica](#-stack-tecnológica)
+- [Hardware Recomendado](#-hardware-recomendado)
+- [Documentação](#-documentação)
 - [Licença](#-licença)
 
 ---
@@ -776,7 +779,7 @@ PyMuPDF>=1.28       # PDF text extraction (RAG)
 
 ### Tiers
 
-Os tiers são **orientativos para dimensionar a instalação do cliente**. "Acessos simultâneos" é a capacidade de **KV cache** do servidor LLM (vLLM) com o modelo indicado em Q4 e contexto médio de referência — quem passa do limite **entra na fila nativa do vLLM** (espera, não falha). Fórmula e tabela completa na seção [Capacidade de acessos simultâneos](#capacidade-de-acessos-simultaneos-kv-cache).
+Os tiers são **orientativos para dimensionar a instalação do cliente**. "Acessos simultâneos" é a capacidade de **KV cache** do servidor LLM (vLLM) com o modelo indicado em Q4 e contexto médio de referência — quem passa do limite **entra na fila nativa do vLLM** (espera, não falha). Fórmula e tabela completa na seção [Capacidade de acessos simultâneos](#capacidade-de-acessos-simultâneos-kv-cache).
 
 #### 🟢 TIER 1 — Pequeno (até 10 usuários, 1k docs, 500 queries/dia)
 
