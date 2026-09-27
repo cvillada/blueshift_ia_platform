@@ -25,6 +25,7 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 | Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) — é o **padrão**; o campo `stream` da requisição tem prioridade |
 | Máx. mensagens de contexto | ❌ | `6` (últimas N mensagens enviadas ao agente) |
 | Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro) |
+| Permitir tool calling | ❌ | checkbox (`permite_tools`) — repassa os `tools` do cliente ao agente e devolve `tool_calls`; **quem executa a ferramenta é o cliente**. Padrão: desligado |
 | Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
 
 - **Streaming**: o canal devolve a resposta completa; o gateway a envia
@@ -34,12 +35,22 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   recebe JSON, **mesmo que o modo configurado diga o contrário**; o *Modo
   de resposta* vale quando o cliente não manda o campo (Open WebUI manda
   `stream: true`, SDKs/agentes mandam `stream: false`).
-- **Sem tool calling**: o gateway repassa a pergunta ao agente e devolve
-  **texto** — os `tools` que um cliente agêntico (CLI/agente com
-  ferramentas) manda no corpo são ignorados e a resposta sai sem
-  `tool_calls`. Para o agente CL Agents entrar como **ferramenta** de um
-  agente do cliente, use a **API do portal** (`POST /portal/api/v1/agente`,
-  ver página *API Reference*).
+- **Tool calling (opcional, por gateway)**: com `permitir tool calling` ligado
+  na tela, o gateway repassa ao agente as **ferramentas do cliente** (`tools`,
+  contrato OpenAI) e devolve as chamadas como `tool_calls` — em JSON
+  (`finish_reason: "tool_calls"`) ou em SSE (`delta.tool_calls`), conforme o
+  `stream` do cliente. **Quem executa a ferramenta é o cliente**: a plataforma
+  não roda nada; o resultado volta na chamada seguinte como mensagem
+  `role: "tool"` e entra no prompt do modelo. Teto de **8 rodadas** por conversa
+  (ao estourar, resposta em texto para encerrar o laço). Vale o aviso: o modelo
+  do agente precisa **emitir tool call** — modelos pequenos "instruct"
+  normalmente respondem texto e nunca chamam a ferramenta.
+- **Sem tool calling (padrão)**: o gateway repassa a pergunta ao agente e
+  devolve **texto** — os `tools` que um cliente agêntico (CLI/agente com
+  ferramentas) manda no corpo são ignorados e a resposta sai sem `tool_calls`.
+  Para o agente CL Agents entrar como **ferramenta** de um agente do cliente
+  (o sentido inverso), use a **API do portal**
+  (`POST /portal/api/v1/agente`, ver página *API Reference*).
 - **Contexto da conversa**: o gateway repassa as mensagens anteriores do
   chat no campo `contexto` da API — o LLM entende referências ("e o
   dele?") sem repetir o ID. O trabalho de enviar o histórico é do
@@ -76,4 +87,20 @@ curl -X POST http://localhost:9003/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "agente:Agente Vendas",
        "messages": [{"role": "user", "content": "Qual o saldo do cliente C001?"}]}'
+```
+
+Exemplo com ferramentas (tool calling ligado neste gateway) — a resposta volta
+com `finish_reason: "tool_calls"` (o cliente executa a ferramenta e chama de
+novo mandando o resultado como `role: "tool"`):
+
+```bash
+curl -X POST http://localhost:9003/v1/chat/completions \
+  -H "Authorization: Bearer ***" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "agente:Agente Vendas",
+       "messages": [{"role": "user", "content": "Qual o status do pedido 4471?"}],
+       "tools": [{"type": "function", "function": {"name": "consultar_pedido",
+                  "parameters": {"type": "object",
+                                 "properties": {"numero": {"type": "string"}},
+                                 "required": ["numero"]}}}]}'
 ```

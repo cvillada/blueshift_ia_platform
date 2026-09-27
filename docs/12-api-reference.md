@@ -31,6 +31,9 @@ Content-Type: application/json
 | `id_cliente` | ❌ | Valor que alimenta os placeholders `{id_cliente}` dos conectores |
 | `contexto` | ❌ | Mensagens anteriores da conversa (entram só no prompt; a memória grava a pergunta real) |
 | `origem` | ❌ | Marca a origem (ex.: `gateway`); com `gateway` a plataforma registra feedback automático do tipo `gateway` |
+| `tools` | ❌ | Ferramentas do cliente no contrato OpenAI — oferecidas ao modelo do agente. Hoje só chega aqui pelo **gateway** com `permite_tools` ligado; a plataforma **não executa** a ferramenta |
+| `tool_choice` | ❌ | Repassado junto com `tools` (`auto`, `required`, `none` ou o nome da função) |
+| `tool_results` | ❌ | Resultado que o **cliente executou** (lista de `{name, content}`) — volta ao modelo para ele concluir a resposta |
 
 Resposta (JSON limpo — sem contexto nem ferramentas):
 
@@ -41,6 +44,7 @@ Resposta (JSON limpo — sem contexto nem ferramentas):
   "pergunta": "Quais os top 5 produtos mais vendidos de 2026?",
   "agente": "Agente Vendas",
   "modelo": "qwen3-4b-instruct-2507",
+  "tool_calls": null,
   "feedback_url": "http://host:8090/portal/api/v1/feedback/123",
   "erro": null,
   "tokens": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
@@ -54,7 +58,12 @@ Resposta (JSON limpo — sem contexto nem ferramentas):
   envio **best-effort** com retry exponencial (2 s, 4 s); se falhar, a resposta
   do agente continua sendo entregue (`{"enviado": false, "motivo": "..."}`);
 - a chamada é registrada na **Auditoria** e vira **trace** (visível em
-  Observabilidade / Rastreio).
+  Observabilidade / Rastreio);
+- **`tool_calls`** (tool calling): quando o modelo pede uma ferramenta, o campo
+  vem preenchido no formato OpenAI (`id`, `function.name`, `function.arguments`)
+  e `resposta` fica vazia — **quem executa a ferramenta é o cliente**, que
+  devolve o resultado em `tool_results` na chamada seguinte. Sem `tool_calls`,
+  o campo vem `null`;
 
 Exemplo com `curl`:
 
@@ -118,11 +127,21 @@ Content-Type: application/json
   `streaming` = SSE) — o modo é o padrão, não uma imposição: cliente que pedia
   JSON e recebia SSE (ou o contrário) era a causa de requisição que parece
   "pendurada" em alguns clientes;
-- **não há tool calling**: os `tools` enviados no corpo são **ignorados** — o
-  canal devolve texto e a resposta sai com `finish_reason: "stop"`, sem
-  `tool_calls`. Para um cliente que executa ferramentas (agentes/CLIs), integre
-  pela **API do portal** (§12.1), onde o agente entra como uma ferramenta do
-  cliente;
+- **tool calling (opcional, por gateway)**: com o campo `permite_tools` ligado
+  (checkbox *Permitir tool calling* na tela Gateway), os `tools` do corpo são
+  repassados ao modelo do agente e as chamadas voltam no contrato OpenAI —
+  `finish_reason: "tool_calls"` com `message.tool_calls` (JSON) ou
+  `delta.tool_calls` (SSE, `stream: true`). **A plataforma não executa nada**:
+  o cliente executa e reenvia o resultado como mensagem `role: "tool"`
+  (vira `tool_results` no prompt). Teto de **8 rodadas** de ferramenta por
+  conversa — ao estourar, a resposta sai em texto (`finish_reason: "stop"`) para
+  encerrar o laço. Exige modelo que emita tool call: modelos pequenos
+  "instruct" costumam responder texto e nunca chamar a ferramenta;
+- **sem `permite_tools`** (padrão), os `tools` enviados no corpo são
+  **ignorados** — o canal devolve texto e a resposta sai com
+  `finish_reason: "stop"`, sem `tool_calls`. Para o agente entrar como
+  **ferramenta** de um agente do cliente (o sentido inverso), integre pela
+  **API do portal** (§12.1), a partir do seu próprio agente;
 - pedidos de **título de conversa** (chamada extra que o Open WebUI faz) são
   respondidos na hora, sem gastar tokens nem gravar trace (e respeitam o
   `stream` do cliente);

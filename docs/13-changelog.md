@@ -12,6 +12,31 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.5 (2026-09-27) — tool calling no gateway (ferramentas do cliente)**
+- O gateway OpenAI-compatível passa a **repassar as ferramentas do cliente**:
+  com o campo `permitir tool calling` ligado na tela Gateway (`permite_tools`,
+  por gateway, **padrão desligado**), os `tools` do corpo vão ao modelo do
+  agente e a chamada volta no contrato OpenAI — `finish_reason: "tool_calls"`
+  com `message.tool_calls` em JSON ou `delta.tool_calls` em SSE (`stream: true`);
+- **quem executa a ferramenta é o cliente** — a plataforma não roda nada. O
+  resultado volta na chamada seguinte como mensagem `role: "tool"`, é entregue
+  ao modelo com o **nome da ferramenta** (resolvido pelo `tool_call_id`) e o
+  agente conclui a resposta em texto. Vale para **qualquer ferramenta** que o
+  cliente declarar: não há lista fixa na plataforma;
+- **teto de 8 rodadas** de ferramenta por conversa (`MAX_RODADAS_TOOLS`): ao
+  estourar, o gateway responde em texto (`finish_reason: "stop"`) para encerrar
+  o laço, sem chamar o agente;
+- exige **modelo que emita tool call** — modelos pequenos "instruct" respondem
+  texto e nunca chamam a ferramenta (a doc do gateway registra o aviso);
+- a chamada de ferramenta **não é resposta vazia**: o agente não cai mais no
+  fallback de `content` vazio nem na mensagem de "não consegui responder"
+  quando o modelo pede uma ferramenta;
+- desligado (padrão), o comportamento é o de antes: `tools` ignorado, resposta
+  em texto com `finish_reason: "stop"`;
+- cobertura nova: 6 casos de tool calling no teste do gateway (repasse só com a
+  permissão, JSON, SSE, resultados do cliente, teto de rodadas) e 4 no cliente
+  de LLM (`tools` no payload, `tool_calls` na volta).
+
 **v0.11.4 (2026-09-27) — update não deixa mais o repositório com dono `root`**
 - O update pela tela roda o `git checkout` num **container irmão** — e esse irmão
   rodava como `root`, então **todo update deixava os arquivos do clone com dono

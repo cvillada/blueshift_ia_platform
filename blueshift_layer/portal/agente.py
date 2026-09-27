@@ -439,7 +439,9 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
 
 
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
-              anonimizar: bool = True, contexto_extra: str = "") -> dict:
+              anonimizar: bool = True, contexto_extra: str = "",
+              tools: list | None = None, tool_choice=None,
+              tool_results: list | None = None) -> dict:
     """Executa o agente: conectores (1º) → RAG complementar → modelo + skills.
 
     Hierarquia de execução:
@@ -674,6 +676,34 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                         )
         except Exception:  # noqa: BLE001 — grafico e best-effort
             pass
+    # --- Ferramentas do CLIENTE (tool calling): quando o gateway libera (switch
+    # por gateway) e o cliente manda `tools`, o agente recebe os schemas e pode
+    # CHAMAR a ferramenta em vez de responder — quem executa e o cliente, nada
+    # roda aqui. O resultado volta na proxima mensagem em `tool_results`.
+    if tools:
+        _nomes = ", ".join(
+            (t.get("function") or {}).get("name", "?") for t in tools
+            if isinstance(t, dict)) or "(sem nome)"
+        system += (
+            "\n\nFERRAMENTAS DISPONIVEIS: o cliente enviou ferramentas "
+            f"({_nomes}). Quando a resposta depender de um dado que so a "
+            "ferramenta pode buscar, CHAME a ferramenta em vez de inventar o "
+            "dado. Nao descreva a chamada em texto."
+        )
+    if tool_results:
+        _linhas = []
+        for r in tool_results:
+            if not isinstance(r, dict):
+                continue
+            _linhas.append(f"- {r.get('name') or 'ferramenta'}: "
+                           f"{str(r.get('content') or '')[:2000]}")
+        if _linhas:
+            user_content += ("\n\nRESULTADO DAS FERRAMENTAS (executadas pelo "
+                             "cliente):\n" + "\n".join(_linhas) +
+                             "\n\nUse esse resultado para responder. Se ainda "
+                             "faltar um dado, chame a ferramenta de novo.")
+        # A pergunta antiga ja foi respondida com a chamada: as ferramentas
+        # seguem disponiveis para o proximo passo da conversa.
     mensagens = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
@@ -681,14 +711,19 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
 
     # --- tentativa principal ---
     _marca = _time.time()  # inicio: LLM (resposta principal)
-    out = llm_client.chat(modelo, mensagens)
+    out = llm_client.chat(modelo, mensagens, tools=tools or None,
+                          tool_choice=tool_choice if tools else None)
     _ms_llm += (_time.time() - _marca) * 1000
     modelo_usado = modelo["modelo"]
     usou_fallback = False
+    # Chamada de ferramenta NAO e resposta vazia: content vem nulo/"" nesse
+    # caso (contrato OpenAI) e nao pode disparar o fallback nem a mensagem
+    # de "nao consegui responder".
+    tem_tool_calls = bool(out.get("tool_calls"))
 
     # --- fallback: modelo secundário se o principal FALHOU ou voltou VAZIO
     # (modelos com reasoning — ex: deepseek — podem devolver content "")
-    _vazio = out["ok"] and not (out.get("content") or "").strip()
+    _vazio = out["ok"] and not tem_tool_calls and not (out.get("content") or "").strip()
     if (not out["ok"] or _vazio) and agente.get("modelo_secundario_id") and agente["modelo_secundario_id"] != agente["modelo_id"]:
         modelo2 = db.buscar_modelo(agente["modelo_secundario_id"])
         if modelo2:
@@ -704,12 +739,13 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     # formato de tool-call emitem <tool_call>/<think> cru no content mesmo
     # com o prompt anti-tag — o usuario nunca recebe o tag cru; recebe o
     # pedido do dado ausente (ou cai na mensagem de vazio, logo abaixo).
-    if out["ok"]:
+    if out["ok"] and not tem_tool_calls:
         out["content"] = _limpar_resposta_guard(out.get("content") or "", ausentes_nota)
 
     # --- LLM devolveu VAZIO (principal e fallback): resposta amigavel em
     # vez de "" — o usuario/sistema externo nunca recebe resposta em branco
-    if out["ok"] and not (out.get("content") or "").strip():
+    # (chamada de ferramenta nao e vazio: o cliente recebe `tool_calls`)
+    if out["ok"] and not tem_tool_calls and not (out.get("content") or "").strip():
         out["content"] = (
             "Não consegui montar a resposta agora — o modelo de IA não "
             "retornou texto. Por favor, tente a mesma pergunta em instantes."
@@ -782,6 +818,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
 
     return {"ok": out["ok"], "content": out["content"], "model": out["model"],
             "model_fallback": usou_fallback, "error": out["error"],
+            "tool_calls": out.get("tool_calls") or None,
             "contexto": contexto, "ferramentas": ferramentas,
             "trace_id": trace_id,
             "feedback_url": f"/portal/api/v1/feedback/{trace_id}" if out["ok"] else None,

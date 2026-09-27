@@ -1,4 +1,4 @@
-<!-- sync: 12-api-reference.md@25689fa7b8ba | checar: python tools/readme_check.py -->
+<!-- sync: 12-api-reference.md@5b4f4ec4b213 | checar: python tools/readme_check.py -->
 🌐 [Português](../12-api-reference.md) · **English** · [Español](../es/12-api-reference.md)
 
 ## 12. API Reference (integration)
@@ -34,6 +34,9 @@ Content-Type: application/json
 | `id_cliente` | ❌ | Value that feeds the `{id_cliente}` placeholders of the connectors |
 | `contexto` | ❌ | Previous messages of the conversation (they only go into the prompt; memory stores the real question) |
 | `origem` | ❌ | Marks the origin (e.g.: `gateway`); with `gateway` the platform records automatic feedback of type `gateway` |
+| `tools` | ❌ | Client tools in the OpenAI contract — offered to the agent's model. Today they only arrive here through the **gateway** with `permite_tools` enabled; the platform **does not execute** the tool |
+| `tool_choice` | ❌ | Forwarded together with `tools` (`auto`, `required`, `none` or the function name) |
+| `tool_results` | ❌ | Result that the **client executed** (list of `{name, content}`) — goes back to the model so it can finish the answer |
 
 Response (clean JSON — no context and no tools):
 
@@ -44,6 +47,7 @@ Response (clean JSON — no context and no tools):
   "pergunta": "Quais os top 5 produtos mais vendidos de 2026?",
   "agente": "Agente Vendas",
   "modelo": "qwen3-4b-instruct-2507",
+  "tool_calls": null,
   "feedback_url": "http://host:8090/portal/api/v1/feedback/123",
   "erro": null,
   "tokens": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
@@ -57,7 +61,11 @@ Response (clean JSON — no context and no tools):
   **best-effort** delivery with exponential retry (2 s, 4 s); if it fails, the
   agent's response is still delivered (`{"enviado": false, "motivo": "..."}`);
 - the call is recorded in the **Audit (Auditoria)** and becomes a **trace** (visible in
-  Observability (Observabilidade) / Tracking (Rastreio)).
+  Observability (Observabilidade) / Tracking (Rastreio));
+- **`tool_calls`** (tool calling): when the model asks for a tool, the field comes
+  filled in the OpenAI format (`id`, `function.name`, `function.arguments`) and
+  `resposta` is empty — **the client executes the tool** and returns the result in
+  `tool_results` on the next call. Without `tool_calls`, the field is `null`;
 
 Example with `curl`:
 
@@ -121,10 +129,21 @@ Content-Type: application/json
   `streaming` = SSE) — the mode is the default, not an imposition: a client that
   asked for JSON and received SSE (or the other way round) was the cause of
   requests that look "hung" in some clients;
-- **there is no tool calling**: the `tools` sent in the body are **ignored** — the
-  channel returns text and the answer comes back with `finish_reason: "stop"`,
-  without `tool_calls`. For a client that executes tools (agents/CLIs), integrate
-  through the **portal API** (§12.1), where the agent becomes a tool of the client;
+- **tool calling (optional, per gateway)**: with the `permite_tools` field enabled
+  (checkbox *Permitir tool calling* on the Gateway screen), the `tools` in the body
+  are forwarded to the agent's model and the calls come back in the OpenAI
+  contract — `finish_reason: "tool_calls"` with `message.tool_calls` (JSON) or
+  `delta.tool_calls` (SSE, `stream: true`). **The platform executes nothing**: the
+  client executes and sends the result back as a `role: "tool"` message (it becomes
+  `tool_results` in the prompt). Cap of **8 tool rounds** per conversation — when it
+  is exceeded, the answer comes back as text (`finish_reason: "stop"`) to end the
+  loop. It requires a model that emits tool calls: small "instruct" models usually
+  answer text and never call the tool;
+- **without `permite_tools`** (default), the `tools` sent in the body are
+  **ignored** — the channel returns text and the answer comes back with
+  `finish_reason: "stop"`, without `tool_calls`. For the agent to become a **tool**
+  of the client's own agent (the opposite direction), integrate through the
+  **portal API** (§12.1) from your own agent;
 - requests for a **conversation title** (an extra call that Open WebUI makes) are
   answered right away, without spending tokens or recording a trace (and they
   respect the client's `stream`);

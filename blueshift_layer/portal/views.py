@@ -4422,8 +4422,16 @@ def api_agente(canal):
     id_cliente = data.get("id_cliente") or ""
     contexto = (data.get("contexto") or "").strip()
     origem = (data.get("origem") or "").strip()
+    # Tool calling (contrato do cliente): `tools` = schemas oferecidos ao modelo,
+    # `tool_results` = o que o cliente EXECUTOU na rodada anterior. A plataforma
+    # so repassa — nada e executado aqui. Canal sem gateway com `permite_tools`
+    # nao recebe tools (o gateway e quem libera).
+    tools = data.get("tools") if isinstance(data.get("tools"), list) else None
+    tool_results = data.get("tool_results") if isinstance(data.get("tool_results"), list) else None
+    tool_choice = data.get("tool_choice")
     out = agente_mod.responder(a, pergunta, usuario, id_cliente=id_cliente,
-                               contexto_extra=contexto)
+                               contexto_extra=contexto, tools=tools,
+                               tool_choice=tool_choice, tool_results=tool_results)
     # Feedback DEFAULT para chats externos (gateway/Open WebUI e outras
     # plataformas): sem botao de avaliacao proprio, a interacao conta como
     # 'util' (tipo 'gateway' — distinguivel do feedback manual/implicito na
@@ -4448,6 +4456,7 @@ def api_agente(canal):
         "pergunta": pergunta,
         "agente": a["nome"],
         "modelo": out.get("model"),
+        "tool_calls": out.get("tool_calls"),
         "feedback_url": out.get("feedback_url"),
         "erro": out.get("error"),
         "tokens": out.get("tokens", {}),
@@ -4845,7 +4854,8 @@ def gateway():
             flash("Nome e canal são obrigatórios.", "warn")
             return redirect(url_for("portal.gateway"))
         gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo,
-                               max_mensagens=max_msg, max_tokens=max_tok)
+                               max_mensagens=max_msg, max_tokens=max_tok,
+                               permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "criar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
         flash(f"Gateway '{nome}' ativado. Endpoint: {_endpoint_gateway()}", "ok")
@@ -4863,6 +4873,7 @@ def gateway():
           <td>{templates.h(g.get('agente_nome','-'))} <span class="muted">({templates.h(g.get('agente_area',''))})</span></td>
           <td>{templates.badge(g['modo'])}</td>
           <td>{templates.badge(st)}</td>
+          <td style="text-align:center" title="tools do cliente repassadas ao modelo">{'sim' if g.get('permite_tools') else '—'}</td>
           <td style="max-width:220px"><code style="font-size:11px">{_endpoint_gateway()}</code></td>
           <td class="row-actions">
             <a href="/portal/gateway/{g['id']}/editar">editar</a>
@@ -4870,8 +4881,8 @@ def gateway():
             <a href="/portal/gateway/{g['id']}/excluir" onclick="return confirm('Excluir gateway {g['nome']}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
-    tabela = f"""<table><thead><tr><th>Nome</th><th>Canal</th><th>Agente</th><th>Modo</th><th>Status</th><th>Endpoint (OpenAI)</th><th></th></tr></thead>
-      <tbody>{body or '<tr><td colspan=7 class="empty">Nenhum gateway ativado.</td></tr>'}</tbody></table>"""
+    tabela = f"""<table><thead><tr><th>Nome</th><th>Canal</th><th>Agente</th><th>Modo</th><th>Status</th><th>Tool calling</th><th>Endpoint (OpenAI)</th><th></th></tr></thead>
+      <tbody>{body or '<tr><td colspan=8 class="empty">Nenhum gateway ativado.</td></tr>'}</tbody></table>"""
     form = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Ativar gateway (chat externo)</h3>
@@ -4884,6 +4895,8 @@ def gateway():
           <option value="completa">Resposta completa (JSON)</option>
           <option value="streaming">Streaming (efeito de digitação — SSE)</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="permite_tools" style="width:auto;margin:0;vertical-align:middle"> Permitir tool calling (ferramentas enviadas pelo cliente)</label>
+        <div class="muted" style="font-size:11px">Ligado: o gateway repassa os <code>tools</code> do cliente ao modelo do agente e devolve <code>tool_calls</code> — <b>quem executa a ferramenta é o cliente</b> (nada roda aqui). Desligado (padrão): <code>tools</code> é ignorado e a resposta sai em texto.</div>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" checked style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div class="form-row" style="margin-top:6px">
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="6" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
@@ -4919,7 +4932,8 @@ def gateway_editar(gid: int):
             max_msg = int(g.get("max_mensagens", 6))
             max_tok = int(g.get("max_tokens", 400))
         db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo,
-                             max_mensagens=max_msg, max_tokens=max_tok)
+                             max_mensagens=max_msg, max_tokens=max_tok,
+                             permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "editar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
         flash(f"Gateway '{nome}' atualizado.", "ok")
@@ -4937,6 +4951,8 @@ def gateway_editar(gid: int):
           <option value="completa" {"selected" if g['modo']=='completa' else ''}>Resposta completa (JSON)</option>
           <option value="streaming" {"selected" if g['modo']=='streaming' else ''}>Streaming (SSE)</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="permite_tools" {"checked" if g.get('permite_tools') else ''} style="width:auto;margin:0;vertical-align:middle"> Permitir tool calling (ferramentas enviadas pelo cliente)</label>
+        <div class="muted" style="font-size:11px">Ligado: o gateway repassa os <code>tools</code> do cliente ao modelo do agente e devolve <code>tool_calls</code> — <b>quem executa a ferramenta é o cliente</b> (nada roda aqui). Desligado (padrão): <code>tools</code> é ignorado e a resposta sai em texto.</div>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''} style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div class="form-row" style="margin-top:6px">
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="{g.get('max_mensagens', 6)}" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>

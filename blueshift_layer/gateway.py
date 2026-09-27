@@ -55,6 +55,7 @@ def _gateways_ativos() -> list[dict]:
     with _con() as con:
         rows = con.execute(
             """SELECT g.id, g.nome, g.modo, g.max_mensagens, g.max_tokens,
+                      g.permite_tools,
                       c.token AS canal_token,
                       a.nome AS agente_nome, a.area AS agente_area
                FROM gateway_config g
@@ -66,15 +67,25 @@ def _gateways_ativos() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _chamar_canal(token: str, pergunta: str, contexto: str = "") -> dict:
-    """Chama a API do canal e devolve {ok, resposta, modelo, erro}.
+def _chamar_canal(token: str, pergunta: str, contexto: str = "",
+                  tools: list | None = None, tool_choice=None,
+                  tool_results: list | None = None) -> dict:
+    """Chama a API do canal e devolve {ok, resposta, modelo, tool_calls, erro}.
 
     contexto: mensagens anteriores da conversa (entram so no prompt do
     LLM; a memoria/trace gravam apenas a pergunta real).
+    tools/tool_results: contrato de tool calling do cliente (so quando o
+    gateway tem `permite_tools`) — a execucao da ferramenta e do cliente.
     """
     payload: dict = {"pergunta": pergunta, "origem": "gateway"}
     if contexto:
         payload["contexto"] = contexto
+    if tools:
+        payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+    if tool_results:
+        payload["tool_results"] = tool_results
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         f"{_PORTAL_URL}/portal/api/v1/agente",
@@ -88,7 +99,8 @@ def _chamar_canal(token: str, pergunta: str, contexto: str = "") -> dict:
             out = json.loads(resp.read().decode("utf-8"))
         if out.get("ok"):
             return {"ok": True, "resposta": out.get("resposta", ""),
-                    "modelo": out.get("modelo") or "blueShift"}
+                    "modelo": out.get("modelo") or "blueShift",
+                    "tool_calls": out.get("tool_calls") or None}
         return {"ok": False, "resposta": "", "erro": out.get("erro") or "falha no agente"}
     except urllib.error.HTTPError as e:
         return {"ok": False, "resposta": "", "erro": f"HTTP {e.code}"}
@@ -198,6 +210,82 @@ def _resposta_openai(resposta: str, modelo: str, gw_id: int) -> dict:
     }
 
 
+MAX_RODADAS_TOOLS = 8
+
+
+def _tool_results_de(messages: list[dict]) -> list[dict]:
+    """Extrai os resultados de ferramenta que o cliente ja executou.
+
+    No contrato OpenAI cada execucao volta como {"role":"tool",
+    "tool_call_id":..., "content":...}; o NOME da ferramenta esta na
+    mensagem do assistente (tool_calls) que veio antes.
+    """
+    nomes: dict[str, str] = {}
+    saida: list[dict] = []
+    for m in messages:
+        role = m.get("role")
+        if role == "assistant":
+            for tc in (m.get("tool_calls") or []):
+                if isinstance(tc, dict):
+                    nomes[str(tc.get("id") or "")] = (
+                        (tc.get("function") or {}).get("name") or "")
+        elif role == "tool":
+            cid = str(m.get("tool_call_id") or "")
+            saida.append({"name": nomes.get(cid) or m.get("name") or "ferramenta",
+                          "content": m.get("content") or ""})
+    return saida
+
+
+def _chunk(gw_id: int, modelo: str, delta: dict, finish: str | None = None) -> str:
+    """Um pedaco SSE no formato OpenAI (chat.completion.chunk)."""
+    corpo = {"id": f"chatcmpl-bs-{gw_id}", "object": "chat.completion.chunk",
+             "created": int(time.time()), "model": modelo,
+             "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+    return f"data: {json.dumps(corpo, ensure_ascii=False)}\n\n"
+
+
+def _resposta_openai_tools(tool_calls: list, modelo: str, gw_id: int) -> dict:
+    """Corpo OpenAI com tool_calls (finish_reason=tool_calls, content nulo)."""
+    limpos = [{
+        "id": tc.get("id") or f"call_bs_{gw_id}_{i}",
+        "type": "function",
+        "function": {"name": (tc.get("function") or {}).get("name") or "",
+                     "arguments": (tc.get("function") or {}).get("arguments") or "{}"},
+    } for i, tc in enumerate(tool_calls) if isinstance(tc, dict)]
+    return {
+        "id": f"chatcmpl-bs-{gw_id}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": modelo,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": None, "tool_calls": limpos},
+            "finish_reason": "tool_calls",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+def _sse_tool_calls(gw_id: int, modelo: str, tool_calls: list):
+    """SSE de tool_calls — o cliente monta nome/arguments a partir do delta."""
+    def gen():
+        yield _chunk(gw_id, modelo, {"role": "assistant"})
+        for i, tc in enumerate(tool_calls):
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") or {}
+            yield _chunk(gw_id, modelo, {"tool_calls": [{
+                "index": i,
+                "id": tc.get("id") or f"call_bs_{gw_id}_{i}",
+                "type": "function",
+                "function": {"name": fn.get("name") or "",
+                             "arguments": fn.get("arguments") or "{}"},
+            }]})
+        yield _chunk(gw_id, modelo, {}, finish="tool_calls")
+        yield "data: [DONE]\n\n"
+    return gen()
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
 
@@ -283,18 +371,45 @@ def create_app() -> Flask:
                 return Response(gen_titulo(), mimetype="text/event-stream")
             return jsonify(_resposta_openai(titulo, modelo, gw["id"]))
 
-        out = _chamar_canal(
-            gw["canal_token"], pergunta,
-            contexto=_montar_contexto(
-                messages,
-                max_msg=int(gw.get("max_mensagens") or 6),
-                max_tokens=int(gw.get("max_tokens") or 400),
-            ))
+        # --- Tool calling (ferramentas do CLIENTE) --------------------------
+        # O switch `permite_tools` do gateway libera o repasse de `tools` do
+        # cliente para o modelo do agente. A plataforma NAO executa nada: o
+        # cliente executa e devolve o resultado como messages[].role="tool".
+        tools = body.get("tools") if isinstance(body.get("tools"), list) else None
+        tool_choice = body.get("tool_choice")
+        if not gw.get("permite_tools"):
+            tools, tool_choice = None, None   # gateway sem a permissao: ignora
+        rodadas = sum(1 for m in messages if m.get("role") == "tool")
+        if tools and rodadas >= MAX_RODADAS_TOOLS:
+            # Teto de seguranca: sem isso um cliente mal-comportado conversa
+            # com o agente indefinidamente. Responder texto encerra o laco.
+            out = {"ok": True, "resposta":
+                   f"Limite de {MAX_RODADAS_TOOLS} rodadas de ferramenta por "
+                   "conversa atingido — respondi com o que ja tenho.",
+                   "modelo": gw["agente_nome"] or "blueshift", "tool_calls": None}
+        else:
+            out = _chamar_canal(
+                gw["canal_token"], pergunta,
+                contexto=_montar_contexto(
+                    messages,
+                    max_msg=int(gw.get("max_mensagens") or 6),
+                    max_tokens=int(gw.get("max_tokens") or 400),
+                ),
+                tools=tools, tool_choice=tool_choice,
+                tool_results=_tool_results_de(messages) if tools else None)
         if not out["ok"]:
             return jsonify({"error": {"message": out.get("erro") or "falha no agente",
                                       "type": "server_error"}}), 502
 
         modelo = out.get("modelo") or gw["agente_nome"] or "blueshift"
+
+        # O agente decidiu CHAMAR uma ferramenta: repassa no contrato OpenAI
+        # (JSON ou SSE com delta.tool_calls) — quem executa e o cliente.
+        if out.get("tool_calls"):
+            if _quer_stream(body, gw):
+                return Response(_sse_tool_calls(gw["id"], modelo, out["tool_calls"]),
+                                mimetype="text/event-stream")
+            return jsonify(_resposta_openai_tools(out["tool_calls"], modelo, gw["id"]))
 
         if _quer_stream(body, gw):
             # Streaming SIMULADO: envia a resposta completa em chunks (SSE)

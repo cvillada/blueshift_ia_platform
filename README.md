@@ -623,8 +623,12 @@ Para conectar o **Open WebUI** (container na mesma máquina):
 - **O `stream` da requisição decide a resposta:** `stream: true` recebe SSE
   e `stream: false` recebe JSON (sem o campo, vale o *Modo de resposta* da
   tela Gateway); a lista `/v1/models` também exige o token do canal
-- **O gateway não faz tool calling:** ele devolve texto do agente — para usar
-  um agente como ferramenta de outro agente, use a **API do portal**
+- **Tool calling (opcional, por gateway):** com *Permitir tool calling* ligado, o
+  gateway repassa os `tools` do cliente ao agente e devolve `tool_calls` (JSON ou
+  SSE) — **quem executa a ferramenta é o cliente**; teto de 8 rodadas por
+  conversa. Desligado (padrão), `tools` é ignorado e a resposta sai em texto
+- **O gateway não executa ferramentas:** para usar um agente como ferramenta de
+  outro agente (o sentido inverso), use a **API do portal**
 - **Contexto da conversa:** o gateway repassa as mensagens anteriores
   (limites configuráveis na tela: máx. mensagens + orçamento em tokens);
   a memória/RAG gravam sempre a última pergunta/resposta real

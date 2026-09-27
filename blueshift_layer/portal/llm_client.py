@@ -26,14 +26,20 @@ def _resolver_host(base_url: str) -> str:
 
 
 def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
-         temperatura: float | None = None) -> dict:
-    """Envia chat completion. Retorna dict {ok, content, model, error}.
+         temperatura: float | None = None, tools: list | None = None,
+         tool_choice=None) -> dict:
+    """Envia chat completion. Retorna dict {ok, content, model, error, tool_calls}.
 
     Se o modelo tiver `max_tokens` configurado (na tela Modelos IA), usa esse valor.
     Senao usa o padrao (4096). Timeout de 180s para modelos com thinking/reasoning.
     `temperatura`: se None, usa a configurada no modelo (tela Modelos IA, padrao
     0.3). Chamadas internas que exigem determinismo passam 0.0 explicito
     (roteador de conectores / extrator de parametros).
+    `tools`/`tool_choice`: contrato de tool calling do cliente (só no modo
+    openai_chat). Com tools, o modelo pode devolver `tool_calls` em vez de
+    texto — nesse caso `content` vem nulo e os chamados vao em
+    `tool_calls` (formato OpenAI, com id/nome/arguments). Quem EXECUTA a
+    ferramenta e quem chamou (o cliente) — a plataforma so repassa.
     """
     base = _resolver_host(modelo["base_url"]).rstrip("/")
     modo = (modelo.get("modo") or "openai_chat").strip().lower()
@@ -66,6 +72,12 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
             "temperature": temp,
             "stream": False,
         }
+        # Tool calling: só no modo chat (o modo `responses` de agente externo
+        # tem contrato próprio e nao recebe tools daqui).
+        if tools:
+            payload["tools"] = tools
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
     headers = {"Content-Type": "application/json"}
     if modelo.get("api_key"):
         headers["Authorization"] = f"Bearer {modelo['api_key']}"
@@ -86,7 +98,10 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
             }
             return {"ok": True, "content": content, "model": modelo["modelo"],
                     "error": None, "tokens": tokens}
-        content = out["choices"][0]["message"]["content"]
+        msg = out["choices"][0]["message"] or {}
+        content = msg.get("content") or ""
+        # Tool calling: com tools o modelo devolve `tool_calls` e content nulo
+        tool_calls = msg.get("tool_calls") or None
         # Captura métricas de uso (OpenAI-compatible) quando o endpoint as retorna.
         # `usage` pode vir ausente em alguns servidores locais — tratamos como 0.
         usage = out.get("usage") or {}
@@ -99,7 +114,7 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
             # alguns servidores so retornam parcial; recompor se possivel
             tokens["total_tokens"] = tokens["prompt_tokens"] + tokens["completion_tokens"]
         return {"ok": True, "content": content, "model": modelo["modelo"],
-                "error": None, "tokens": tokens}
+                "error": None, "tokens": tokens, "tool_calls": tool_calls}
     except urllib.error.HTTPError as e:
         return {"ok": False, "content": "", "model": modelo["modelo"],
                 "error": f"HTTP {e.code}: {e.reason}", "tokens": _ZERO_TOKENS()}
