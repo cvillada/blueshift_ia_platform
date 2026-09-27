@@ -1,4 +1,4 @@
-<!-- sync: 12-api-reference.md@976b627c7b1f | checar: python tools/readme_check.py -->
+<!-- sync: 12-api-reference.md@25689fa7b8ba | checar: python tools/readme_check.py -->
 🌐 [Português](../12-api-reference.md) · **English** · [Español](../es/12-api-reference.md)
 
 ## 12. API Reference (integration)
@@ -91,10 +91,12 @@ It serves external chats that speak the OpenAI protocol. The **agent is chosen b
 the `model` field** (`agente:<agent name>`); the token only authenticates (it can be
 the same token for several agents, as Open WebUI does).
 
-**List agents published as models:**
+**List agents published as models** (requires the **same token** as the chat —
+the list exposes the names of the published agents):
 
 ```
 GET /v1/models
+Authorization: Bearer ***
 ```
 
 ```json
@@ -112,16 +114,26 @@ Content-Type: application/json
 ```
 
 - the **last user message** becomes the agent's question;
-- if the channel is in **streaming** mode, the response is SSE
+- the body's **`stream` field decides the encoding**: `stream: true` returns SSE
   (`text/event-stream`) with chunks in the `chat.completion.chunk` format,
-  ending with `data: [DONE]`;
+  ending with `data: [DONE]`; `stream: false` returns JSON. **Without the field**,
+  the *Response mode* configured on the Gateway screen applies (`completa` = JSON ·
+  `streaming` = SSE) — the mode is the default, not an imposition: a client that
+  asked for JSON and received SSE (or the other way round) was the cause of
+  requests that look "hung" in some clients;
+- **there is no tool calling**: the `tools` sent in the body are **ignored** — the
+  channel returns text and the answer comes back with `finish_reason: "stop"`,
+  without `tool_calls`. For a client that executes tools (agents/CLIs), integrate
+  through the **portal API** (§12.1), where the agent becomes a tool of the client;
 - requests for a **conversation title** (an extra call that Open WebUI makes) are
-  answered right away, without spending tokens or recording a trace;
+  answered right away, without spending tokens or recording a trace (and they
+  respect the client's `stream`);
 - every conversation generates automatic feedback of type `gateway` (it appears in
   Observability (Observabilidade) and in A/B Testing (Teste A/B), separate from manual feedback).
 
 Errors: **400** without user message · **401** invalid token or inactive
-gateway · **404** no active gateway · **502** agent failure.
+gateway (`/v1/chat/completions` **and** `/v1/models`) · **404** no active
+gateway · **502** agent failure.
 
 **Typical configuration in Open WebUI:** base URL `http://HOST:9003/v1`,
 key = channel token, and the models appear as `agente:<name>`.
@@ -140,7 +152,7 @@ key = channel token, and the models appear as `agente:<name>`.
 | HTTP | When it happens | Body |
 |:----:|:----------------|:------|
 | 400 | `pergunta` missing (portal) or no user message (gateway) | `{"ok": false, "erro": "..."}` / `{"error": {"message": ...}}` |
-| 401 | Token missing/invalid or gateway paused | `{"ok": false, "erro": "..."}` |
+| 401 | Token missing/invalid or gateway paused (chat **and** model list) | `{"ok": false, "erro": "..."}` |
 | 404 | Agent/trace does not exist (portal) or no active gateway | `{"ok": false, "erro": "..."}` |
 | 429 | Request limit exceeded | `{"erro": "limite de requisicoes excedido (100/min)"}` |
 | 502 | The model did not respond | `{"ok": false, "erro": "..."}` |

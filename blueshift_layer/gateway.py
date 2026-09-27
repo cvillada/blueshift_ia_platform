@@ -12,8 +12,21 @@ Modos por gateway (definidos na tela Gateway do portal):
                   resposta completa; o gateway a envia em chunks para o
                   chat externo ter o efeito de digitação)
 
-Segurança: o Authorization do chat externo deve ser o TOKEN do canal
-vinculado (Bearer bs_chan_*). Sem token valido -> 401.
+O campo `stream` do CLIENTE tem prioridade (contrato OpenAI): `stream: true`
+recebe SSE mesmo com o gateway em modo `completa`, e `stream: false` recebe
+JSON mesmo com o gateway em modo `streaming`. O modo do gateway e apenas o
+DEFAULT para clientes que nao mandam o campo (ex: Open WebUI manda
+`stream: true`; SDKs/agentes mandam `stream: false`).
+
+Sem tool calling: o gateway traduz para a API do canal, que devolve TEXTO.
+Os `tools` enviados pelo cliente sao ignorados (nao ha tool_calls na
+resposta) — este endpoint e para chat/integracao simples, nao para um
+cliente de agente que executa ferramentas.
+
+Segurança: o Authorization do chat externo deve ser o TOKEN de um canal
+vinculado a um gateway ATIVO (Bearer bs_chan_*). Sem token valido -> 401,
+em `/v1/chat/completions` E em `/v1/models` (a lista expoe os NOMES dos
+agentes publicados). `/healthz` continua publico.
 """
 import json
 import os
@@ -89,6 +102,18 @@ def _auth_token() -> str | None:
     if h.lower().startswith("bearer "):
         return h[7:].strip()
     return None
+
+
+def _quer_stream(body: dict, gw: dict) -> bool:
+    """O `stream` do cliente decide; sem o campo, vale o modo do gateway.
+
+    Contrato OpenAI: `stream` e quem define a CODIFICACAO da resposta. O modo
+    do gateway (tela Gateway) e apenas o DEFAULT para quem nao manda o campo.
+    """
+    pedido = body.get("stream")
+    if isinstance(pedido, bool):
+        return pedido
+    return gw.get("modo") == "streaming"
 
 
 # Marcadores do prompt de GERACAO DE TITULO que chats externos (Open WebUI)
@@ -183,6 +208,12 @@ def create_app() -> Flask:
     @app.get("/v1/models")
     def v1_models():
         gws = _gateways_ativos()
+        # Auth: MESMO contrato do chat — o token precisa ser de um canal com
+        # gateway ativo. A lista expoe os NOMES dos agentes publicados
+        # (inventario da empresa): sem token valido -> 401.
+        if _auth_token() not in {g["canal_token"] for g in gws}:
+            return jsonify({"error": {"message": "token invalido",
+                                      "type": "authentication_error"}}), 401
         data = [{
             "id": f"agente:{g['agente_nome'] or 'gateway'}",  # model id p/ o chat
             "object": "model",
@@ -237,7 +268,7 @@ def create_app() -> Flask:
             titulo = json.dumps({"title": _titulo_do_historico(pergunta)},
                                 ensure_ascii=False)
             modelo = gw["agente_nome"] or "blueshift"
-            if gw["modo"] == "streaming":
+            if _quer_stream(body, gw):
                 def gen_titulo():
                     yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
                           '"model":"%s","choices":[{"index":0,"delta":{"role":"assistant"},' \
@@ -265,7 +296,7 @@ def create_app() -> Flask:
 
         modelo = out.get("modelo") or gw["agente_nome"] or "blueshift"
 
-        if gw["modo"] == "streaming":
+        if _quer_stream(body, gw):
             # Streaming SIMULADO: envia a resposta completa em chunks (SSE)
             def gen():
                 yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \

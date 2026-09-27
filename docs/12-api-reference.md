@@ -88,10 +88,12 @@ Serve chats externos que falam o protocolo OpenAI. O **agente é escolhido pelo
 campo `model`** (`agente:<nome do agente>`); o token apenas autentica (pode ser
 o mesmo token para vários agentes, como o Open WebUI faz).
 
-**Listar agentes publicados como modelos:**
+**Listar agentes publicados como modelos** (exige o **mesmo token** do chat —
+a lista expõe os nomes dos agentes publicados):
 
 ```
 GET /v1/models
+Authorization: Bearer ***
 ```
 
 ```json
@@ -109,16 +111,27 @@ Content-Type: application/json
 ```
 
 - a **última mensagem do usuário** vira a pergunta do agente;
-- se o canal estiver em modo **streaming**, a resposta é SSE
+- o campo **`stream` do corpo decide a codificação**: `stream: true` devolve SSE
   (`text/event-stream`) com chunks no formato `chat.completion.chunk`,
-  terminando em `data: [DONE]`;
+  terminando em `data: [DONE]`; `stream: false` devolve JSON. **Sem o campo**,
+  vale o *Modo de resposta* configurado na tela Gateway (`completa` = JSON ·
+  `streaming` = SSE) — o modo é o padrão, não uma imposição: cliente que pedia
+  JSON e recebia SSE (ou o contrário) era a causa de requisição que parece
+  "pendurada" em alguns clientes;
+- **não há tool calling**: os `tools` enviados no corpo são **ignorados** — o
+  canal devolve texto e a resposta sai com `finish_reason: "stop"`, sem
+  `tool_calls`. Para um cliente que executa ferramentas (agentes/CLIs), integre
+  pela **API do portal** (§12.1), onde o agente entra como uma ferramenta do
+  cliente;
 - pedidos de **título de conversa** (chamada extra que o Open WebUI faz) são
-  respondidos na hora, sem gastar tokens nem gravar trace;
+  respondidos na hora, sem gastar tokens nem gravar trace (e respeitam o
+  `stream` do cliente);
 - cada conversa gera feedback automático do tipo `gateway` (aparece na
   Observabilidade e no Teste A/B, separado do feedback manual).
 
 Erros: **400** sem mensagem de usuário · **401** token inválido ou de gateway
-inativo · **404** nenhum gateway ativo · **502** falha no agente.
+inativo (`/v1/chat/completions` **e** `/v1/models`) · **404** nenhum gateway
+ativo · **502** falha no agente.
 
 **Configuração típica no Open WebUI:** URL base `http://HOST:9003/v1`,
 chave = token do canal, e os modelos aparecem como `agente:<nome>`.
@@ -137,7 +150,7 @@ chave = token do canal, e os modelos aparecem como `agente:<nome>`.
 | HTTP | Quando acontece | Corpo |
 |:----:|:----------------|:------|
 | 400 | `pergunta` ausente (portal) ou sem mensagem de usuário (gateway) | `{"ok": false, "erro": "..."}` / `{"error": {"message": ...}}` |
-| 401 | Token ausente/inválido ou gateway pausado | `{"ok": false, "erro": "..."}` |
+| 401 | Token ausente/inválido ou gateway pausado (chat **e** lista de modelos) | `{"ok": false, "erro": "..."}` |
 | 404 | Agente/trace inexistente (portal) ou nenhum gateway ativo | `{"ok": false, "erro": "..."}` |
 | 429 | Limite de requisições excedido | `{"erro": "limite de requisicoes excedido (100/min)"}` |
 | 502 | O modelo não respondeu | `{"ok": false, "erro": "..."}` |

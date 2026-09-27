@@ -4894,7 +4894,7 @@ def gateway():
     </div>"""
     content = f"""
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="muted">Gateway OpenAI-compatível: chats externos (Open WebUI, LibreChat, apps) falam o protocolo padrão e o gateway repassa ao agente via API do canal. Endpoint: <code>{_endpoint_gateway()}</code> — API Key = token do canal.
+      <div class="muted">Gateway OpenAI-compatível: chats externos (Open WebUI, LibreChat, apps) falam o protocolo padrão e o gateway repassa ao agente via API do canal. Endpoint: <code>{_endpoint_gateway()}</code> — API Key = token do canal (a lista <code>/v1/models</code> também exige a chave).
       <div style="margin-top:8px">Dica: se o chat externo roda em <b>Docker</b> na mesma máquina, use <code>http://host.docker.internal:9003/v1</code> (<code>host.docker.internal</code> é o caminho do host visto de dentro do Docker). Em outra máquina da rede: <code>http://IP_DO_SERVIDOR:9003/v1</code>. Para fixar uma URL pública, defina a env <code>GATEWAY_PUBLIC_URL</code>.</div></div>
     </div>{form}<h3 style="margin-top:18px">Gateways ativados</h3>{tabela}"""
     return templates.page("Gateway", content, active="gateway", user=_user())

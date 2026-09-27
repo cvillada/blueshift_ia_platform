@@ -620,6 +620,11 @@ Para conectar o **Open WebUI** (container na mesma máquina):
 - O `model` escolhe o agente; o token só valida a autenticação (qualquer
   chave de canal com gateway ativo funciona — o Open WebUI usa uma
   conexão = uma chave para vários modelos)
+- **O `stream` da requisição decide a resposta:** `stream: true` recebe SSE
+  e `stream: false` recebe JSON (sem o campo, vale o *Modo de resposta* da
+  tela Gateway); a lista `/v1/models` também exige o token do canal
+- **O gateway não faz tool calling:** ele devolve texto do agente — para usar
+  um agente como ferramenta de outro agente, use a **API do portal**
 - **Contexto da conversa:** o gateway repassa as mensagens anteriores
   (limites configuráveis na tela: máx. mensagens + orçamento em tokens);
   a memória/RAG gravam sempre a última pergunta/resposta real

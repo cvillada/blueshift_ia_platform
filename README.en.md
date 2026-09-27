@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@afb44662ecea | checar: python tools/readme_check.py -->
+<!-- sync: README.md@c2d78b1835b5 | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · **English** · [Español](README.es.md)
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -620,6 +620,12 @@ To connect **Open WebUI** (container on the same machine):
 - The `model` chooses the agent; the token only validates authentication (any
   channel key with an active gateway works — Open WebUI uses one
   connection = one key for several models)
+- **The request's `stream` decides the response:** `stream: true` receives SSE
+  and `stream: false` receives JSON (without the field, the *Response mode*
+  from the Gateway screen applies); the `/v1/models` list also requires the
+  channel token
+- **The gateway does no tool calling:** it returns the agent's text — to use
+  one agent as a tool of another agent, use the **portal API**
 - **Conversation context:** the gateway forwards the previous messages
   (limits configurable on the screen: max. messages + token budget);
   memory/RAG always store the last real question/answer

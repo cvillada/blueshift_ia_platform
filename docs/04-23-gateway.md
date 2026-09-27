@@ -22,14 +22,24 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 |:------|:-----------:|:--------|
 | Nome | ✅ | `Gateway Vendas (Open WebUI)` |
 | Canal vinculado | ✅ | `API Vendas` (o token autentica o chat externo) |
-| Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) |
+| Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) — é o **padrão**; o campo `stream` da requisição tem prioridade |
 | Máx. mensagens de contexto | ❌ | `6` (últimas N mensagens enviadas ao agente) |
 | Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro) |
 | Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
 
 - **Streaming**: o canal devolve a resposta completa; o gateway a envia
   em chunks (SSE) — efeito de digitação no chat externo (streaming
-  simulado; latência total igual).
+  simulado; latência total igual). Quem decide SSE x JSON é o **campo
+  `stream` da requisição**: `stream: true` recebe SSE e `stream: false`
+  recebe JSON, **mesmo que o modo configurado diga o contrário**; o *Modo
+  de resposta* vale quando o cliente não manda o campo (Open WebUI manda
+  `stream: true`, SDKs/agentes mandam `stream: false`).
+- **Sem tool calling**: o gateway repassa a pergunta ao agente e devolve
+  **texto** — os `tools` que um cliente agêntico (CLI/agente com
+  ferramentas) manda no corpo são ignorados e a resposta sai sem
+  `tool_calls`. Para o agente CL Agents entrar como **ferramenta** de um
+  agente do cliente, use a **API do portal** (`POST /portal/api/v1/agente`,
+  ver página *API Reference*).
 - **Contexto da conversa**: o gateway repassa as mensagens anteriores do
   chat no campo `contexto` da API — o LLM entende referências ("e o
   dele?") sem repetir o ID. O trabalho de enviar o histórico é do
@@ -41,7 +51,9 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 - **Segurança**: o `Authorization` do chat externo precisa ser o token de
   um canal com gateway ATIVO (`Bearer bs_chan_*`) — o `model` escolhe o
   agente; o token valida a autenticação. Token inválido ou de canal sem
-  gateway ativo → 401. (O Open WebUI usa uma conexão = uma chave para
+  gateway ativo → 401, **no chat e na lista de modelos** (`/v1/models`
+  devolve os nomes dos agentes publicados — não é público; só
+  `/healthz` fica aberto). (O Open WebUI usa uma conexão = uma chave para
   vários modelos — qualquer chave de gateway ativo funciona para todos.)
 - **Feedback default**: interações vindas do gateway registram feedback
   automático `util` com tipo `gateway` — entram na Observabilidade

@@ -12,6 +12,24 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.3 (2026-09-27) — gateway: `/v1/models` autenticado + `stream` do cliente respeitado**
+- **`/v1/models` agora exige o token do canal** (mesmo contrato do chat): a lista
+  devolvia os **nomes dos agentes publicados** para qualquer requisição anônima —
+  inventário da empresa exposto a quem alcançasse a porta do gateway. Token
+  ausente/inválido → **401**; `/healthz` continua público;
+- **o campo `stream` da requisição passa a decidir SSE × JSON**: antes quem decidia
+  era só o *Modo de resposta* da tela Gateway — então um cliente que pedia
+  `stream: false` recebia `text/event-stream` (e o inverso também acontecia), o
+  que fazia a requisição parecer **pendurada** em clientes que esperam JSON do
+  gateway (caso real de integração de agente externo). Sem o campo, vale o *Modo
+  de resposta* (comportamento anterior preservado para Open WebUI);
+- **documentado o que o gateway NÃO faz**: sem tool calling — `tools` no corpo é
+  ignorado e a resposta sai em texto com `finish_reason: "stop"`. Para um cliente
+  que executa ferramentas, o caminho é a **API do portal** (agente como ferramenta
+  do cliente); a doc do gateway e a *API Reference* (pt/en/es) registram isso;
+- teste novo `tests/test_gateway_openai.py` (rota de modelos com e sem token,
+  `stream` nos dois sentidos, caminho de título e `tools` ignorado).
+
 **v0.11.2 (2026-09-14) — roteamento do SQL por intenção + conector ativo/desligado**
 - **Conector Ativo/Desligado ganhou interface**: caixa *Ativo* no cadastro e na
   edição, ação **ativar/desativar** na lista (auditada) e badge **inativo**;
