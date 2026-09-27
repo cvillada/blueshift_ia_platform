@@ -159,7 +159,7 @@ chave = token do canal, e os modelos aparecem como `agente:<nome>`.
 
 | Endpoint | Método | Auth | Para quê |
 |:---------|:------:|:----:|:---------|
-| `/healthz` (portal) | GET | pública | Health check do portal (retorna estado do banco e versão) |
+| `/portal/healthz` (portal) | GET | pública | Health check do portal (retorna estado do banco e versão) |
 | `/healthz` (gateway) | GET | pública | Health check do gateway |
 | `/portal/api/ajuda/modelos` | GET | pública | Lista modelos disponíveis para o popup de Ajuda |
 | `/portal/api/ajuda` | POST | pública | Popup de Ajuda: `{"pergunta": "..."}` → resposta baseada na documentação |

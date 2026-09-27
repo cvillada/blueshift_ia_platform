@@ -1,4 +1,4 @@
-<!-- sync: 12-api-reference.md@5b4f4ec4b213 | checar: python tools/readme_check.py -->
+<!-- sync: 12-api-reference.md@04da8f6293b2 | checar: python tools/readme_check.py -->
 🌐 [Português](../12-api-reference.md) · [English](../en/12-api-reference.md) · **Español**
 
 ## 12. API Reference (integración)
@@ -163,7 +163,7 @@ clave = token del canal, y los modelos aparecen como `agente:<nombre>`.
 
 | Endpoint | Método | Auth | Para qué |
 |:---------|:------:|:----:|:---------|
-| `/healthz` (portal) | GET | pública | Health check del portal (devuelve el estado de la base y la versión) |
+| `/portal/healthz` (portal) | GET | pública | Health check del portal (devuelve el estado de la base y la versión) |
 | `/healthz` (gateway) | GET | pública | Health check del gateway |
 | `/portal/api/ajuda/modelos` | GET | pública | Lista los modelos disponibles para el popup de Ayuda (Ajuda) |
 | `/portal/api/ajuda` | POST | pública | Popup de Ayuda: `{"pergunta": "..."}` → respuesta basada en la documentación |
