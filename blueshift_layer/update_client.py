@@ -32,6 +32,8 @@ UPDATE_BARE_SCRIPT = os.getenv(
                                            "/opt/blueshift/repo/update.sh")),
                  "update_bare.sh"))
 LOG_FILE = os.getenv("BLUESHIFT_UPDATE_LOG", "/opt/blueshift/update.log")
+# Socket do docker montado no portal (o container irmao fala com o daemon por ele)
+DOCKER_SOCK = "/var/run/docker.sock"
 
 
 def _git(*args: str, cwd: str | None = None, timeout: int = 15) -> str:
@@ -255,7 +257,33 @@ def apply(version: str | None = None) -> dict:
     _cfg_env_args: list[str] = []
     for _k in sorted(k for k in os.environ if k.startswith("BLUESHIFT_")):
         _cfg_env_args += ["-e", f"{_k}={os.environ[_k]}"]
+    # Dono do repo NO HOST (o bind mount mostra os uid:gid reais do host) e o
+    # grupo do socket do docker. O irmao roda com ESSE usuario: sem isso ele
+    # roda como root e o `git checkout` deixa TODO o repo com dono root — o
+    # proximo update rodado pelo dono do repo entao falha (git nao consegue
+    # regravar o indice e acusa "alteracoes locais"), e o cliente fica
+    # dependente de sudo para mexer no proprio clone. O grupo do socket e
+    # necessario porque o CLI do docker do irmao precisa falar com o daemon.
+    _uid = _gid = _sock_gid = None
+    try:
+        _st = os.stat(REPO_DIR)
+        _uid, _gid = _st.st_uid, _st.st_gid
+    except OSError:
+        pass
+    try:
+        _sock_gid = os.stat(DOCKER_SOCK).st_gid
+    except OSError:
+        pass
+    _user_args: list[str] = []
+    if _uid is not None:
+        _user_args += ["--user", f"{_uid}:{_gid}"]
+        # HOME gravavel: o irmao roda como usuario do repo, e o HOME da imagem
+        # (/root) nao e gravavel por ele (git config --global, docker config).
+        _user_args += ["-e", "HOME=/tmp"]
+        if _sock_gid is not None and _sock_gid != _gid:
+            _user_args += ["--group-add", str(_sock_gid)]
     cmd = ["docker", "run", "--rm", "--entrypoint", "bash",
+           *_user_args,
            "--network", f"{_proj}_default",
            "-v", "/var/run/docker.sock:/var/run/docker.sock",
            "-v", f"{_host_repo}:{REPO_DIR}",

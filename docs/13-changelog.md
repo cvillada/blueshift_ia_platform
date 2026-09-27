@@ -12,6 +12,24 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.4 (2026-09-27) — update não deixa mais o repositório com dono `root`**
+- O update pela tela roda o `git checkout` num **container irmão** — e esse irmão
+  rodava como `root`, então **todo update deixava os arquivos do clone com dono
+  `root`** no servidor do cliente. Efeito em cadeia: o update seguinte, rodado
+  pelo dono do repo (host ou o próprio `git` da tela), falha com *"Your local
+  changes to the following files would be overwritten"* — parece alteração local
+  do operador, e não é; e o cliente fica dependente de `sudo` para mexer no
+  próprio clone;
+- o irmão agora roda com o **uid:gid do dono do repositório** (lido do bind
+  mount), com `--group-add` do grupo do `docker.sock` (o CLI do docker precisa
+  falar com o daemon) e `HOME` gravável (git/docker config);
+- a correção vale para o update disparado por um portal **já nessa versão** — o
+  `update_client` que monta o comando é o da imagem em execução. Instalação que
+  já tem arquivo de dono `root` no repo precisa de `sudo chown -R <dono> <repo>`
+  uma única vez (documentado na página Atualizações);
+- testes do comando do irmão passam a cobrir `--user` (dono do repo),
+  `--group-add` (grupo do socket) e `HOME`.
+
 **v0.11.3 (2026-09-27) — gateway: `/v1/models` autenticado + `stream` do cliente respeitado**
 - **`/v1/models` agora exige o token do canal** (mesmo contrato do chat): a lista
   devolvia os **nomes dos agentes publicados** para qualquer requisição anônima —

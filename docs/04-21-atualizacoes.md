@@ -22,6 +22,12 @@ remoto. Admin-only.
   container em execução — o update não depende do compose ler o `.env` do
   host (que falhava de dentro do container irmão e fazia a licença cair no
   mock `localhost:9000`, exibindo "inválida" após todo update)
+- O container irmão do update roda com o **dono do repositório** (`--user` +
+  grupo do `docker.sock`, com `HOME` gravável): assim o `git checkout` não
+  deixa os arquivos do repo com dono `root`. Instalação antiga que já tem
+  arquivo de dono `root` no repo precisa de um `sudo chown -R <dono> <repo>`
+  uma única vez — sem isso o update seguinte rodado pelo dono falha com
+  "Your local changes to the following files would be overwritten"
 - Em dev (`BLUESHIFT_DEV=1`) o botão faz **dry-run** (mostra o comando,
   não derruba o ambiente); se o remoto for inacessível (repo privado sem
   credencial), usa as tags locais como referência
