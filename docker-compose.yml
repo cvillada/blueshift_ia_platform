@@ -48,6 +48,10 @@ services:
       # Padrao (vazio): usa o modelo principal de cada agente. Recomendado:
       # um modelo local rapido (id 2 = hermes-3-llama-3.1-8b) — custo ~0.
       BLUESHIFT_ROUTER_MODEL: "${BLUESHIFT_ROUTER_MODEL:-2}"
+      # Modelo da CONSULTA INTELIGENTE (text-to-SQL). Vazio = o mesmo modelo
+      # de roteamento. Se o SELECT nao rodar, escala UMA vez para o modelo
+      # principal do agente (rapido no caso comum, robusto na falha).
+      BLUESHIFT_SQL_MODEL: "${BLUESHIFT_SQL_MODEL:-}"
       # Limite de chars do CORPO da skill no prompt do agente (default 8000;
       # cobre o catalogo inteiro — o maior corpo real tem ~5.3k chars).
       BLUESHIFT_SKILL_BODY_MAX: "${BLUESHIFT_SKILL_BODY_MAX:-8000}"

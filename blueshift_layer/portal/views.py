@@ -1062,6 +1062,7 @@ def agente_testar(aid: int):
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
         if(t.skills_ausentes){{h+='<div class="badge warn" style="margin-bottom:12px;display:block">⚠️ skill não aplicada (não encontrada no catálogo): '+t.skills_ausentes+'</div>';}}
+        if(t.escalada_sql){{h+='<div class="badge" style="margin-bottom:12px;display:block;background:var(--panel-soft)">🔁 consulta montada pelo modelo de REFORÇO (o modelo configurado para o SQL não entregou resultado)</div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
         h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
@@ -2693,6 +2694,7 @@ def auditoria():
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
         if(t.skills_ausentes){{h+='<div class="badge warn" style="margin-bottom:12px;display:block">⚠️ skill não aplicada (não encontrada no catálogo): '+t.skills_ausentes+'</div>';}}
+        if(t.escalada_sql){{h+='<div class="badge" style="margin-bottom:12px;display:block;background:var(--panel-soft)">🔁 consulta montada pelo modelo de REFORÇO (o modelo configurado para o SQL não entregou resultado)</div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
@@ -5128,6 +5130,12 @@ def atualizacoes():
     else:
         _router_txt = "modelo principal de cada agente (padrão)"
     _areas_txt = ", ".join(listar_areas()) or "(nenhuma)"
+    # Modelo da consulta inteligente (text-to-SQL): vazio = o mesmo do
+    # roteamento. Mostrar na tela e o que permite o suporte responder "de
+    # quem e o SELECT que falhou" sem abrir o .env do servidor.
+    _sql_m = agente_mod._modelo_da_env("BLUESHIFT_SQL_MODEL")
+    _sql_txt = (f"{_sql_m['nome']} ({_sql_m['modelo']})" if _sql_m
+                else "o mesmo do roteamento (padrão)")
     if info.get("aplicado") is False:
         _nao_aplicado_desc = ("container criado mas NÃO iniciado" if info.get("container_status") == "created"
                               else "containers antigos")
@@ -5139,6 +5147,8 @@ def atualizacoes():
       <div style="font-size:13px;line-height:1.8">
         <div><span class="muted">Modelo de roteamento de conectores:</span> <b>{templates.h(_router_txt)}</b>
           <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_ROUTER_MODEL</code> (id ou nome — o nome é o que aparece na tela Modelos IA)</div></div>
+        <div style="margin-top:6px"><span class="muted">Modelo da consulta inteligente (text-to-SQL):</span> <b>{templates.h(_sql_txt)}</b>
+          <div class="muted" style="font-size:11px">variável <code>BLUESHIFT_SQL_MODEL</code> — se o SELECT não rodar, a plataforma escala uma vez para o modelo principal do agente (o Rastreio mostra o aviso)</div></div>
         <div style="margin-top:6px"><span class="muted">Áreas configuradas:</span> {templates.h(_areas_txt)}
           <div class="muted" style="font-size:11px">cadastro em <a href="/portal/areas">Cadastros → Áreas</a> (banco) — a variável <code>BLUESHIFT_AREAS</code> serve só como seed inicial do primeiro boot</div></div>
       </div>

@@ -106,7 +106,7 @@ toda chamada é auditada (canal, agente, IP e pergunta resumida).
 |:-----------|:------------------------|
 | Agentes | Agent Factory: agente = modelo principal (+ fallback) + skills + conectores da área |
 | Modelos de IA | Qualquer endpoint OpenAI-compatível (local ou externo); campo **Modo da API** (`openai_chat` ou `responses` para agentes externos, ex. AIDP `/chat`) |
-| Roteamento | Modelo pequeno dedicado (`BLUESHIFT_ROUTER_MODEL`) para 4 tarefas internas: escolher conectores, extrair parâmetros, montar o spec do gráfico e gerar o SELECT da consulta inteligente |
+| Roteamento | Modelo pequeno dedicado (`BLUESHIFT_ROUTER_MODEL`) para as tarefas internas de roteamento: escolher conectores, extrair parâmetros e montar o spec do gráfico. O **SELECT** da consulta inteligente pode usar outro modelo (`BLUESHIFT_SQL_MODEL`; vazio = o do roteamento) e, se ele não rodar, a plataforma escala uma vez para o modelo principal do agente (medido: pequeno 6/8, principal 8/8) |
 | Skills | Catálogo reutilizável por área; **corpo da skill vai ao prompt** (regras de formato/tom valem) |
 | Memória | Persistente por usuário (TF-IDF + cosseno, Python puro) com export JSONL |
 | Conhecimento (RAG) | Cadastro manual, import CSV/PDF; indexação de skills; **sem auto-alimentação** por conversas |

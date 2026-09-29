@@ -314,6 +314,25 @@ def _mascarar_spec_rotulos(spec: str, lgpd_cfg: dict) -> str:
         return spec
 
 
+def _modelo_da_env(var: str) -> dict | None:
+    """Resolve o modelo apontado por uma variavel de ambiente.
+
+    Aceita o ID numerico OU o nome exibido na tela Modelos IA (o nome e o que
+    o operador tem a mao — o ID muda de instalacao para instalacao). Vazio ou
+    nao encontrado devolve None: quem chama decide o padrao. Infra (env) e
+    nao configuracao de negocio, por isso nao e coluna no banco.
+    """
+    import os as _os
+    valor = (_os.environ.get(var, "") or "").strip()
+    if not valor:
+        return None
+    if valor.isdigit():
+        return db.buscar_modelo(int(valor))
+    alvo = valor.lower()
+    return next((m for m in db.listar_modelos()
+                 if (m.get("nome") or "").lower() == alvo), None)
+
+
 def _placeholders_conectores(conectores: list[dict], ids: list[int] | None) -> set[str]:
     """Reune os placeholders {param} usados pelos conectores escolhidos."""
     import re as _re
@@ -399,7 +418,7 @@ def _extrair_parametros_ia(pergunta: str, placeholders: set[str],
 
 
 def _selecionar_conectores(pergunta: str, conectores: list[dict],
-                           modelo_roteador: dict) -> list[int] | None:
+                           modelo_roteador: dict) -> tuple[list[int] | None, str | None]:
     """Roteia conectores por relevancia E classifica a intencao da pergunta.
 
     Retorno: (ids, intencao)
@@ -417,12 +436,17 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
     Conectores SEM descricao nunca sao excluidos (entram sempre).
     """
     if not conectores:
-        return []
+        # Tupla, nao lista: o chamador desempacota (ids, intencao). Devolver
+        # lista aqui estourava "not enough values to unpack" — que o except
+        # do chamador transformava em erro visivel no prompt por um motivo
+        # que nao era erro nenhum (area sem conector ativo).
+        return [], None
     from ..connector_pack import registry as _reg
     sempre = [c["id"] for c in conectores if not (_reg._parse_config(c.get("config", "{}")).get("descricao") or "").strip()]
     com_desc = [c for c in conectores if (_reg._parse_config(c.get("config", "{}")).get("descricao") or "").strip()]
     if not com_desc:
-        return [c["id"] for c in conectores]  # tudo sem descricao -> executa tudo
+        # tudo sem descricao -> executa tudo (mesma correcao de tupla acima)
+        return [c["id"] for c in conectores], None
     linhas = "\n".join(
         f"{i+1}. {c['nome']} ({c['tipo']}) — {_reg._parse_config(c.get('config', '{}')).get('descricao', '')[:120]}"
         for i, c in enumerate(com_desc)
@@ -548,17 +572,14 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             # ── Roteamento inteligente: a IA escolhe QUAIS conectores usar ──
             # (env BLUESHIFT_ROUTER_MODEL aceita o ID ou o NOME do modelo —
             #  o nome e o que aparece na tela Modelos IA; vazio = principal)
-            import os as _os
-            _router_id = _os.environ.get("BLUESHIFT_ROUTER_MODEL", "").strip()
-            if _router_id.isdigit():
-                modelo_roteador = db.buscar_modelo(int(_router_id))
-            elif _router_id:
-                modelo_roteador = next(
-                    (m for m in db.listar_modelos()
-                     if m["nome"].lower() == _router_id.lower()), None)
-            else:
-                modelo_roteador = None
-            modelo_roteador = modelo_roteador or modelo
+            modelo_roteador = _modelo_da_env("BLUESHIFT_ROUTER_MODEL") or modelo
+            # ── Modelo da CONSULTA INTELIGENTE (text-to-SQL) ──
+            # Default = o mesmo do roteador (comportamento de sempre). O
+            # modelo PRINCIPAL do agente entra como escalada automatica, so
+            # quando a tentativa configurada nao entrega linha — medido: o
+            # pequeno acerta as consultas simples e erra as pesadas por
+            # inventar coluna, e o principal faz 8/8 (a ~10s por consulta).
+            modelo_sql = _modelo_da_env("BLUESHIFT_SQL_MODEL") or modelo_roteador
             # Conectores inativos (ativo=0) ficam FORA do pipeline: nao entram
             # nas opcoes do roteador (nao gastam voto) nem sao executados.
             conectores_area = [c for c in db.listar_conectores(cliente_id=cliente_id, area=area)
@@ -588,7 +609,8 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             _marca = _time.time()  # inicio: execucao dos conectores
             ferramentas = registry.executar_conectores_area(
                 cliente_id, area, pergunta, parametros=params,
-                somente_ids=somente_ids, modelo=modelo_roteador, intencao=intencao,
+                somente_ids=somente_ids, modelo=modelo_sql, intencao=intencao,
+                modelo_escalada=modelo,
             )
             _ms_conn = (_time.time() - _marca) * 1000
         except Exception as e:  # noqa: BLE001
@@ -819,6 +841,11 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     # --- Tracing: salva o rastreio detalhado da execucao ---
     import time as _time
     tempo_ms = int((_time.time() - _t0) * 1000)
+    # Escalada da consulta inteligente (Fase 2): True quando o SELECT que
+    # respondeu veio do modelo de REFORCO — o modelo configurado gerou algo
+    # que nao rodou (tipicamente coluna inexistente). Sem este campo, o
+    # suporte nao sabe se a resposta veio do caminho rapido ou do lento.
+    escalada_sql = any(f.get("escalada") for f in ferramentas)
     trace_id = db.salvar_trace(
         pergunta=pergunta,
         params=params if "params" in dir() else {},
@@ -835,6 +862,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         llm_ms=int(_ms_llm),
         agente_id=agente.get("id"),
         skills_ausentes=",".join(skills_faltantes),
+        escalada_sql=escalada_sql,
     )
 
     if out["ok"]:

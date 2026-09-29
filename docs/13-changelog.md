@@ -12,6 +12,28 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.7 (2026-09-29) — consulta inteligente: o SELECT não falha mais em silêncio (modelo do SQL + escalada)**
+- **teto de saída do SELECT: 300 → 900 tokens** (1500 na escalada). Com 300 a
+  consulta era cortada — e resposta cortada chega **vazia**, não truncada: o
+  usuário via "não foi possível montar a consulta" sem nenhum sinal do motivo;
+- **nova variável `BLUESHIFT_SQL_MODEL`** (ID ou nome; vazio = o mesmo modelo
+  de roteamento, comportamento de sempre): a geração do SELECT passa a poder
+  usar um modelo diferente das outras três tarefas do roteador;
+- **escalada automática**: se o SELECT do modelo configurado **não rodar**
+  (tipicamente coluna que não existe no schema — o erro mais comum do modelo
+  pequeno) ou voltar vazio, a plataforma repete **uma única vez** com o
+  **modelo principal do agente**. Medido com o SQL executado de verdade no
+  banco: o pequeno acerta 6 de 8 perguntas (~0,6 s cada) e o principal acerta
+  8 de 8 (~10,7 s) — a escalada mantém o caso comum rápido e só paga o modelo
+  grande na falha. Não é cascata: no máximo duas tentativas por consulta;
+- **Rastreio diz a verdade**: badge *"consulta montada pelo modelo de REFORÇO"*
+  no popup e coluna `escalada_sql` no trace (dá para medir quantas consultas
+  caem no reforço, por cliente);
+- **correção adjacente**: `_selecionar_conectores` devolvia lista (em vez de
+  tupla) quando a área não tinha conector ativo e o chamador estourava
+  *"not enough values to unpack"* — o erro ia para o prompt como se fosse
+  falha de conector, por um motivo que não era erro nenhum.
+
 **v0.11.6 (2026-09-29) — skills sem falha silenciosa (uma skill por agente + integridade da referência)**
 - **uma skill por agente**: o campo vira **radio** (era checkbox), com a opção
   **nenhuma** — dois itens marcados gravavam, por exemplo, `vendas,suporte` e

@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@ffd6b8e3db58 | checar: python tools/readme_check.py -->
+<!-- sync: README.md@bcc02156f41e | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · **English** · [Español](README.es.md)
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -196,8 +196,10 @@
    `BLUESHIFT_ROUTER_MODEL` — use a **small, smart and fast** model
    (instruct, never reasoning); validated in production: `qwen3-4b-instruct-2507`
    (another example: `hermes-3-llama-3.1-8b`).
-   The same model handles 4 internal tasks (choosing connectors, extracting
-   parameters, the chart spec and the Smart Query (Consulta inteligente) SELECT)
+   The same model handles the internal routing tasks (choosing connectors,
+   extracting parameters and the chart spec). The **SELECT** of the Smart Query
+   can use another model (`BLUESHIFT_SQL_MODEL`) and, if it does not run, the
+   platform **escalates once** to the agent's main model
 - **AI parameter extraction** — the AI extracts the keys from the question in
   natural language ("customer id equals 58" → `customer_id='58'`), for
   all connector types (API/MCP/SQL) + anti-hallucination: with no data,
@@ -364,6 +366,7 @@ The installation configuration lives in environment variables. The file
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Initial seed** of the areas — afterwards the Registrations (Cadastros) → Areas (Áreas) screen takes over (database) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = XPTO demo data (dev); `0` = clean database (initial setup) |
 | `BLUESHIFT_ROUTER_MODEL` | empty | **ROUTING** model — **ID or NAME** (the name appears on the AI Models (Modelos IA) screen); empty = the agent's main model (not recommended). Rule: **small, smart and fast** (instruct, never reasoning). Examples: `qwen3-4b-instruct-2507` (validated) and `hermes-3-llama-3.1-8b` |
+| `BLUESHIFT_SQL_MODEL` | empty | **SMART QUERY** (text-to-SQL of the SQL connectors) model — **ID or NAME**; empty = the same routing model. If the SELECT does not run, the platform **escalates once** to the agent's **main model** |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | License validation URL — **production/client: point it to the BlueShift License Server** (the same base as the request page, e.g. `<url>/v1/validate`); default = local mock (dev only) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Git clone of the repo (Update via Git — Updates (Atualizações) screen) |
 | `GATEWAY_PORT` | 9003 | Published port of the OpenAI-compatible Gateway |

@@ -1,4 +1,4 @@
-<!-- sync: 02-como-executar.md@eb92964854ad | checar: python tools/readme_check.py -->
+<!-- sync: 02-como-executar.md@40e9694b6133 | checar: python tools/readme_check.py -->
 🌐 [Português](../02-como-executar.md) · [English](../en/02-como-executar.md) · **Español**
 
 ## 3. Cómo ejecutar
@@ -66,6 +66,7 @@ Acceso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validación de licencia — producción/cliente: License Server de BlueShift (`<url-de-la-pagina-de-solicitud>/v1/validate`); default = mock local (solo dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Directorio del clon git (Update vía Git — pantalla Actualizaciones) |
 | `BLUESHIFT_ROUTER_MODEL` | vacío | Modelo de **ENRUTAMIENTO** (ver §5.8 — modelo de enrutamiento): **ID o NOMBRE** del modelo (el nombre es el que aparece en la pantalla Modelos de IA (Modelos IA), que también muestra el ID); vacío = modelo principal de cada agente (**no recomendado** — encarece todas las preguntas). Regla: **pequeño, inteligente y rápido** (INSTRUCT, nunca reasoning). Ejemplos: `qwen3-4b-instruct-2507` (validado en producción) y `hermes-3-llama-3.1-8b` |
+| `BLUESHIFT_SQL_MODEL` | vacío | Modelo de la **CONSULTA INTELIGENTE** (text-to-SQL de los conectores SQL, ver §5.8): **ID o NOMBRE** del modelo; vacío = el mismo modelo de enrutamiento. Si el SELECT no se ejecuta, la plataforma **escala una vez** al **modelo principal del agente** (el pequeño resuelve el caso común en ~0,6 s; el robusto entra solo en el fallo) |
 | `GATEWAY_PORT` | 9003 | Puerto publicado del Gateway compatible con OpenAI (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vacío | URL pública del gateway mostrada en la pantalla (ej.: `http://192.168.0.10:9003/v1`) — sin ella, se usa el host de la petición. Chat externo en Docker en la misma máquina: `http://host.docker.internal:9003/v1` |
 | `BLUESHIFT_PORTAL_SECRET` | vacío | Clave de la SESIÓN del portal — debe ser **FIJA entre despliegues** (sin ella, cada rebuild genera una clave nueva y tumba todos los inicios de sesión; el usuario conectado se cae con redirección al login en el siguiente clic). Cambiar en producción y mantener estable |

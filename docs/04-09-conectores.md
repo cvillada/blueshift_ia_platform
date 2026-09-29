@@ -239,11 +239,22 @@ decisão acima):
 
 1. Descobre o schema por driver (information_schema / user_tab_columns),
    priorizando a tabela/view usada na query do conector;
-2. O LLM (modelo de roteamento) monta o SELECT no dialeto do banco;
+2. O LLM monta o SELECT no dialeto do banco — modelo da env
+   **`BLUESHIFT_SQL_MODEL`** (ID ou nome); vazio = o mesmo modelo de roteamento;
 3. **Validação de segurança**: somente SELECT de leitura — rejeita DDL/DML
    (`;` separa múltiplos SELECTs legítimos, cada um validado), comentários,
    UNION, INTO; força `LIMIT 50` quando faltar;
 4. Executa e devolve os dados ao LLM final (fonte primária).
+
+**Se o SELECT não rodar, a plataforma escala (automático):** quando a tentativa
+com o modelo configurado **não entrega linha** — típico de modelo pequeno, que
+inventa coluna que não existe no schema — a plataforma repete **uma única vez**
+com o **modelo principal do agente**, que é maior e mais robusto. Escalou, o
+**Rastreio** mostra o aviso *"consulta montada pelo modelo de REFORÇO"* e o
+trace grava `escalada_sql`. Não é cascata: no máximo duas tentativas por consulta
+(uma do modelo configurado, uma do principal). Apontar `BLUESHIFT_SQL_MODEL` para
+o próprio modelo principal **desliga** a escalada (não faz sentido repetir a
+mesma chamada). Detalhes de tamanho de modelo na §5.8.
 
 Desligar o checkbox = só a query fixa (a análise automática não entra).
 

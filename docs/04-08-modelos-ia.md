@@ -67,7 +67,7 @@ principal de cada agente**, o que encarece e atrasa TODA pergunta.
 | 1 | **Escolher os conectores** relevantes da área (ou nenhum) | `agente.py` (`_selecionar_conectores`) — voto majoritário de 3 tentativas | um número | classificação, 1 token |
 | 2 | **Extrair os parâmetros** da pergunta (`{id_cliente}`, `{email}`, `{data}`…) | `agente.py` (`_extrair_parametros_ia`) | JSON minúsculo | extração |
 | 3 | **Montar o spec do gráfico** (tipo, título, dados) | `agente.py` (`_especificar_grafico`) | JSON pequeno (≤20 pontos) | geração curta |
-| 4 | **Gerar o SELECT da Consulta inteligente** (text-to-SQL sobre o schema real) | `connector_pack/registry.py` (`_gerar_sql_ia`) | SQL, ~300 tokens | **geração de verdade** |
+| 4 | **Gerar o SELECT da Consulta inteligente** (text-to-SQL sobre o schema real) | `connector_pack/registry.py` (`_gerar_sql_ia`) | SQL, ~900 tokens | **geração de verdade** |
 
 **Perfil obrigatório do modelo de roteamento — pequeno, inteligente e rápido:**
 > O roteador precisa ser **pequeno** (cabe no servidor do cliente, sem GPU dedicada),
@@ -118,6 +118,47 @@ modelo de 7B+ reasoning e qualquer coisa com "thinking" ligado por padrão.
 - **Nunca use o modelo grande/resposta como roteador** — além do custo, é onde o reasoning cortado gera respostas vazias e o famoso retry;
 - Se o roteamento **falhar ou for ambíguo, a plataforma executa todos os conectores da área** (comportamento seguro — o agente nunca fica sem dados);
 - Catálogo de conectores grande aumenta o prompt do roteamento: mantenha **descrições curtas e distintas** por conector (é a descrição que o roteador lê).
+
+#### Modelo da Consulta inteligente (`BLUESHIFT_SQL_MODEL`) — e a escalada automática
+
+A tarefa 4 (gerar o SELECT da Consulta inteligente) pode usar um modelo
+**diferente** do roteador: é a única das quatro que exige raciocínio sobre o
+**schema** — e é exatamente onde um modelo pequeno tropeça.
+
+- **`BLUESHIFT_SQL_MODEL`** — **ID ou nome** do modelo que monta o SELECT
+  (o nome é o que aparece na tela Modelos IA). **Vazio = o mesmo modelo de
+  roteamento** (comportamento de sempre). Com um 4B instruct local, deixe
+  vazio; se a instalação tem um modelo maior disponível e o cliente faz
+  pergunta analítica pesada (muitos joins), aponte para ele.
+
+**Escalada automática — o padrão que atende os dois mundos:** a 1ª tentativa usa
+o modelo acima; se o SELECT **não rodar** (erro do banco — tipicamente coluna que
+não existe no schema — ou resposta vazia), a plataforma repete **uma única vez**
+com o **modelo principal do agente**. O caminho comum (pergunta simples) segue
+rápido no modelo pequeno, e a pergunta difícil cai no modelo robusto em vez de
+virar "não foi possível montar a consulta".
+
+Medido com o SQL **executado de verdade** contra o banco (8 perguntas: 4 simples,
+4 com 4–6 joins):
+
+| Caminho | Acertos | Tempo por consulta |
+|:--------|:--------|:-------------------|
+| Modelo pequeno (4B instruct) | 6/8 — 3/4 simples, 2/4 pesadas | ~0,6 s |
+| Modelo principal (27B, com raciocínio) | 8/8 | ~10,7 s |
+| **Escalada (pequeno → principal)** | 6/8 no caminho rápido; as 2 falhas resolvidas na escalada | ~0,6 s no comum, ~11 s só na falha |
+
+O teto de saída do SELECT subiu de **300 para 900 tokens** (1500 na escalada).
+Com 300 a resposta era cortada e — pior — resposta cortada chega **vazia**, não
+truncada: o usuário via "não foi possível montar a consulta" sem sinal do motivo.
+Modelo com raciocínio gasta o teto **pensando** antes de escrever o SQL (medido
+até ~950 tokens), por isso a escalada tem teto maior. No **Rastreio** a escalada
+aparece com o aviso *"consulta montada pelo modelo de REFORÇO"*.
+
+**O que NÃO fazer:** apontar o **roteador** para um modelo com raciocínio. As
+tarefas 1–3 (conectores, parâmetros, spec do gráfico) continuam no modelo
+pequeno — medido: o principal é **4x a 26x mais lento** nelas e, no orçamento
+atual do roteador (256 tokens), devolve **vazio** — que é justamente o gatilho do
+retry (256→512) e da cauda de latência (p99 de 52 s).
 
 **Dica:** no Docker, `127.0.0.1`/`localhost` é traduzido automaticamente para
 `host.docker.internal` (o modelo roda no HOST, fora do container).

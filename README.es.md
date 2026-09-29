@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@ffd6b8e3db58 | checar: python tools/readme_check.py -->
+<!-- sync: README.md@bcc02156f41e | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · [English](README.en.md) · **Español**
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -196,8 +196,10 @@ La **BlueShift IA Platform** es una plataforma de inteligencia artificial diseñ
    `BLUESHIFT_ROUTER_MODEL` — use un modelo **pequeño, inteligente y rápido**
    (instruct, nunca reasoning); validado en producción: `qwen3-4b-instruct-2507`
    (otro ejemplo: `hermes-3-llama-3.1-8b`).
-   El mismo modelo atiende 4 tareas internas (elegir conectores, extraer
-   parámetros, spec del gráfico y el SELECT de la Consulta inteligente)
+   El mismo modelo atiende las tareas internas de enrutamiento (elegir
+   conectores, extraer parámetros y spec del gráfico). El **SELECT** de la
+   Consulta inteligente puede usar otro modelo (`BLUESHIFT_SQL_MODEL`) y, si no
+   se ejecuta, la plataforma **escala una vez** al modelo principal del agente
 - **Extracción de parámetros por IA** — la IA extrae las claves de la pregunta en
   lenguaje natural ("id cliente igual a 58" → `customer_id='58'`), para
   todos los tipos de conector (API/MCP/SQL) + anti-alucinación: sin datos,
@@ -364,6 +366,7 @@ La configuración de la instalación vive en variables de entorno. El archivo
 | `BLUESHIFT_AREAS` | vendas,suporte,financeiro,rh,operacoes | **Seed inicial** de las áreas — después domina la pantalla Registros → Áreas (base de datos) |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = datos demo XPTO (dev); `0` = base limpia (setup inicial) |
 | `BLUESHIFT_ROUTER_MODEL` | vacío | Modelo de **ENRUTAMIENTO** — **ID o NOMBRE** (el nombre aparece en la pantalla Modelos IA); vacío = principal del agente (no recomendado). Regla: **pequeño, inteligente y rápido** (instruct, nunca reasoning). Ejemplos: `qwen3-4b-instruct-2507` (validado) y `hermes-3-llama-3.1-8b` |
+| `BLUESHIFT_SQL_MODEL` | vacío | Modelo de la **CONSULTA INTELIGENTE** (text-to-SQL de los conectores SQL) — **ID o NOMBRE**; vacío = el mismo modelo de enrutamiento. Si el SELECT no se ejecuta, la plataforma **escala una vez** al **modelo principal del agente** |
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | URL de validación de licencia — **producción/cliente: apunte al License Server de BlueShift** (la misma base de la página de solicitud, ej: `<url>/v1/validate`); default = mock local (solo dev) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Clone git del repo (Update vía Git — pantalla Actualizaciones) |
 | `GATEWAY_PORT` | 9003 | Puerto publicado del Gateway OpenAI-compatible |

@@ -33,7 +33,8 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                              parametros: dict | None = None,
                              somente_ids: list[int] | None = None,
                              modelo: dict | None = None,
-                             intencao: str | None = None) -> list[dict]:
+                             intencao: str | None = None,
+                             modelo_escalada: dict | None = None) -> list[dict]:
     """Executa conectores ATIVOS de uma area, passando parametros.
 
     Args:
@@ -47,6 +48,10 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
             informado e a query fixa do conector SQL volta vazia, uma
             pergunta de analise ("quem alugou mais e menos") dispara a
             geracao de SELECT sobre o schema real da fonte.
+        modelo_escalada: modelo de REFORCO da consulta inteligente — so e
+            chamado quando a tentativa com `modelo` nao entrega linha
+            (tipicamente: o pequeno inventou coluna que nao existe). Default
+            None = sem escalada.
 
     Returns:
         Lista de dicts {conector, tipo, tool, args, resultado, erro}.
@@ -77,7 +82,8 @@ def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                 # (IA) roda o dinâmico primeiro; dado específico roda a query
                 # fixa primeiro. Motivos de descarte voltam no resultado.
                 res = _executar_sql_conector(nome, config, params, pergunta,
-                                             modelo=modelo, intencao=intencao)
+                                             modelo=modelo, intencao=intencao,
+                                             modelo_escalada=modelo_escalada)
             else:
                 res = {"erro": f"Tipo de conector desconhecido: {tipo}"}
 
@@ -541,6 +547,19 @@ def _com_timeout(fn, *args, timeout: int = 30):
 # modelo recebe o aviso de truncamento quando a consulta bate no teto.
 _LIMITE_LINHAS = 50
 
+# Teto de saida da consulta inteligente (v0.11.7 — Fase 2 do plano SQL).
+# Medido com o modelo pequeno (qwen3-4b-instruct) executando o SELECT de
+# verdade: 55-145 tokens por consulta. O teto antigo (300) era apertado, e
+# o modo de falha e PERIGOSO: quando o orcamento acaba, a resposta volta
+# VAZIA (o modelo consumiu o teto e o `content` fica em branco) — o usuario
+# recebia "Nao foi possivel montar a consulta" sem nenhum sinal do motivo.
+# 900 = ~7x o maior caso medido, com folga para joins/aninhamentos.
+_SQL_MAX_TOKENS = 900
+# Escalada (modelo principal): modelo com raciocinio gasta o orcamento
+# PENSANDO antes do SQL (medido ate 952 tokens de completion para caber
+# pensamento + SELECT). Teto maior evita o vazio na segunda tentativa.
+_SQL_MAX_TOKENS_ESCALADA = 1500
+
 
 def _rodar_select(conn, sql: str, driver: str, limite: int = _LIMITE_LINHAS) -> list[dict]:
     """Executa um SELECT e devolve as linhas (dicts), limitadas a `limite`."""
@@ -554,7 +573,8 @@ def _rodar_select(conn, sql: str, driver: str, limite: int = _LIMITE_LINHAS) -> 
 
 
 def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
-                            modelo: dict | None = None, intencao: str | None = None) -> dict:
+                            modelo: dict | None = None, intencao: str | None = None,
+                            modelo_escalada: dict | None = None) -> dict:
     """Decide o caminho do conector SQL: query fixa x consulta inteligente.
 
     Regras (v0.11.2):
@@ -583,7 +603,8 @@ def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
     # 1) conector só-inteligente OU pergunta de análise -> dinâmico primeiro
     if smart and (not qfixa or analise):
         ausentes_fixa = _placeholders_ausentes([qfixa], params) if qfixa else []
-        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo)
+        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo,
+                                     modelo_escalada=modelo_escalada)
         if dyn.get("resultado"):
             if ausentes_fixa:
                 # a query fixa do conector NAO foi usada (faltam parametros):
@@ -622,7 +643,8 @@ def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
     #    nesse caso pedir o dado ao usuário é o comportamento correto)
     _falta_param = str(fixa.get("erro", "")).startswith("parametro_ausente")
     if smart and not _falta_param:
-        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo)
+        dyn = _executar_sql_dinamico(nome, config, pergunta, modelo,
+                                     modelo_escalada=modelo_escalada)
         if dyn.get("resultado"):
             dyn["motivo"] = "query fixa sem dados; consulta inteligente montou o SELECT sobre o schema real"
             return dyn
@@ -755,8 +777,14 @@ def _validar_sql_gerado(sql: str) -> list[str] | None:
 
 
 def _gerar_sql_ia(pergunta: str, schema: str, modelo: dict,
-                  dialeto: str = "MySQL") -> str | None:
-    """Pede ao LLM para montar o SELECT sobre o schema real (so estrutura)."""
+                  dialeto: str = "MySQL",
+                  max_tokens: int = _SQL_MAX_TOKENS) -> str | None:
+    """Pede ao LLM para montar o SELECT sobre o schema real (so estrutura).
+
+    max_tokens e parametro: a escalada (modelo principal) precisa de teto
+    maior porque modelo com raciocinio gasta o orcamento pensando antes de
+    escrever o SELECT.
+    """
     from ..portal import llm_client
     mensagens = [
         {"role": "system", "content": (
@@ -767,7 +795,7 @@ def _gerar_sql_ia(pergunta: str, schema: str, modelo: dict,
             "use LIMIT (ou TOP no SQL Server).")},
         {"role": "user", "content": f"SCHEMA:\n{schema}\n\nPERGUNTA: {pergunta}\n\nSQL:"},
     ]
-    out = llm_client.chat(modelo, mensagens, max_tokens=300, temperatura=0.0)
+    out = llm_client.chat(modelo, mensagens, max_tokens=max_tokens, temperatura=0.0)
     if not out.get("ok"):
         return None
     texto = (out.get("content") or "").strip()
@@ -792,23 +820,44 @@ def _pergunta_analise(pergunta: str) -> bool:
     return any(m in p for m in _MARCADORES_ANALISE)
 
 
-def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
-                           modelo: dict) -> dict:
-    """Consulta inteligente: schema real -> SQL por IA -> validacao -> execucao."""
+def _mesmo_alvo(a: dict | None, b: dict | None) -> bool:
+    """True se os dois modelos apontam para o mesmo endpoint + mesmo modelo.
+
+    Existe para NAO escalar de graca: quando o modelo configurado para o SQL
+    ja e o principal, a escalada seria a mesma chamada duas vezes (dobro de
+    latencia e o mesmo resultado).
+    """
+    if not a or not b:
+        return False
+    def _chave(m: dict) -> tuple[str, str]:
+        return (str(m.get("base_url") or ""),
+                str(m.get("modelo") or m.get("nome") or m.get("id") or ""))
+    return _chave(a) == _chave(b)
+
+
+def _tentar_sql_dinamico(pergunta: str, schema: str, dialeto: str, config: dict,
+                         modelo: dict, max_tokens: int) -> dict:
+    """UMA tentativa completa: LLM monta o SELECT -> valida -> executa.
+
+    Retorna {"ok", "sql", "res", "erro"}. `res` ja vem no formato que o
+    chamador devolve ao agente ({"erro": ...} ou {"tool", "args", ...}).
+
+    Separar "gerou o SQL" de "o SQL rodou" e o que permite a escalada: o
+    modelo pequeno costuma GERAR algo plausivel e falhar na EXECUCAO
+    (inventa coluna), e esse erro so aparece no banco — nao no LLM.
+    """
     driver = config.get("sql_driver", "postgresql")
-    ok_schema, schema = _com_timeout(_descobrir_schema, config)
-    if not ok_schema:
-        return {"erro": f"Schema timeout ({driver}): {schema}"}
-    if not schema or schema.startswith("(schema indisponivel"):
-        return {"erro": "Schema da fonte indisponivel para consulta inteligente"}
-    dialeto = {"postgresql": "PostgreSQL", "mysql": "MySQL",
-               "sqlserver": "SQL Server", "oracle": "Oracle"}.get(driver, driver)
-    sql = _gerar_sql_ia(pergunta, schema, modelo, dialeto)
+    sql = _gerar_sql_ia(pergunta, schema, modelo, dialeto, max_tokens=max_tokens)
     if not sql:
-        return {"erro": "Nao foi possivel montar a consulta"}
+        # Vazio e um desfecho REAL e silencioso: modelo com raciocinio e/ou
+        # teto apertado devolve `content` em branco (gastou o orcamento
+        # pensando). Fica registrado como motivo para o trace.
+        return {"ok": False, "sql": "", "erro": "llm_vazio",
+                "res": {"erro": "Nao foi possivel montar a consulta"}}
     sqls = _validar_sql_gerado(sql)
     if not sqls:
-        return {"erro": "Consulta gerada rejeitada pela validacao de seguranca"}
+        return {"ok": False, "sql": sql, "erro": "validacao",
+                "res": {"erro": "Consulta gerada rejeitada pela validacao de seguranca"}}
 
     def _rodar():
         conn = _conectar_sql(config)
@@ -826,10 +875,59 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
     try:
         ok, r = _com_timeout(_rodar)
         if not ok:
-            return {"erro": f"SQL timeout ({driver}): {r}"}
-        return r
+            return {"ok": False, "sql": sql, "erro": "timeout",
+                    "res": {"erro": f"SQL timeout ({driver}): {r}"}}
+        return {"ok": True, "sql": sql, "res": r, "erro": ""}
     except Exception as e:
-        return {"erro": f"Erro SQL ({driver}): {e}"}
+        return {"ok": False, "sql": sql, "erro": "execucao",
+                "res": {"erro": f"Erro SQL ({driver}): {e}"}}
+
+
+def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
+                           modelo: dict | None, modelo_escalada: dict | None = None) -> dict:
+    """Consulta inteligente: schema real -> SQL por IA -> validacao -> execucao.
+
+    Escalada (Fase 2, v0.11.7). Medido com SQL EXECUTADO de verdade contra o
+    banco: o modelo pequeno acerta as consultas simples (3/4) e erra as
+    pesadas (2/4), e o erro tipico e CONHECIMENTO DE ESQUEMA — ele inventa
+    coluna que nao existe ("rental_rate" na view), nao e teto de tokens.
+    O modelo principal faz 8/8, ao custo de ~10s por consulta (contra ~0,6s
+    do pequeno). Entao: tenta com o modelo configurado e, SO se a tentativa
+    nao entregar linha, repete UMA vez com o principal. Nunca em cascata.
+    """
+    driver = config.get("sql_driver", "postgresql")
+    if not modelo:
+        # Defensivo: quem chama so entra aqui com modelo (smart = bool(modelo)),
+        # mas sem modelo nao ha consulta inteligente — erro explicito em vez
+        # de estourar no llm_client.
+        return {"erro": "Consulta inteligente sem modelo de IA configurado"}
+    ok_schema, schema = _com_timeout(_descobrir_schema, config)
+    if not ok_schema:
+        return {"erro": f"Schema timeout ({driver}): {schema}"}
+    if not schema or schema.startswith("(schema indisponivel"):
+        return {"erro": "Schema da fonte indisponivel para consulta inteligente"}
+    dialeto = {"postgresql": "PostgreSQL", "mysql": "MySQL",
+               "sqlserver": "SQL Server", "oracle": "Oracle"}.get(driver) or str(driver or "")
+
+    t1 = _tentar_sql_dinamico(pergunta, schema, dialeto, config, modelo,
+                              _SQL_MAX_TOKENS)
+    if t1["ok"]:
+        return t1["res"]
+
+    if modelo_escalada and not _mesmo_alvo(modelo, modelo_escalada):
+        t2 = _tentar_sql_dinamico(pergunta, schema, dialeto, config,
+                                  modelo_escalada, _SQL_MAX_TOKENS_ESCALADA)
+        if t2["ok"]:
+            r = t2["res"]
+            r["escalada"] = True
+            r["modelo_sql"] = str(modelo_escalada.get("nome")
+                                  or modelo_escalada.get("modelo") or "")
+            return r
+
+    # nenhuma tentativa entregou linha: o erro que o usuario ve e o da
+    # PRIMEIRA tentativa (a configurada) — e a mensagem nao mente sobre o
+    # caminho que foi tentado.
+    return t1["res"]
 
 
 # --------------------------------------------------------------------------- #

@@ -1,4 +1,4 @@
-<!-- sync: 02-como-executar.md@eb92964854ad | checar: python tools/readme_check.py -->
+<!-- sync: 02-como-executar.md@40e9694b6133 | checar: python tools/readme_check.py -->
 🌐 [Português](../02-como-executar.md) · **English** · [Español](../es/02-como-executar.md)
 
 ## 3. How to Run
@@ -66,6 +66,7 @@ Access: `http://localhost:8090/portal/login`
 | `BLUESHIFT_LICENSE_URL` | localhost:9000 | License validation URL — production/customer: BlueShift License Server (`<url-da-pagina-de-solicitacao>/v1/validate`); default = local mock (dev only) |
 | `BLUESHIFT_REPO_DIR` | /opt/blueshift/repo | Directory of the git clone (Update via Git — Updates screen) |
 | `BLUESHIFT_ROUTER_MODEL` | empty | **ROUTING** model (see §5.8 — routing model): **ID or NAME** of the model (the name is what appears in the Models AI (Modelos IA) screen, which also displays the ID); empty = main model of each agent (**not recommended** — it makes every question more expensive). Rule: **small, smart and fast** (INSTRUCT, never reasoning). Examples: `qwen3-4b-instruct-2507` (validated in production) and `hermes-3-llama-3.1-8b` |
+| `BLUESHIFT_SQL_MODEL` | empty | **SMART QUERY** (text-to-SQL of the SQL connectors, see §5.8) model: **ID or NAME** of the model; empty = the same routing model. If the SELECT does not run, the platform **escalates once** to the agent's **main model** (the small one handles the common case in ~0.6 s; the robust one only steps in on failure) |
 | `GATEWAY_PORT` | 9003 | Published port of the OpenAI-compatible Gateway (external chats) |
 | `GATEWAY_PUBLIC_URL` | empty | Public gateway URL shown on the screen (e.g. `http://192.168.0.10:9003/v1`) — without it, the request host is used. External chat in Docker on the same machine: `http://host.docker.internal:9003/v1` |
 | `BLUESHIFT_PORTAL_SECRET` | empty | Portal SESSION key — must be **FIXED across deploys** (without it, every rebuild generates a new key and takes down all logins; the logged-in user is dropped, with a redirect to the login on the next click). Change it in production and keep it stable |
