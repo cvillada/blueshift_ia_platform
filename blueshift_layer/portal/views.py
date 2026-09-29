@@ -850,11 +850,20 @@ def area_excluir(aid: int):
 @bp.route("/agentes")
 @auth.login_required
 def agentes():
+    from . import agente as agente_mod
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
     rows = db.listar_agentes()
     body = ""
     for a in rows:
         sec = a.get("modelo_secundario_id")
+        # Referencia pendurada (skill do agente que nao resolve) fica VISIVEL na
+        # listagem: antes o agente continuava "normal" e so a qualidade da
+        # resposta degradava, sem sintoma apontavel.
+        _ausentes = agente_mod.skills_ausentes(a["skills"] or "")
+        skill_txt = templates.h(a["skills"] or "-")
+        if _ausentes:
+            _tit = templates.h("skill não encontrada: " + ", ".join(_ausentes))
+            skill_txt += f' <span class="badge warn" title="{_tit}">⚠️ não aplicada</span>'
         modelo_sec_txt = ""
         if sec:
             m2 = db.buscar_modelo(sec)
@@ -863,7 +872,7 @@ def agentes():
           <td><b>{templates.h(a['nome'])}</b></td>
           <td>{templates.h(a['area'] or '-')}</td>
           <td>{templates.h(a['modelo'])}{modelo_sec_txt}</td>
-          <td>{templates.h(a['skills'] or '-')}</td>
+          <td>{skill_txt}</td>
           <td><a href="/portal/conectores?area={templates.h(a['area'] or '')}" class="muted" style="font-size:12px;text-decoration:none">{a['area'] and '🔌 ver' or '-'}</a></td>
           <td>{templates.badge(a['status'])}</td>
           <td>{templates.h(clientes.get(a['cliente_id'], '?'))}</td>
@@ -877,7 +886,6 @@ def agentes():
       <tbody>{body or '<tr><td colspan=8 class="empty">Nenhum agente.</td></tr>'}</tbody></table>"""
 
     # ── Checklist contextual: o que o agente precisa (em ordem de config) ──
-    from . import agente as agente_mod
     n_modelos = len(db.listar_modelos())
     try:
         n_skills = len(agente_mod.listar_skills())
@@ -1053,6 +1061,7 @@ def agente_testar(aid: int):
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #059669">RAG <b>'+_ragm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
+        if(t.skills_ausentes){{h+='<div class="badge warn" style="margin-bottom:12px;display:block">⚠️ skill não aplicada (não encontrada no catálogo): '+t.skills_ausentes+'</div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';
         h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
@@ -1078,6 +1087,42 @@ def agente_testar(aid: int):
     return templates.page(f"Testar {a['nome']}", content, active="agentes", user=u)
 
 
+def _skills_radio(skills_disp: list[dict], selecionadas: list[str] | None = None) -> str:
+    """Linhas do campo `skills` como RADIO (uma skill por agente).
+
+    Era checkbox: dois itens marcados gravavam 'vendas,suporte' e as DUAS
+    skills entravam no prompt marcadas como obrigatorias (regras
+    potencialmente conflitantes no mesmo agente). Com radio a escolha e unica,
+    e a opcao "nenhuma" (value="") existe porque radio nao desmarca clicando
+    no mesmo item — sem ela nao haveria como LIMPAR a skill de um agente ja
+    salvo. O handler nao muda: `request.form.getlist("skills")` devolve
+    ['nome'] ou [].
+    """
+    sel = {s.strip().lower() for s in (selecionadas or []) if s.strip()}
+    nomes = {s["name"].lower() for s in skills_disp}
+    _t = 'style="white-space:nowrap;padding:4px 0"'
+    _l = 'style="display:inline;margin:0;font-weight:400;font-size:13px"'
+    _i = 'style="width:auto;margin:0;vertical-align:middle"'
+    _s = 'style="color:var(--muted);font-size:11px;margin-left:20px"'
+    chk = "" if (sel & nomes) else "checked"
+    linhas = [
+        f'<tr><td {_t}><label {_l}>'
+        f'<input type="radio" name="skills" value="" {chk} {_i}> <b>nenhuma</b>'
+        f'<br><span {_s}>o agente responde sem instrucoes de skill</span></label></td></tr>'
+    ]
+    for s in skills_disp:
+        chk = "checked" if s["name"].lower() in sel else ""
+        linhas.append(
+            f'<tr><td {_t}><label {_l}>'
+            f'<input type="radio" name="skills" value="{templates.h(s["name"])}" {chk} {_i}> '
+            f'<b>{templates.h(s["name"])}</b>'
+            f'<br><span {_s}>{templates.h(s.get("description",""))}</span></label></td></tr>'
+        )
+    if not skills_disp:
+        linhas.append('<tr><td class="muted">nenhuma skill no catálogo</td></tr>')
+    return "".join(linhas)
+
+
 @bp.route("/agentes/novo", methods=["GET", "POST"])
 @auth.admin_required
 def agente_novo():
@@ -1091,10 +1136,18 @@ def agente_novo():
         modelo_id = request.form.get("modelo_id") or None
         if modelo_id:
             modelo_id = int(modelo_id)
+        skills = ",".join(s.strip() for s in request.form.getlist("skills") if s.strip())
+        # Integridade referencial: nome de skill que nao resolve vira referencia
+        # PENDURADA (o agente perde as instrucoes em silencio) — recusa o
+        # cadastro mostrando o nome, em vez de gravar dado invalido.
+        _validos = {s["name"] for s in skills_disp}
+        _invalidas = [s for s in skills.split(",") if s and s not in _validos]
         if not (cid and nome):
             flash("Cliente e nome são obrigatórios.", "warn")
+        elif _invalidas:
+            flash("Skill não encontrada no catálogo: " + ", ".join(_invalidas)
+                  + ". O agente NÃO foi criado.", "warn")
         else:
-            skills = ",".join(request.form.getlist("skills"))
             modelo_nome = ""
             if modelo_id:
                 m = db.buscar_modelo(modelo_id)
@@ -1118,14 +1171,7 @@ def agente_novo():
     areas_opts = "".join(f'<option value="{templates.h(ar)}">{templates.h(ar)}</option>' for ar in listar_areas())
     mopts = "".join(f'<option value="{m["id"]}">{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
-    skopts = "".join(
-        f'<tr><td style="white-space:nowrap;padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="skills" value="{templates.h(s["name"])}" style="width:auto;margin:0;vertical-align:middle"> '
-        f'<b>{templates.h(s["name"])}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{templates.h(s.get("description",""))}</span>'
-        f'</label></td></tr>'
-        for s in skills_disp
-    ) or '<tr><td class="muted">nenhuma skill no catálogo</td></tr>'
+    skopts = _skills_radio(skills_disp)
     copts = ""
     content = f"""
     <div class="card" style="max-width:700px">
@@ -1142,7 +1188,7 @@ def agente_novo():
         </div>
         <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum (sem failover) --</option>{mopts}</select>
           <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar (endpoint indisponível). Garante resposta mesmo em falha.</span></div>
-        <label>Skills do catálogo</label>
+        <label>Skill do agente (uma só)</label>
         <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
         <div class="card muted" style="font-size:13px;margin-top:12px;padding:12px">
           <b>🔌 Conectores externos</b><br>
@@ -1172,7 +1218,17 @@ def agente_editar(aid: int):
         return redirect(url_for("portal.agentes"))
     modelos = db.listar_modelos()
     skills_disp = agente_mod.listar_skills()
-    skills_sel = (a["skills"] or "").split(",")
+    skills_sel = [s.strip() for s in (a["skills"] or "").split(",") if s.strip()]
+    # Skill que nao resolve nao aparece no radio (nao esta no catalogo): avisa
+    # na TELA, em vez de deixar a referencia pendurada invisivel — o agente
+    # perdia as instrucoes em silencio (o 3o modo de falha silenciosa).
+    _nomes_cat = {d["name"].lower() for d in skills_disp}
+    faltantes = [n for n in skills_sel if n.lower() not in _nomes_cat]
+    aviso_skill = (
+        '<div class="badge warn" style="display:block;margin:8px 0;font-size:12px">'
+        '⚠️ skill não encontrada — NÃO está sendo aplicada no prompt: '
+        + templates.h(", ".join(faltantes)) + '</div>'
+    ) if faltantes else ""
     if request.method == "POST":
         campos = {}
         if request.form.get("nome", "").strip():
@@ -1192,7 +1248,15 @@ def agente_editar(aid: int):
         if mid2 == campos.get("modelo_id"):
             mid2 = None
         campos["modelo_secundario_id"] = mid2
-        campos["skills"] = ",".join(request.form.getlist("skills"))
+        campos["skills"] = ",".join(s.strip() for s in request.form.getlist("skills") if s.strip())
+        # Integridade referencial: nao grava nome de skill que nao resolve
+        # (referencia pendurada = instrucoes perdidas em silencio).
+        _validos = {s["name"] for s in skills_disp}
+        _invalidas = [s for s in campos["skills"].split(",") if s and s not in _validos]
+        if _invalidas:
+            flash("Skill não encontrada no catálogo: " + ", ".join(_invalidas)
+                  + ". Nada foi salvo.", "warn")
+            return redirect(url_for("portal.agente_editar", aid=aid))
         campos["lgpd_ativado"] = 1 if request.form.get("lgpd_ativado") else 0
         if request.form.get("status") in ("ativo", "pausado"):
             campos["status"] = request.form["status"]
@@ -1203,14 +1267,7 @@ def agente_editar(aid: int):
         return redirect(url_for("portal.agentes"))
     mopts = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
     mopts2 = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_secundario_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
-    skopts = "".join(
-        f'<tr><td style="padding:4px 0"><label style="display:inline;margin:0;font-weight:400;font-size:13px">'
-        f'<input type="checkbox" name="skills" value="{templates.h(s["name"])}" style="width:auto;margin:0;vertical-align:middle" {"checked" if s["name"] in skills_sel else ""}> '
-        f'<b>{templates.h(s["name"])}</b>'
-        f'<br><span style="color:var(--muted);font-size:11px;margin-left:20px">{templates.h(s.get("description",""))}</span>'
-        f'</label></td></tr>'
-        for s in skills_disp
-    )
+    skopts = _skills_radio(skills_disp, skills_sel)
     copts = ""
     areas_opts = "".join(f'<option value="{templates.h(ar)}" {"selected" if ar==a.get("area") else ""}>{templates.h(ar)}</option>' for ar in listar_areas())
     content = f"""
@@ -1227,7 +1284,8 @@ def agente_editar(aid: int):
         </div>
         <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum --</option>{mopts2}</select>
           <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar.</span></div></div>
-        <label>Skills do catálogo</label>
+        <label>Skill do agente (uma só)</label>
+        {aviso_skill}
         <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
         <div class="card muted" style="font-size:13px;margin-top:12px;padding:12px">
           <b>🔌 Conectores externos</b><br>
@@ -1456,7 +1514,14 @@ def skill_editar(nome: str):
 @auth.admin_required
 def skill_excluir(nome: str):
     from . import agente as agente_mod
-    if agente_mod.deletar_skill(nome):
+    # Integridade referencial: skill EM USO nao e excluida — o agente ficaria
+    # com referencia pendurada e perderia as instrucoes em silencio (ou cairia
+    # numa copia do arquivo embarcado, mudando de conteudo sem aviso).
+    usam = agente_mod.agentes_com_skill(nome)
+    if usam:
+        flash(f"A skill '{nome}' está em uso pelo(s) agente(s): " + ", ".join(usam)
+              + ". Desvincule antes de excluir.", "warn")
+    elif agente_mod.deletar_skill(nome):
         db.registrar_auditoria(_user()["login"], "admin", "excluir_skill", alvo=nome)
         flash(f"Skill '{nome}' excluída.", "ok")
     return redirect(url_for("portal.skills"))
@@ -2627,6 +2692,7 @@ def auditoria():
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #059669">RAG <b>'+_ragm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px;border-left:3px solid #d97706">LLM <b>'+_llm+'ms</b></span>';
           h+='<span style="background:var(--panel-soft);border-radius:6px;padding:4px 8px">Total <b>'+t.tempo_ms+'ms</b></span></div>';}}
+        if(t.skills_ausentes){{h+='<div class="badge warn" style="margin-bottom:12px;display:block">⚠️ skill não aplicada (não encontrada no catálogo): '+t.skills_ausentes+'</div>';}}
         h+='<div style="margin-bottom:12px"><b>Detalhamento:</b></div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#2563eb">1. Parametros extraidos</div>';

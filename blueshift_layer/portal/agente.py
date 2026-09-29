@@ -139,7 +139,16 @@ def salvar_skill(nome: str, descricao: str, body: str, version: str = "1.0.0") -
 
 
 def deletar_skill(nome: str) -> bool:
-    """Remove a skill do banco e da pasta do catálogo. Retorna True."""
+    """Remove a skill do banco e da pasta do catálogo. Retorna True.
+
+    Recusa (False) quando algum agente usa a skill — integridade referencial:
+    `agentes.skills` é um CSV de nomes sem chave estrangeira, então apagar uma
+    skill EM USO deixava o agente com referência pendurada (instruções sumiam
+    do prompt sem erro nenhum, ou pior: caíam na cópia do arquivo embarcado e
+    o conteúdo do agente MUDava sem aviso). Quem chama mostra a mensagem.
+    """
+    if agentes_com_skill(nome):
+        return False
     # Banco (fonte oficial — persiste entre rebuilds)
     from . import db as _db
     try:
@@ -154,36 +163,85 @@ def deletar_skill(nome: str) -> bool:
     return True
 
 
-# Limite do corpo da skill enviado ao prompt (chars por skill) — regras
-# normalmente cabem em <4k; o limite evita que uma skill gigante estoure o
-# contexto de modelos locais pequenos.
-_SKILL_BODY_MAX = 4000
+# Limite do corpo da skill enviado ao prompt (chars por skill). Historico:
+# era 4000 FIXO e cortava EM SILENCIO 2 skills do catalogo real (rh 5.259 e
+# operacoes 4.826 chars) — e as regras de formato/comportamento ficam no FIM
+# do SKILL.md, exatamente o trecho perdido. 8000 cobre o catalogo inteiro;
+# ajustavel por env (BLUESHIFT_SKILL_BODY_MAX) sem rebuild da imagem.
+_SKILL_BODY_MAX = 8000
 
 
-def _skills_text(skills_csv: str) -> str:
-    """Monta bloco de instrucao das skills a partir da lista 'vendas,suporte'.
+def _skill_body_max() -> int:
+    """Limite efetivo do corpo da skill (env BLUESHIFT_SKILL_BODY_MAX > constante)."""
+    try:
+        return max(0, int(os.environ.get("BLUESHIFT_SKILL_BODY_MAX", "").strip()
+                          or _SKILL_BODY_MAX))
+    except (TypeError, ValueError):
+        return _SKILL_BODY_MAX
+
+
+def _skills_blocos(skills_csv: str) -> tuple[str, list[str]]:
+    """(bloco de instrucao, nomes que NAO resolveram) das skills do agente.
 
     Envia nome + descricao + CORPO do SKILL.md (via ler_skill: banco primeiro,
     arquivo como fallback). O corpo e parte da instrucao — sem ele o modelo so
     via a descricao e ignorava regras de formato/comportamento escritas no
     corpo (ex.: "responda apenas texto, sem tabelas nem figuras").
+
+    Um nome que nao resolve era ignorado em SILENCIO (continue mudo): o agente
+    perdia as instrucoes e continuava respondendo normalmente, sem log nem
+    aviso. Agora o nome volta na segunda posicao da tupla — vai para o tracing
+    e para a tela do agente.
     """
     nomes = [s.strip().lower() for s in (skills_csv or "").split(",") if s.strip()]
-    partes = []
+    limite = _skill_body_max()
+    partes: list[str] = []
+    ausentes: list[str] = []
     for n in nomes:
         s = ler_skill(n)
         if not s:
+            ausentes.append(n)
             continue
         desc = (s.get("description") or "").strip() or n
         corpo = (s.get("body") or "").strip()
         bloco = f"### Skill: {n}\nDescricao: {desc}"
         if corpo:
-            if len(corpo) > _SKILL_BODY_MAX:
-                bloco += "\n" + corpo[:_SKILL_BODY_MAX] + "\n[...corpo truncado...]"
+            if len(corpo) > limite:
+                bloco += "\n" + corpo[:limite] + "\n[...corpo truncado...]"
             else:
                 bloco += "\n" + corpo
         partes.append(bloco)
-    return "\n\n".join(partes)
+    return "\n\n".join(partes), ausentes
+
+
+def _skills_text(skills_csv: str) -> str:
+    """Bloco de instrucao das skills (so o texto) — ver _skills_blocos."""
+    return _skills_blocos(skills_csv)[0]
+
+
+def skills_ausentes(skills_csv: str) -> list[str]:
+    """Nomes do CSV do agente que nao resolvem (nem no banco, nem no catalogo)."""
+    return _skills_blocos(skills_csv)[1]
+
+
+def agentes_com_skill(nome: str) -> list[str]:
+    """Nomes dos agentes que usam a skill (integridade referencial).
+
+    `agentes.skills` e um CSV de nomes SEM chave estrangeira: nada impedia
+    apagar uma skill EM USO — e ai o agente ficava com referencia pendurada
+    (as instrucoes sumiam do prompt sem erro, ou caiam numa copia do arquivo
+    embarcado e MUDavam de conteudo sem aviso). Compara TOKEN a token do CSV,
+    nunca substring — senao 'rh' casaria com 'rh_normas'.
+    """
+    alvo = (nome or "").strip().lower()
+    if not alvo:
+        return []
+    usam = []
+    for a in db.listar_agentes():
+        nomes = [s.strip().lower() for s in (a.get("skills") or "").split(",") if s.strip()]
+        if alvo in nomes:
+            usam.append(a.get("nome") or f"#{a.get('id')}")
+    return usam
 
 
 def _pede_grafico(pergunta: str) -> bool:
@@ -554,7 +612,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     _ms_rag = (_time.time() - _marca) * 1000
 
     # --- 3. Monta o prompt com skills + contexto + dados ---
-    skills_txt = _skills_text(agente.get("skills", ""))
+    skills_txt, skills_faltantes = _skills_blocos(agente.get("skills", ""))
 
     system = (
         f"Você é o agente corporativo '{agente['nome']}' "
@@ -776,6 +834,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         rag_ms=int(_ms_rag),
         llm_ms=int(_ms_llm),
         agente_id=agente.get("id"),
+        skills_ausentes=",".join(skills_faltantes),
     )
 
     if out["ok"]:

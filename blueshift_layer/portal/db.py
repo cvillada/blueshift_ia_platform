@@ -460,6 +460,7 @@ def _migrar_colunas() -> None:
             ("conectores_ms", "INTEGER NOT NULL DEFAULT 0"),
             ("rag_ms", "INTEGER NOT NULL DEFAULT 0"),
             ("llm_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("skills_ausentes", "TEXT NOT NULL DEFAULT ''"),
         ],
         "canais": [
             ("webhook_headers", "TEXT DEFAULT '{}'"),
@@ -827,23 +828,25 @@ def salvar_trace(pergunta: str, params: dict, conectores: list,
                  tokens: dict, resposta: str, tempo_ms: int,
                  agente_id: int | None = None, roteador_ms: int = 0,
                  conectores_ms: int = 0, rag_ms: int = 0,
-                 llm_ms: int = 0) -> int:
+                 llm_ms: int = 0, skills_ausentes: str = "") -> int:
     """Salva o trace de uma execucao do agente. Retorna o id do trace.
 
     roteador_ms/conectores_ms/rag_ms/llm_ms: tempos por fase (instrumentacao
     de latencia) — 0 quando a fase nao rodou ou falhou antes do marco.
+    skills_ausentes: CSV dos nomes de skill do agente que NAO resolveram
+    (nao foram aplicados no prompt) — antes isso era silencioso.
     """
     ts = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO tracing (pergunta, params, conectores, rag, modelo,
                modelo_fallback, tokens, resposta, tempo_ms, roteador_ms,
-               conectores_ms, rag_ms, llm_ms, agente_id, criado_em)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               conectores_ms, rag_ms, llm_ms, agente_id, skills_ausentes, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (pergunta, json.dumps(params), json.dumps(conectores, default=str),
              json.dumps(rag, default=str), modelo, 1 if modelo_fallback else 0,
              json.dumps(tokens), resposta, tempo_ms, roteador_ms, conectores_ms,
-             rag_ms, llm_ms, agente_id, ts),
+             rag_ms, llm_ms, agente_id, skills_ausentes or "", ts),
         )
         return cur.lastrowid
 

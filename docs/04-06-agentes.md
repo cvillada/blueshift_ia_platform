@@ -11,12 +11,19 @@
 | Área | ✅ | `vendas` | Define quais conectores o agente enxerga |
 | Modelo de IA (principal) | ✅ | `bonsai-8b` | Modelo cadastrado em Modelos IA |
 | Modelo de IA (fallback) | ❌ | `hermes-3-llama-3.1-8b` | Usado se o principal falhar |
-| Skills do catálogo | ❌ | vendas, suporte | Checkboxes das skills disponíveis |
+| Skill do agente | ❌ | `vendas` | **Radio — uma só** (ou "nenhuma"); ver §5.7 |
 | Status | ❌ | `ativo` | ativo / pausado |
 | 🔒 Aplicar LGPD | checkbox | ativo por padrão | Anonimiza a resposta na saída |
 
 Ações: **testar** (chat de teste com o pipeline completo: conectores → RAG →
 LLM, com 👍/👎 feedback e 🔍 rastreio), **editar**, **excluir**.
+
+**Skill do agente (uma por agente):** o campo é **radio** — uma skill, com a
+opção **nenhuma** (sem ela não haveria como limpar a skill de um agente já
+salvo). Gravar um nome que **não existe no catálogo é recusado** no cadastro e
+na edição (erro visível, nada é salvo); se a referência já estiver pendurada, a
+listagem mostra `⚠️ não aplicada` e o **Rastreio** registra `skills_ausentes`.
+Detalhes em `04-07-skills.md`.
 
 **Checklist contextual (topo da página Agentes):** a plataforma mostra o que
 o agente precisa, na ordem de configuração — `✓ Modelo IA (N)` · `Skills: N` ·

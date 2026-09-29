@@ -12,6 +12,32 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.6 (2026-09-29) — skills sem falha silenciosa (uma skill por agente + integridade da referência)**
+- **uma skill por agente**: o campo vira **radio** (era checkbox), com a opção
+  **nenhuma** — dois itens marcados gravavam, por exemplo, `vendas,suporte` e
+  as duas skills entravam no prompt marcadas como obrigatórias (regras
+  potencialmente conflitantes no mesmo agente); e sem a opção "nenhuma" não
+  havia como **limpar** a skill de um agente já salvo;
+- **corpo da skill sem corte**: o limite sobe de 4.000 para **8.000
+  caracteres** por skill e passa a ser ajustável pela env
+  `BLUESHIFT_SKILL_BODY_MAX` (sem rebuild da imagem). Com 4.000 o `rh`
+  (5.259 chars) e o `operacoes` (4.826 chars) eram truncados **em silêncio** —
+  e o trecho perdido é justamente o fim do SKILL.md, onde ficam as regras de
+  formato e comportamento;
+- **excluir skill em uso é bloqueado**, com a lista dos agentes afetados
+  ("Desvincule antes de excluir") — o vínculo `agentes.skills` é uma lista de
+  nomes sem chave estrangeira, então apagar uma skill em uso deixava o agente
+  com referência pendurada (as instruções sumiam do prompt sem erro, ou o
+  agente caía na cópia do arquivo embarcado e mudava de conteúdo sem aviso);
+- **nome de skill que não existe não é gravado**: cadastro e edição recusam
+  com mensagem na tela (referência inválida não entra no banco);
+- **referência pendurada fica visível**: a lista de Agentes marca
+  `⚠️ não aplicada`, a tela de edição mostra o nome que não resolve e o
+  **Rastreio** passa a registrar o campo `skills_ausentes` por execução;
+- cobertura nova: `tests/test_skills_fase1.py` (limite/env, nome inválido
+  recusado, opção "nenhuma", exclusão bloqueada por token de CSV, aviso na
+  tela e `skills_ausentes` no trace ponta a ponta).
+
 **v0.11.5 (2026-09-27) — tool calling no gateway (ferramentas do cliente)**
 - O gateway OpenAI-compatível passa a **repassar as ferramentas do cliente**:
   com o campo `permitir tool calling` ligado na tela Gateway (`permite_tools`,
