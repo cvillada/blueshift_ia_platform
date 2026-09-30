@@ -12,6 +12,28 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.10 (2026-09-30) — ação destrutiva exige POST; campo inválido não derruba a tela**
+
+### Segurança
+- **Ações destrutivas saíram do `GET`** (13 rotas): excluir, suspender, revogar,
+  regenerar chave, pausar/ativar e alternar conector agora são formulários `POST`
+  com o token da sessão; `GET` nelas responde `405`. Link `GET` que muda estado é
+  CSRF de verdade — o navegador prefetcha, um scanner de e-mail segue o link e o
+  clique acidental executa a ação (foi assim que uma varredura de rotas suspendeu
+  o próprio admin durante os testes).
+- Os botões mantêm a aparência de link e a confirmação antes de executar; agora
+  o nome do recurso aparece na confirmação (inclusive "nova chave", que avisa que
+  a chave atual para de funcionar na hora).
+
+### Robustez
+- **Campo de formulário não numérico não gera mais erro interno:** o
+  `int(request.form.get(...))` cru estourava `ValueError` → `500` em
+  `/portal/usuarios/novo`, `/portal/modelos` e `/portal/agentes/novo` (provado
+  antes e depois da correção). Agora o valor inválido cai no default, como já
+  acontecia com parâmetro de URL.
+- Correção de registro: a nota publicada da v0.11.9 anunciava essa correção por
+  engano — o caminho de URL/GET já se comportava assim antes dela.
+
 **v0.11.9 (2026-09-30) — segurança e robustez: o que a varredura encontrou**
 
 Depois de o repositório virar público, o produto passou por uma varredura
@@ -277,6 +299,7 @@ funcional e de segurança de ponta a ponta. Esta versão entrega as correções.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
+| v0.11.10 | 2026-09-30 | ações destrutivas exigem POST com token (13 rotas; GET responde 405) e campo de formulário inválido não gera mais 500 |
 | v0.11.9 | 2026-09-30 | segurança: injeção SQL no conector fechada por binding de parâmetro (+ sessão somente-leitura + denylist + validação da query fixa ao salvar), RBAC nas telas de admin com menu na mesma fonte, rate limit de login conta só falha e interrompe, XSS em onclick (templates.j) e segredo de sessão gerado/persistido pelo portal; robustez: resposta sem `choices` sem vazar erro cru, base_url com /v1 normalizada, gateway autenticando antes do corpo e errorhandler 500 apresentável |
 | v0.11.8 | 2026-09-29 | resposta objetiva: diretiva de formato no prompt do agente (~2,2x mais rápida, medido na prod); `max_tokens` mantido (teto é inerte) e pedido explícito de texto longo preservado |
 | v0.11.7 | 2026-09-29 | consulta inteligente: teto do SELECT 300→900, modelo do SQL (`BLUESHIFT_SQL_MODEL`) e escalada ao modelo principal quando a execução falha; correção do `_selecionar_conectores` (lista em vez de tupla) |

@@ -31,11 +31,12 @@
   a permissão do arquivo no sistema operacional (volume Docker) e o perímetro do
   cliente. Manter a coluna cifrada exigiria guardar a chave de decifragem no
   mesmo servidor — o ganho é pequeno para o modelo de ameaça on-premise.
-- **Risco residual conhecido:** as ações destrutivas da interface (excluir,
-  suspender, regenerar) são links `GET`. O `SameSite=Lax` do cookie bloqueia o
-  vetor silencioso (imagem/iframe de outro site), mas um link clicado — ou um
-  prefetcher/scanner de e-mail que segue links — executa a ação. O ajuste para
-  `POST` + token de formulário está previsto para a próxima versão.
+- **Ações destrutivas exigem `POST` com token da sessão** (v0.11.10): excluir,
+  suspender, revogar, regenerar chave e pausar gateway são formulários — `GET`
+  nessas rotas responde `405`. Link `GET` que muda estado era CSRF na prática: o
+  navegador prefetcha, scanner de e-mail segue link e o clique acidental executa
+  (foi assim que uma varredura de rotas suspendeu o próprio admin durante os
+  testes). O `SameSite=Lax` do cookie continua como segunda camada.
 - **Sem token, sem sessão:** toda tela sob `/portal/` exige login (a lista de
   telas administrativas vale para todos os papéis, inclusive leitura).
 

@@ -23,6 +23,23 @@ def csrf_field() -> str:
     return f'<input type="hidden" name="_csrf_token" value="{csrf_token()}">'
 
 
+def acao_form(url: str, rotulo: str, confirmar: str = "", vermelho: bool = False) -> str:
+    """Acao que MUDA estado, como formulario POST (nunca como link GET).
+
+    Link GET em acao destrutiva e CSRF: o navegador prefetcha, scanner de
+    seguranca e crawler seguem o link e o clique acidental executa — foi assim
+    que uma varredura de rotas minha suspendeu o proprio admin. Form POST exige
+    o token da sessao e nao e disparado por prefetch.
+
+    `confirmar` entra numa string de JavaScript: quem chamar precisa passar o
+    nome do recurso JA escapado com j() (ex.: f'Excluir {j(nome)}?').
+    """
+    onsub = f""" onsubmit="return confirm('{confirmar}')" """ if confirmar else " "
+    cor = ' style="color:var(--bad)"' if vermelho else ""
+    return (f'<form method="post" action="{url}" class="acao-inline"{onsub.strip()}>'
+            f'{csrf_field()}<button type="submit" class="linklike"{cor}>{rotulo}</button></form>')
+
+
 def j(texto) -> str:
     """Escapa valor para dentro de string JavaScript num atributo HTML.
 
@@ -488,6 +505,8 @@ label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weigh
 .flash.bad{background:rgba(239,68,68,.12);color:var(--bad)}
 .muted{color:var(--muted)}
 .row-actions a{margin-right:8px;color:var(--blue);text-decoration:none;font-weight:600;font-size:13px}
+form.acao-inline{display:inline;margin:0 8px 0 0}
+button.linklike{background:none;border:0;padding:0;margin:0;color:var(--blue);cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;text-decoration:none}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .bar{height:8px;border-radius:999px;background:var(--neutral);overflow:hidden}
 .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#22d3ee)}

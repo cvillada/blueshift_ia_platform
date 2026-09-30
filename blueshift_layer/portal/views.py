@@ -27,6 +27,26 @@ from . import agente as agente_mod
 bp = Blueprint("portal", __name__, url_prefix="/portal")
 
 
+def _int_ou(valor, default: int = 0) -> int:
+    """Converte valor de requisicao em int sem derrubar a requisicao.
+
+    `int(request.form.get(...))` cru explode com ValueError quando o campo vem
+    vazio, "abc" ou com espaco (campo de formulario e entrada de usuario) -> 500.
+    Valor invalido cai no default — mesmo comportamento do
+    `request.args.get(..., type=int)` que as URLs ja usavam. Zero e resposta
+    legitima; aqui o default e explicito em cada chamada.
+    """
+    try:
+        return int(str(valor).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_form(campo: str, default: int = 0) -> int:
+    """Campo de formulario numerico, com default quando vier invalido."""
+    return _int_ou(request.form.get(campo), default)
+
+
 def _user() -> dict | None:
     if not session.get("user_id"):
         return None
@@ -450,8 +470,7 @@ def clientes():
           <td>{n_user} usu · {n_age} agentes</td>
           <td class="row-actions">
             <a href="{url_for('portal.cliente_editar', cid=c['id'])}">editar</a>
-            <a href="{url_for('portal.cliente_alternar', cid=c['id'], acao='suspenso' if c['status']=='ativo' else 'ativo')}">
-              {'suspender' if c['status']=='ativo' else 'ativar'}</a>
+            {templates.acao_form(url_for('portal.cliente_alternar', cid=c['id'], acao='suspenso' if c['status']=='ativo' else 'ativo'), 'suspender' if c['status']=='ativo' else 'ativar', f"{'Suspender' if c['status']=='ativo' else 'Ativar'} o cliente {templates.j(c['nome'])}?")}
           </td></tr>"""
 
     tabela = f"""<table><thead><tr><th>Cliente</th><th>Código</th><th>Email</th><th>Status</th><th>Composição</th><th></th></tr></thead>
@@ -572,7 +591,7 @@ def cliente_editar(cid: int):
     return templates.page("Editar cliente", content, active="clientes", user=_user())
 
 
-@bp.route("/clientes/<int:cid>/<acao>")
+@bp.route("/clientes/<int:cid>/<acao>", methods=["POST"])
 @auth.admin_required
 def cliente_alternar(cid: int, acao: str):
     if acao in ("ativo", "suspenso", "expirado"):
@@ -604,7 +623,7 @@ def usuarios():
           <td>{templates.badge('ativo' if u['ativo'] else 'suspenso')}</td>
           <td class="row-actions">
             <a href="/portal/usuarios/{u['id']}/editar">editar</a>
-            <a href="/portal/usuarios/{u['id']}/suspender" onclick="return confirm('Confirmar?')">{'suspender' if u['ativo'] else 'reativar'}</a>
+            {templates.acao_form(f"/portal/usuarios/{u['id']}/suspender", 'suspender' if u['ativo'] else 'reativar', f"{'Suspender' if u['ativo'] else 'Reativar'} o usuário {templates.j(u['nome'])}?")}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Área</th><th>Cliente</th><th>Status</th><th>Ações</th></tr></thead>
@@ -622,7 +641,7 @@ def usuarios():
 def usuario_novo():
     clientes = db.listar_clientes()
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         nome = request.form.get("nome", "").strip()
         login = request.form.get("login", "").strip()
         senha = request.form.get("senha", "").strip()
@@ -720,7 +739,7 @@ def usuario_editar(uid: int):
     return templates.page(f"Editar {u['nome']}", content, active="usuarios", user=_user())
 
 
-@bp.route("/usuarios/<int:uid>/suspender")
+@bp.route("/usuarios/<int:uid>/suspender", methods=["POST"])
 @auth.admin_required
 def usuario_suspender(uid: int):
     u = db.buscar_usuario(uid)
@@ -768,7 +787,7 @@ def areas():
           <td class="muted">{uso}</td>
           <td class="row-actions">
             <a href="/portal/areas/{a['id']}/editar">editar</a>
-            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {templates.j(a['nome'])}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(f"/portal/areas/{a['id']}/excluir", 'excluir', f"Excluir a área {templates.j(a['nome'])}? Registros existentes mantêm a área no texto, mas ela some dos seletores.", True)}
           </td></tr>"""
     tabela = f"""<table><thead><tr><th>Área</th><th>Uso</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=3 class="empty">Nenhuma área cadastrada.</td></tr>'}</tbody></table>"""
@@ -831,7 +850,7 @@ def area_editar(aid: int):
     return templates.page(f"Editar área {row['nome']}", content, active="areas", user=_user())
 
 
-@bp.route("/areas/<int:aid>/excluir")
+@bp.route("/areas/<int:aid>/excluir", methods=["POST"])
 @auth.admin_required
 def area_excluir(aid: int):
     """Exclui uma area do cadastro (registros existentes mantem o texto)."""
@@ -883,7 +902,7 @@ def agentes():
           <td class="row-actions">
             <a href="/portal/agentes/{a['id']}/testar">testar</a>
             <a href="/portal/agentes/{a['id']}/editar">editar</a>
-            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {templates.j(a['nome'])}?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(f"/portal/agentes/{a['id']}/excluir", 'excluir', f"Excluir o agente {templates.j(a['nome'])}?", True)}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
@@ -1136,11 +1155,11 @@ def agente_novo():
     modelos = db.listar_modelos()
     skills_disp = agente_mod.listar_skills()
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         nome = request.form.get("nome", "").strip()
         modelo_id = request.form.get("modelo_id") or None
         if modelo_id:
-            modelo_id = int(modelo_id)
+            modelo_id = _int_ou(modelo_id, 0)
         skills = ",".join(s.strip() for s in request.form.getlist("skills") if s.strip())
         # Integridade referencial: nome de skill que nao resolve vira referencia
         # PENDURADA (o agente perde as instrucoes em silencio) — recusa o
@@ -1159,7 +1178,7 @@ def agente_novo():
                 modelo_nome = m["nome"] if m else ""
             modelo_sec_id = request.form.get("modelo_secundario_id") or None
             if modelo_sec_id:
-                modelo_sec_id = int(modelo_sec_id)
+                modelo_sec_id = _int_ou(modelo_sec_id, 0)
             # se secundario igual ao principal, ignora (nao faz sentido)
             if modelo_sec_id == modelo_id:
                 modelo_sec_id = None
@@ -1311,7 +1330,7 @@ def agente_editar(aid: int):
     return templates.page(f"Editar {a['nome']}", content, active="agentes", user=_user())
 
 
-@bp.route("/agentes/<int:aid>/excluir")
+@bp.route("/agentes/<int:aid>/excluir", methods=["POST"])
 @auth.admin_required
 def agente_excluir(aid: int):
     a = db.buscar_agente(aid)
@@ -1340,7 +1359,7 @@ def skills():
           <td><code>v{s.get('version','1.0.0')}</code></td>
           <td class="row-actions">
             <a href="/portal/skills/{s['name']}/editar">editar</a>
-            <a href="/portal/skills/{s['name']}/excluir" onclick="return confirm('Excluir skill {templates.j(s['name'])}?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(f"/portal/skills/{urllib.parse.quote(s['name'])}/excluir", 'excluir', f"Excluir a skill {templates.j(s['name'])}?", True)}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Descrição</th><th>Versão</th><th></th></tr></thead>
@@ -1515,7 +1534,7 @@ def skill_editar(nome: str):
     return templates.page(f"Editar {skill['name']}", content, active="skills", user=_user())
 
 
-@bp.route("/skills/<nome>/excluir")
+@bp.route("/skills/<nome>/excluir", methods=["POST"])
 @auth.admin_required
 def skill_excluir(nome: str):
     from . import agente as agente_mod
@@ -1586,7 +1605,7 @@ def conectores():
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
 
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id") or 1)
+        cid = _int_form("cliente_id", 1)
         area = request.form.get("area", "").strip()
         nome = request.form.get("nome", "").strip()
         tipo = request.form.get("tipo", "api")
@@ -1713,8 +1732,8 @@ def conectores():
           <td>{_hb_cell}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conector_editar', cid=k['id'])}">editar</a>
-            <a href="{url_for('portal.conector_alternar', cid=k['id'])}" onclick="return confirm('{_acao_ativo.capitalize()} o conector {templates.j(k['nome'])}?')">{_acao_ativo}</a>
-            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector {templates.j(k['nome'])}?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(url_for('portal.conector_alternar', cid=k['id']), _acao_ativo, f"{_acao_ativo.capitalize()} o conector {templates.j(k['nome'])}?")}
+            {templates.acao_form(url_for('portal.conector_excluir', cid=k['id']), 'excluir', f"Excluir o conector {templates.j(k['nome'])}?", True)}
           </td></tr>"""
 
     opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in listar_areas())
@@ -2485,7 +2504,7 @@ def conector_editar(cid: int):
     return templates.page("Editar conector", content, active="conectores", user=_user())
 
 
-@bp.route("/conectores/<int:cid>/alternar")
+@bp.route("/conectores/<int:cid>/alternar", methods=["POST"])
 @auth.admin_required
 def conector_alternar(cid: int):
     """Liga/desliga o conector sem excluir (ativo=0 = nao executa e nao roteia)."""
@@ -2502,7 +2521,7 @@ def conector_alternar(cid: int):
     return redirect(url_for("portal.conectores"))
 
 
-@bp.route("/conectores/<int:cid>/excluir")
+@bp.route("/conectores/<int:cid>/excluir", methods=["POST"])
 @auth.admin_required
 def conector_excluir(cid: int):
     con = db.buscar_conector(cid)
@@ -3212,7 +3231,7 @@ def teste_ab():
     total_fb = len(todos_fb)
     total_paginas = max(1, (total_fb + limite_fb - 1) // limite_fb)
     try:
-        pagina_fb = max(1, int(request.args.get("pagina", 1)))
+        pagina_fb = max(1, _int_ou(request.args.get("pagina", 1), 1))
     except ValueError:
         pagina_fb = 1
     pagina_fb = min(pagina_fb, total_paginas)
@@ -3602,7 +3621,7 @@ def memoria():
     if u and u["papel"] in ("admin", "gestor"):
         cliente_id = request.args.get("cliente_id", type=int)
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0)) or cliente_id
+        cid = _int_form("cliente_id", 0) or cliente_id
         texto = request.form.get("conteudo", "").strip()
         if cid and texto:
             db.criar_memoria(cid, u["login"], texto, request.form.get("tipo", "conversa"))
@@ -3765,7 +3784,7 @@ def conhecimento():
 
     # --- CSV Import ---
     if request.method == "POST" and request.form.get("_action") == "csv_import":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         area = request.form.get("area", "").strip()
         file = request.files.get("csv_file")
         if not file or not cid:
@@ -3796,7 +3815,7 @@ def conhecimento():
 
     # --- PDF Import ---
     if request.method == "POST" and request.form.get("_action") == "pdf_import":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         area = request.form.get("area", "").strip()
         cat = request.form.get("categoria", "manual")
         file = request.files.get("pdf_file")
@@ -3840,7 +3859,7 @@ def conhecimento():
 
     # --- Adicionar documento manual ---
     if request.method == "POST" and request.form.get("_action") == "add":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         titulo = request.form.get("titulo", "").strip()
         texto = request.form.get("conteudo", "").strip()
         area = request.form.get("area", "").strip()
@@ -3888,7 +3907,7 @@ def conhecimento():
           <td class="muted">{d['criado_em'][:16]}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conhecimento_editar', did=d['id'])}">editar</a>
-            <a href="{url_for('portal.conhecimento_excluir', did=d['id'])}" onclick="return confirm('Excluir documento?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(url_for('portal.conhecimento_excluir', did=d['id']), 'excluir', f"Excluir o documento {templates.j(d['titulo'])}?", True)}
           </td></tr>"""
 
     # Botões de paginação
@@ -4018,7 +4037,7 @@ def conhecimento_editar(did: int):
         flash("Documento não encontrado.", "bad")
         return redirect(url_for("portal.conhecimento"))
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id") or doc["cliente_id"])
+        cid = _int_form("cliente_id", doc["cliente_id"])
         titulo = (request.form.get("titulo") or doc["titulo"]).strip()
         texto = (request.form.get("conteudo") or doc["conteudo"]).strip()
         area = request.form.get("area") or doc.get("area", "")
@@ -4066,7 +4085,7 @@ def conhecimento_editar(did: int):
     return templates.page("Editar documento", content, active="conhecimento", user=_user())
 
 
-@bp.route("/conhecimento/<int:did>/excluir")
+@bp.route("/conhecimento/<int:did>/excluir", methods=["POST"])
 @auth.admin_required
 def conhecimento_excluir(did: int):
     doc = db.buscar_documento(did)
@@ -4161,7 +4180,7 @@ def conhecimento_exportar_jsonl():
 def modelos():
     from . import llm_client
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id", 0))
+        cid = _int_form("cliente_id", 0)
         nome = request.form.get("nome", "").strip()
         base_url = request.form.get("base_url", "").strip()
         modelo = request.form.get("modelo", "").strip()
@@ -4206,7 +4225,7 @@ def modelos():
           <td>{badge}</td>
           <td class="row-actions">
             <a href="/portal/modelos/{m['id']}/editar">editar</a>
-            <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {templates.j(m['nome'])}?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(f"/portal/modelos/{m['id']}/excluir", 'excluir', f"Excluir o modelo {templates.j(m['nome'])}?", True)}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Temperatura</th><th>Status</th><th></th></tr></thead>
@@ -4330,7 +4349,7 @@ def modelo_editar(mid: int):
     return templates.page(f"Editar {m['nome']}", content, active="modelos", user=_user())
 
 
-@bp.route("/modelos/<int:mid>/excluir")
+@bp.route("/modelos/<int:mid>/excluir", methods=["POST"])
 @auth.admin_required
 def modelo_excluir(mid: int):
     m = db.buscar_modelo(mid)
@@ -4353,7 +4372,7 @@ def chat():
     modelo_usado = None
     erro = None
     if request.method == "POST":
-        mid = int(request.form.get("modelo_id", 0))
+        mid = _int_form("modelo_id", 0)
         pergunta = request.form.get("pergunta", "").strip()
         modelo = db.buscar_modelo(mid) if mid else None
         if not modelo:
@@ -4395,7 +4414,7 @@ def chat():
                 erro = out["error"]
     modelos = db.listar_modelos()
     opts = "".join(
-        f'<option value="{m["id"]}" {"selected" if m["id"]==int(request.form.get("modelo_id",0) or 0) else ""}>'
+        f'<option value="{m["id"]}" {"selected" if m["id"]==_int_form("modelo_id", 0) else ""}>'
         f'{m["nome"]} ({m["modelo"]})</option>'
         for m in modelos
     ) or '<option value="">-- nenhum modelo cadastrado --</option>'
@@ -4572,11 +4591,11 @@ def canais():
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
     agentes = db.listar_agentes()
     if request.method == "POST":
-        cid = int(request.form.get("cliente_id") or 1)
+        cid = _int_form("cliente_id", 1)
         nome = request.form.get("nome", "").strip()
         agente_id = request.form.get("agente_id") or None
         if agente_id:
-            agente_id = int(agente_id)
+            agente_id = _int_ou(agente_id, 0)
         if not nome:
             flash("Nome do canal é obrigatório.", "warn")
             return redirect(url_for("portal.canais"))
@@ -4625,8 +4644,8 @@ def canais():
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis"><code>{wh}</code></td>
           <td class="row-actions">
             {_testar_link}<a href="{url_for('portal.canal_editar', canal_id=c['id'])}">editar</a>
-            <a href="{url_for('portal.canal_regenerar_token', canal_id=c['id'])}">nova chave</a>
-            <a href="{url_for('portal.canal_alternar', canal_id=c['id'])}">{'revogar' if c['ativo'] else 'reativar'}</a>
+            {templates.acao_form(url_for('portal.canal_regenerar_token', canal_id=c['id']), 'nova chave', f"Gerar nova chave para o canal {templates.j(c['nome'])}? A chave atual para de funcionar na hora.")}
+            {templates.acao_form(url_for('portal.canal_alternar', canal_id=c['id']), 'revogar' if c['ativo'] else 'reativar', f"{'Revogar' if c['ativo'] else 'Reativar'} o canal {templates.j(c['nome'])}?")}
           </td></tr>"""
     token_tooltip = """<div class="card muted" style="font-size:12px">
       <b>⚠️ Importante sobre chaves de canal:</b><br>
@@ -4806,7 +4825,7 @@ def canal_editar(canal_id: int):
         tipo = request.form.get("tipo") or canal["tipo"]
         agente_id = request.form.get("agente_id") or None
         if agente_id:
-            agente_id = int(agente_id)
+            agente_id = _int_ou(agente_id, 0)
         webhook_url = (request.form.get("webhook_url") or "").strip() or None
         if not nome:
             flash("Nome do canal é obrigatório.", "warn")
@@ -4866,7 +4885,7 @@ def canal_editar(canal_id: int):
     return templates.page("Editar canal", content, active="canais", user=_user())
 
 
-@bp.route("/canais/<int:canal_id>/regenerar")
+@bp.route("/canais/<int:canal_id>/regenerar", methods=["POST"])
 @auth.admin_required
 def canal_regenerar_token(canal_id: int):
     """Gera nova chave para o canal. A anterior para de funcionar imediatamente."""
@@ -4884,7 +4903,7 @@ def canal_regenerar_token(canal_id: int):
     return redirect(url_for("portal.canais"))
 
 
-@bp.route("/canais/<int:canal_id>/alternar")
+@bp.route("/canais/<int:canal_id>/alternar", methods=["POST"])
 @auth.admin_required
 def canal_alternar(canal_id: int):
     """Alterna entre ativo e revogado."""
@@ -4933,8 +4952,8 @@ def gateway():
         modo = request.form.get("modo", "completa")
         ativo = 1 if request.form.get("ativo") else 0
         try:
-            max_msg = max(1, min(int(request.form.get("max_mensagens") or 6), 100))
-            max_tok = max(1, min(int(request.form.get("max_tokens") or 400), 8000))
+            max_msg = max(1, min(_int_form("max_mensagens", 6), 100))
+            max_tok = max(1, min(_int_form("max_tokens", 400), 8000))
         except ValueError:
             max_msg, max_tok = 6, 400
         if not nome or not canal_id:
@@ -4964,8 +4983,8 @@ def gateway():
           <td style="max-width:220px"><code style="font-size:11px">{_endpoint_gateway()}</code></td>
           <td class="row-actions">
             <a href="/portal/gateway/{g['id']}/editar">editar</a>
-            <a href="/portal/gateway/{g['id']}/alternar">{"pausar" if g['ativo'] else "ativar"}</a>
-            <a href="/portal/gateway/{g['id']}/excluir" onclick="return confirm('Excluir gateway {templates.j(g['nome'])}?')" style="color:var(--bad)">excluir</a>
+            {templates.acao_form(f"/portal/gateway/{g['id']}/alternar", "pausar" if g['ativo'] else "ativar", f"{'Pausar' if g['ativo'] else 'Ativar'} o gateway {templates.j(g['nome'])}?")}
+            {templates.acao_form(f"/portal/gateway/{g['id']}/excluir", 'excluir', f"Excluir o gateway {templates.j(g['nome'])}?", True)}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Canal</th><th>Agente</th><th>Modo</th><th>Status</th><th>Tool calling</th><th>Endpoint (OpenAI)</th><th></th></tr></thead>
@@ -5009,12 +5028,12 @@ def gateway_editar(gid: int):
         return redirect(url_for("portal.gateway"))
     if request.method == "POST":
         nome = (request.form.get("nome") or g["nome"]).strip()
-        canal_id = int(request.form.get("canal_id") or g["canal_id"])
+        canal_id = _int_form("canal_id", g["canal_id"])
         modo = request.form.get("modo") or g["modo"]
         ativo = 1 if request.form.get("ativo") else 0
         try:
-            max_msg = max(1, min(int(request.form.get("max_mensagens") or g.get("max_mensagens", 6)), 100))
-            max_tok = max(1, min(int(request.form.get("max_tokens") or g.get("max_tokens", 400)), 8000))
+            max_msg = max(1, min(_int_form("max_mensagens", g.get("max_mensagens", 6)), 100))
+            max_tok = max(1, min(_int_form("max_tokens", g.get("max_tokens", 400)), 8000))
         except ValueError:
             max_msg = int(g.get("max_mensagens", 6))
             max_tok = int(g.get("max_tokens", 400))
@@ -5054,7 +5073,7 @@ def gateway_editar(gid: int):
     return templates.page("Editar gateway", content, active="gateway", user=_user())
 
 
-@bp.route("/gateway/<int:gid>/alternar")
+@bp.route("/gateway/<int:gid>/alternar", methods=["POST"])
 @auth.admin_required
 def gateway_alternar(gid: int):
     g = db.buscar_gateway(gid)
@@ -5068,7 +5087,7 @@ def gateway_alternar(gid: int):
     return redirect(url_for("portal.gateway"))
 
 
-@bp.route("/gateway/<int:gid>/excluir")
+@bp.route("/gateway/<int:gid>/excluir", methods=["POST"])
 @auth.admin_required
 def gateway_excluir(gid: int):
     g = db.buscar_gateway(gid)
