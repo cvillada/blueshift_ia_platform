@@ -47,7 +47,6 @@ funcional e de segurança de ponta a ponta. Esta versão entrega as correções.
 - Resposta do provedor **sem `choices`** deixa de vazar o erro cru (`'choices'`)
   como HTTP 502 na tela — vem mensagem explicando o que o provedor devolveu;
 - **URL base terminando em `/v1`** é normalizada (fim do `/v1/v1/chat/completions`);
-- **Parâmetro inválido** em tela/URL não gera mais erro interno (500);
 - **Gateway OpenAI-compatible** autentica **antes** de validar o corpo (quem não
   tem token recebe 401, e não 400/404);
 - **Erro interno** agora tem resposta apresentável: página em português no
@@ -278,7 +277,7 @@ funcional e de segurança de ponta a ponta. Esta versão entrega as correções.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
-| v0.11.9 | 2026-09-30 | segurança: injeção SQL no conector fechada por binding de parâmetro (+ sessão somente-leitura + denylist + validação da query fixa ao salvar), RBAC nas telas de admin com menu na mesma fonte, rate limit de login conta só falha e interrompe, XSS em onclick (templates.j) e segredo de sessão gerado/persistido pelo portal; robustez: resposta sem `choices` sem vazar erro cru, base_url com /v1 normalizada, parâmetro inválido sem 500, gateway autenticando antes do corpo e errorhandler 500 apresentável |
+| v0.11.9 | 2026-09-30 | segurança: injeção SQL no conector fechada por binding de parâmetro (+ sessão somente-leitura + denylist + validação da query fixa ao salvar), RBAC nas telas de admin com menu na mesma fonte, rate limit de login conta só falha e interrompe, XSS em onclick (templates.j) e segredo de sessão gerado/persistido pelo portal; robustez: resposta sem `choices` sem vazar erro cru, base_url com /v1 normalizada, gateway autenticando antes do corpo e errorhandler 500 apresentável |
 | v0.11.8 | 2026-09-29 | resposta objetiva: diretiva de formato no prompt do agente (~2,2x mais rápida, medido na prod); `max_tokens` mantido (teto é inerte) e pedido explícito de texto longo preservado |
 | v0.11.7 | 2026-09-29 | consulta inteligente: teto do SELECT 300→900, modelo do SQL (`BLUESHIFT_SQL_MODEL`) e escalada ao modelo principal quando a execução falha; correção do `_selecionar_conectores` (lista em vez de tupla) |
 | v0.11.6 | 2026-09-29 | skills sem falha silenciosa: uma skill por agente (radio, com "nenhuma"), corpo até 8.000 chars + `BLUESHIFT_SKILL_BODY_MAX`, skill em uso não pode ser excluída e skill que não resolve é reportada |
