@@ -200,6 +200,39 @@ _DIRETIVA_RESPOSTA = (
 )
 
 
+# Dado ausente (v0.11.9 / B6). Medido: com o conector devolvendo `{"sum": null}`
+# o modelo respondia "o total foi de 50 milhoes de reais" — numero que nao
+# existe em lugar nenhum (alucinacao sobre resultado vazio). A instrucao separa
+# os dois casos que o modelo confundia: "o campo veio nulo/vazio" e "a pergunta
+# nao tem resposta nos dados".
+_DIRETIVA_DADOS_AUSENTES = (
+    "DADOS AUSENTES: quando o valor pedido nao estiver nos dados (campo nulo, "
+    "lista vazia, resultado 'sem dados' ou consulta nao executada), diga "
+    "claramente que nao ha esse dado disponivel e o que faltou — NUNCA estime, "
+    "aproxime, arredonde por conta propria nem invente numero, nome ou data. "
+    "Se parte dos dados veio e parte nao, responda apenas o que veio.\n"
+)
+
+
+def _resultado_vazio(resultado) -> bool:
+    """True quando o conector respondeu mas SEM dado util (B6, v0.11.9).
+
+    Nulo nao e dado: `{"sum": null}`, `[]`, `{}` ou lista de vazios significam
+    "a consulta rodou e nao trouxe valor". O modelo tratava isso como numeros
+    disponiveis e completava por conta propria. Zero e vazio sao coisas
+    diferentes: `{"sum": 0}` e RESPOSTA (devolve False aqui).
+    """
+    if resultado is None:
+        return True
+    if isinstance(resultado, str):
+        return resultado.strip() in ("", "[]", "{}", "null", "None")
+    if isinstance(resultado, (list, tuple)):
+        return len(resultado) == 0 or all(_resultado_vazio(x) for x in resultado)
+    if isinstance(resultado, dict):
+        return not resultado or all(_resultado_vazio(v) for v in resultado.values())
+    return False
+
+
 def _skills_blocos(skills_csv: str) -> tuple[str, list[str]]:
     """(bloco de instrucao, nomes que NAO resolveram) das skills do agente.
 
@@ -660,6 +693,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         f"Você é o agente corporativo '{agente['nome']}' "
         f"(área: {area or 'geral'}).\n"
         f"{_DIRETIVA_RESPOSTA}"
+        f"{_DIRETIVA_DADOS_AUSENTES}"
     )
     if skills_txt:
         system += ("\nSKILLS DO AGENTE (instrucoes das skills anexadas — as "
@@ -678,6 +712,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     )
     ausentes_nota: list = []
     motivos_nota: list = []      # diagnostico honesto: consulta nao feita e por que
+    sem_dados_nota: list = []    # consulta RODOU e voltou sem valor (B6)
     truncado_nota = False        # consulta bateu no teto de linhas
     if ferramentas:
         blocos = []
@@ -696,8 +731,16 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                 continue
             if f.get("motivo"):
                 motivos_nota.append(f"{f.get('conector')}: {f['motivo']}")
+            _vazio = _resultado_vazio(f.get("resultado"))
+            if _vazio:
+                # v0.11.9 / B6 — o resultado sem valores precisa ser DITO no
+                # bloco: `{"sum": null}` sozinho o modelo lia como "sem
+                # informacao" e completava o numero que faltava.
+                sem_dados_nota.append(str(f.get("conector") or "conector"))
             blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
-                          f"args={f.get('args')} -> {f.get('resultado')}")
+                          f"args={f.get('args')} -> {f.get('resultado')}"
+                          + (" (SEM DADOS: a consulta rodou e nao retornou valores)"
+                             if _vazio else ""))
         if blocos:
             system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
     if ausentes_nota:
@@ -719,6 +762,14 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
                    + ". Explique ao usuario o motivo real quando for relevante e "
                    "NUNCA invente valores, nomes, numeros ou IDs para preencher a "
                    "lacuna.\n")
+    if sem_dados_nota:
+        # Guarda de codigo, nao so de prompt: sem isto o modelo recebia
+        # `{"sum": null}` como se fosse um numero e inventava a resposta.
+        system += (
+            "\nAVISO: o(s) conector(es) " + ", ".join(sorted(set(sem_dados_nota)))
+            + " respondeu/responderam SEM DADOS (nenhum valor retornado). Nao ha "
+            "numero para responder: diga que nao existe esse dado disponivel para "
+            "a pergunta e NAO estime, aproxime nem invente valores.\n")
     if truncado_nota:
         system += ("\nOBSERVACAO SOBRE VOLUME: a consulta foi limitada a 50 linhas. "
                    "Se a pergunta pedir total/contagem, deixe claro que a listagem "

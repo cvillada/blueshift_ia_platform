@@ -51,7 +51,14 @@ funcional e de segurança de ponta a ponta. Esta versão entrega as correções.
 - **Gateway OpenAI-compatible** autentica **antes** de validar o corpo (quem não
   tem token recebe 401, e não 400/404);
 - **Erro interno** agora tem resposta apresentável: página em português no
-  portal e JSON nas rotas de API — o traceback fica no log do container.
+  portal e JSON nas rotas de API — o traceback fica no log do container;
+- **Resposta sobre dado vazio não inventa número:** quando o conector roda e
+  volta sem valores (`{"sum": null}`, lista vazia), o resultado é marcado como
+  *sem dados* no prompt e o agente responde que não há esse dado, em vez de
+  completar por conta própria. Medido com o mesmo modelo: sem a correção, a
+  pergunta *"quanto vendemos no total, em reais?"* sobre um resultado nulo
+  devolveu **"1.380.000 reais"** (número inexistente); com a correção, as quatro
+  execuções responderam que não há dado disponível.
 
 **Risco residual conhecido (documentado):** as ações destrutivas do portal
 (excluir, suspender, regenerar) ainda são disparadas por link `GET`. O
