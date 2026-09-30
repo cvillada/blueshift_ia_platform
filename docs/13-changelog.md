@@ -225,6 +225,12 @@ momento do release aparecem como `—`.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
+| v0.11.8 | 2026-09-29 | resposta objetiva: diretiva de formato no prompt do agente (~2,2x mais rápida, medido na prod); `max_tokens` mantido (teto é inerte) e pedido explícito de texto longo preservado |
+| v0.11.7 | 2026-09-29 | consulta inteligente: teto do SELECT 300→900, modelo do SQL (`BLUESHIFT_SQL_MODEL`) e escalada ao modelo principal quando a execução falha; correção do `_selecionar_conectores` (lista em vez de tupla) |
+| v0.11.6 | 2026-09-29 | skills sem falha silenciosa: uma skill por agente (radio, com "nenhuma"), corpo até 8.000 chars + `BLUESHIFT_SKILL_BODY_MAX`, skill em uso não pode ser excluída e skill que não resolve é reportada |
+| v0.11.5 | 2026-09-27 | tool calling no gateway (ferramentas do cliente) |
+| v0.11.4 | 2026-09-27 | atualização não deixa mais arquivos de dono `root` no repositório (container irmão roda como dono do repo) |
+| v0.11.3 | 2026-09-27 | gateway: `/v1/models` autenticado + `stream` do cliente respeitado |
 | v0.11.2 | 2026-09-14 | roteamento do SQL por intenção (fim do "liste"/"lista" quebrado), conector ativo/desligado com interface, diagnóstico honesto do motivo e teto de 50 linhas com aviso |
 | v0.11.1 | 2026-09-12 | documentação navegável no produto (páginas, busca, API Reference, Changelog) + checagem automática doc × código e gerador de site interno |
 | v0.11.0 | 2026-09-12 | Connector Pack (auth OAuth2/bearer, polling + mapeamento, tipo A2A, SSL/wallet, modelo Modo=responses) e guia completo de conectores |

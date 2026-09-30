@@ -1,8 +1,8 @@
 # CL Agents — Product Requirements Document (PRD)
 
 **Produto:** BlueShift IA Platform · **Marca de exibição:** **CL Agents** (by BlueShift IA Platform)
-**Versão do documento:** 0.3 (alinhado à versão 0.11.1 do produto)
-**Data:** 2026-09-12
+**Versão do documento:** 0.4 (alinhado à versão 0.11.8 do produto)
+**Data:** 2026-09-29
 **Autor:** Nei
 **Base tecnológica:** Flask standalone, Python puro (sem dependência de motor externo de IA)
 
@@ -288,6 +288,13 @@ Passo a passo completo: **`README.md`**.
 | Corpo das skills no prompt | ✅ v0.10.16 | — |
 | Connector Pack: OAuth2/bearer, polling + mapeamento, A2A, SSL/wallet, Modo `responses` | ✅ v0.11.0 | Validação fim-a-fim com credenciais reais de Databricks/Autonomous/AIDP |
 | Documentação navegável + Ajuda IA na mesma fonte + API Reference + Changelog + gate doc × código | ✅ v0.11.1 | Site interno de documentação (não publicado por decisão) |
+| Roteamento do SQL por intenção + conector ativo/desligado + diagnóstico honesto do motivo | ✅ v0.11.2 | — |
+| Gateway OpenAI: `/v1/models` autenticado + `stream` do cliente respeitado | ✅ v0.11.3 | — |
+| Atualização sem arquivos de dono `root` (container irmão como dono do repositório) | ✅ v0.11.4 | — |
+| Tool calling no gateway (ferramentas do cliente) | ✅ v0.11.5 | — |
+| Skills sem falha silenciosa (uma skill por agente + integridade da referência) | ✅ v0.11.6 | — |
+| Consulta inteligente: modelo do SQL (`BLUESHIFT_SQL_MODEL`) + escalada ao modelo principal | ✅ v0.11.7 | A escalada cobre erro de **execução** (coluna inexistente); consulta que roda com resultado semanticamente errado pede outra estratégia |
+| Resposta objetiva: diretiva de formato no prompt (~2,2x mais rápida, medido na prod) | ✅ v0.11.8 | Cauda de 20-42s do 1% de respostas longas (teto de produto/streaming) e cold start do roteador |
 | Snowflake | ⏳ decisão pendente | Dependência pesada (`snowflake-connector-python`) x REST com polling — decidir com o cliente |
 | A2A completo (streaming e multi-turno) | ⏳ fase 2 | Implementar quando houver caso de uso |
 | Modelo de roteamento embutido na plataforma | ⏳ avaliado | Hoje: modelo externo dedicado (LM Studio/llama-server); embutir exigiria binário + pesos na imagem |
