@@ -16,6 +16,20 @@ import urllib.request
 import urllib.error
 
 
+def _sem_v1(base_url: str) -> str:
+    """Remove um `/v1` final da base (v0.11.9).
+
+    O client sempre monta `{base}/v1/chat/completions` e `{base}/v1/models`.
+    Quando o cliente cadastra a base terminando em `/v1` (hábito comum, o
+    endpoint de chat É `/v1/chat/completions`), a URL final virava
+    `/v1/v1/chat/completions` e o servidor devolvia 404/HTML — o erro chegava
+    como resposta sem `choices` (ver B1). Normalizar na entrada custa nada e
+    aceita as duas formas de cadastro.
+    """
+    base = (base_url or "").strip().rstrip("/")
+    return base[:-3].rstrip("/") if base.endswith("/v1") else base
+
+
 def _resolver_host(base_url: str) -> str:
     """Se rodando em container e a URL for localhost, aponta pro host do Docker."""
     in_container = os.path.exists("/.dockerenv")
@@ -43,6 +57,10 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
     """
     base = _resolver_host(modelo["base_url"]).rstrip("/")
     modo = (modelo.get("modo") or "openai_chat").strip().lower()
+    if modo != "responses":
+        # v0.11.9 — o modo `responses` usa a base exatamente como cadastrada
+        # (agente externo); os demais montam /v1/... aqui.
+        base = _sem_v1(base)
     # usa max_tokens configurado no modelo, ou padrao 4096
     mt = max_tokens or modelo.get("max_tokens") or 4096
     # temperatura: chamada explicita vence; senao usa a do modelo cadastrado
@@ -98,7 +116,22 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
             }
             return {"ok": True, "content": content, "model": modelo["modelo"],
                     "error": None, "tokens": tokens}
-        msg = out["choices"][0]["message"] or {}
+        # v0.11.9 — antes: out["choices"][0] levantava KeyError e o texto cru
+        # ("'choices'") vazava como HTTP 502 na tela do usuario. Provedor que
+        # responde 200 sem `choices` e' erro de contrato: relatar em pt-BR e
+        # dizer o que veio, em vez de despejar o nome do campo.
+        escolhas = out.get("choices") if isinstance(out, dict) else None
+        if not escolhas:
+            _campos = ", ".join(sorted(out)[:6]) if isinstance(out, dict) else type(out).__name__
+            return {"ok": False, "content": "", "model": modelo["modelo"],
+                    "error": ("o provedor respondeu sem 'choices' "
+                              f"(campos recebidos: {_campos or 'nenhum'}). "
+                              "Confira a URL base (deve terminar na raiz do servidor, "
+                              "sem /v1) e se o modelo esta carregado."),
+                    "tokens": _ZERO_TOKENS()}
+        _escolha = escolhas[0] if isinstance(escolhas[0], dict) else {}
+        _msg = _escolha.get("message")
+        msg = _msg if isinstance(_msg, dict) else {"content": _msg or ""}
         content = msg.get("content") or ""
         # Tool calling: com tools o modelo devolve `tool_calls` e content nulo
         tool_calls = msg.get("tool_calls") or None
@@ -124,7 +157,11 @@ def chat(modelo: dict, mensagens: list[dict], max_tokens: int | None = None,
                          f"Confirme que o LM Studio / vLLM esta rodando em {base}.",
                 "tokens": _ZERO_TOKENS()}
     except Exception as e:  # noqa: BLE001 - relatar erro ao usuario
-        return {"ok": False, "content": "", "model": modelo["modelo"], "error": str(e),
+        # v0.11.9 — `str(e)` sozinho entregava "'choices'" na tela (parecia bug
+        # do portal, nao do endpoint). Prefixar com a classe e a base testada
+        # deixa o diagnostico possivel para quem opera.
+        return {"ok": False, "content": "", "model": modelo["modelo"],
+                "error": f"falha ao chamar {base} ({type(e).__name__}: {e})",
                 "tokens": _ZERO_TOKENS()}
 
 
@@ -167,7 +204,7 @@ def health(modelo: dict) -> bool:
     """
     if (modelo.get("modo") or "openai_chat").strip().lower() == "responses":
         return bool((modelo.get("base_url") or "").strip())
-    base = _resolver_host(modelo["base_url"]).rstrip("/")
+    base = _sem_v1(_resolver_host(modelo["base_url"]))
     url = f"{base}/v1/models"
     headers = {}
     if modelo.get("api_key"):

@@ -39,6 +39,23 @@ else
   echo "[installer] .env ja existe — usando configuracoes atuais."
 fi
 
+# 3. Segredo de sessao (v0.11.9): o repositiorio e publico, entao o valor de
+#    exemplo NAO pode virar o segredo da instalacao. Gera um aleatorio aqui —
+#    se ficar vazio, o proprio portal gera e persiste no volume (0600).
+if grep -qE "^BLUESHIFT_PORTAL_SECRET=($|bs-portal-secret-troque-em-producao$)" .env; then
+  if command -v openssl >/dev/null 2>&1; then
+    NOVO_SEGREDO=$(openssl rand -hex 32)
+  else
+    NOVO_SEGREDO=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  fi
+  if sed -i.bak "s|^BLUESHIFT_PORTAL_SECRET=.*|BLUESHIFT_PORTAL_SECRET=$NOVO_SEGREDO|" .env; then
+    rm -f .env.bak
+    echo "[installer] segredo de sessao gerado (BLUESHIFT_PORTAL_SECRET)."
+  else
+    echo "[installer] AVISO: nao consegui gravar o segredo; o portal vai gerar um proprio."
+  fi
+fi
+
 # carrega variaveis do .env para o script (docker compose ja as usa nativamente)
 set -a; [ -f .env ] && . ./.env; set +a
 

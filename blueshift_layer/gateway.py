@@ -312,7 +312,17 @@ def create_app() -> Flask:
 
     @app.post("/v1/chat/completions")
     def v1_chat():
+        # v0.11.9 — ORDEM: autenticar antes de validar o corpo. Antes, uma
+        # chamada sem token e com corpo invalido respondia 400 (e sem gateway
+        # configurado, 404) — revelando comportamento do endpoint a quem nao
+        # esta autenticado, e trocando o contrato de erro. 401 primeiro.
         token = _auth_token()
+        gws = _gateways_ativos()
+        tokens_validos = {g["canal_token"] for g in gws}
+        if not token or token not in tokens_validos:
+            return jsonify({"error": {"message": "token invalido",
+                                      "type": "authentication_error"}}), 401
+
         body = request.get_json(silent=True) or {}
         messages = body.get("messages") or []
         # Ultima mensagem do usuario vira a pergunta do agente
@@ -325,7 +335,6 @@ def create_app() -> Flask:
             return jsonify({"error": {"message": "mensagem de usuario obrigatoria",
                                       "type": "invalid_request_error"}}), 400
 
-        gws = _gateways_ativos()
         if not gws:
             return jsonify({"error": {"message": "nenhum gateway ativo configurado",
                                       "type": "server_error"}}), 404
@@ -343,11 +352,6 @@ def create_app() -> Flask:
         # (qualquer um). O Open WebUI usa UMA conexao (uma chave) para
         # varios modelos — o model escolhe o agente; o token valida a
         # autenticacao. Token de outro canal/gateway pausado -> 401.
-        tokens_validos = {g["canal_token"] for g in gws}
-        if not token or token not in tokens_validos:
-            return jsonify({"error": {"message": "token invalido",
-                                      "type": "authentication_error"}}), 401
-
         # Chats externos (ex: Open WebUI) fazem uma chamada EXTRA para gerar o
         # TITULO da conversa. Nao e pergunta real — responder direto com um
         # titulo (sem chamar o agente): nao grava trace/memoria/conhecimento

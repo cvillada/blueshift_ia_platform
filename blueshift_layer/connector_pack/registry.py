@@ -467,17 +467,25 @@ def _conectar_sql(config: dict):
         if _ssl:
             _extra["sslmode"] = _ssl
         if dsn:
-            return psycopg.connect(dsn, connect_timeout=5, **_extra)
-        return psycopg.connect(
-            host=host, port=config.get("sql_port", "5432"),
-            dbname=config.get("sql_db", ""),
-            user=config.get("sql_user", ""),
-            password=config.get("sql_pass", ""),
-            connect_timeout=5, **_extra
-        )
+            conn = psycopg.connect(dsn, connect_timeout=5, **_extra)
+        else:
+            conn = psycopg.connect(
+                host=host, port=config.get("sql_port", "5432"),
+                dbname=config.get("sql_db", ""),
+                user=config.get("sql_user", ""),
+                password=config.get("sql_pass", ""),
+                connect_timeout=5, **_extra
+            )
+        # v0.11.9 — sessao SOMENTE LEITURA: o conector so faz SELECT, entao
+        # DDL/DML nao executa nem se o guard falhar (defesa em profundidade).
+        try:
+            conn.read_only = True
+        except Exception:
+            pass
+        return conn
     if driver == "mysql":
         import pymysql
-        return pymysql.connect(
+        conn = pymysql.connect(
             host=host, port=int(config.get("sql_port", "3306")),
             database=config.get("sql_db", ""),
             user=config.get("sql_user", ""),
@@ -485,6 +493,14 @@ def _conectar_sql(config: dict):
             charset="utf8mb4",
             connect_timeout=5,
         )
+        # v0.11.9 — sessao somente leitura (ver comentario do Postgres acima).
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET SESSION TRANSACTION READ ONLY")
+            conn.commit()
+        except Exception:
+            pass
+        return conn
     if driver == "sqlserver":
         import pymssql
         return pymssql.connect(
@@ -561,11 +577,20 @@ _SQL_MAX_TOKENS = 900
 _SQL_MAX_TOKENS_ESCALADA = 1500
 
 
-def _rodar_select(conn, sql: str, driver: str, limite: int = _LIMITE_LINHAS) -> list[dict]:
-    """Executa um SELECT e devolve as linhas (dicts), limitadas a `limite`."""
+def _rodar_select(conn, sql: str, driver: str, limite: int = _LIMITE_LINHAS,
+                  params: list | None = None) -> list[dict]:
+    """Executa um SELECT e devolve as linhas (dicts), limitadas a `limite`.
+
+    `params` (v0.11.9): quando informado, os valores vao como PARAMETROS do
+    driver (`cur.execute(sql, params)`) em vez de interpolados no texto da
+    query — e o que fecha a injecao SQL no caminho da query fixa.
+    """
     kwargs = {"as_dict": True} if driver == "sqlserver" else {}
     with conn.cursor(**kwargs) as cur:
-        cur.execute(sql)
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
         if driver == "sqlserver":
             return cur.fetchmany(limite)
         cols = [desc[0] for desc in cur.description] if cur.description else []
@@ -652,6 +677,59 @@ def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
     return fixa
 
 
+def _parametrizar_sql(query: str, params: dict, driver: str) -> tuple[str, list]:
+    """Troca cada `{placeholder}` pelo marcador de parametro do driver (v0.11.9).
+
+    Devolve `(sql_com_marcadores, valores_na_ordem)`. O valor NUNCA entra no
+    texto do SQL: vai como parametro do driver. Antes (ate a v0.11.8) o valor
+    era interpolado com str() — o que permitia injecao pelo texto da pergunta
+    (`ano=1;DROP/**/TABLE/**/x;--`), confirmada em teste.
+
+    Oracle usa marcador numerico (`:1`, `:2`); os demais usam `%s` (estilo
+    pyformat). Em pyformat, `%` literal da query vira `%%` — senao o driver
+    tentaria interpretar (ex: query fixa com `LIKE 'vendas%'`).
+    """
+    if not params or "{" not in query:
+        return query, []
+    numerico = driver == "oracle"
+    if not numerico:
+        query = query.replace("%", "%%")
+    valores: list = []
+
+    def _repl(m):
+        chave = m.group(1)
+        if chave not in params:
+            return m.group(0)      # placeholder sem valor: barrado antes (P3)
+        valores.append(params[chave])
+        return f":{len(valores)}" if numerico else "%s"
+
+    return re.sub(r"\{(\w+)\}", _repl, query), valores
+
+
+def validar_query_fixa(query: str) -> str | None:
+    """Valida a query FIXA do conector no momento de salvar (v0.11.9 / D2).
+
+    Devolve a mensagem de erro, ou None quando esta ok. A query fixa e' do
+    admin (nao passa pelo guard do caminho de IA, que bloquearia UNION de
+    configuracao legitima), mas ela e' a instrucao que roda com o usuario do
+    banco naquele cliente: tem que ser UMA instrucao que comeca em SELECT/WITH.
+    Sem isso, `DROP TABLE ...` salvo na tela vira configuracao e o binding de
+    parametro (A1) nao protege — ele protege VALOR, nao TEXTO de query.
+    Query vazia e' valida: significa conector no modo consulta inteligente.
+    """
+    texto = (query or "").strip()
+    if not texto:
+        return None
+    sem_ponto_virgula = texto.rstrip(";").strip()
+    if ";" in sem_ponto_virgula:
+        return ("A query fixa deve ser UMA instrucao: remova o ';' e o que vem "
+                "depois dele.")
+    primeira = sem_ponto_virgula.split(None, 1)[0].upper()
+    if primeira not in ("SELECT", "WITH"):
+        return "A query fixa deve comecar com SELECT (ou WITH ... SELECT)."
+    return None
+
+
 def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     """Executa consulta SQL contra um banco configurado (PostgreSQL, MySQL, SQL Server)."""
     driver = config.get("sql_driver", "postgresql")
@@ -664,16 +742,17 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     if ausentes:
         return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
 
-    # Substitui placeholders na query
-    query = _aplicar_params(query, params)
+    # v0.11.9 — BINDING: o valor do placeholder vira PARAMETRO do driver, nunca
+    # texto na query (antes: _aplicar_params, que permitia injecao SQL).
+    sql, valores = _parametrizar_sql(query, params, driver)
 
     def _rodar():
         conn = _conectar_sql(config)
         try:
-            rows = _rodar_select(conn, query, driver)
+            rows = _rodar_select(conn, sql, driver, params=valores)
             conn.commit()
-            return {"tool": "sql:query", "args": query, "resultado": rows,
-                    "truncado": len(rows) >= _LIMITE_LINHAS}
+            return {"tool": "sql:query", "args": sql, "valores": valores,
+                    "resultado": rows, "truncado": len(rows) >= _LIMITE_LINHAS}
         finally:
             conn.close()
 
@@ -764,7 +843,16 @@ def _validar_sql_gerado(sql: str) -> list[str] | None:
             return None
         proibido = ("--", "/*", "drop ", "insert ", "update ", "delete ",
                     "alter ", "create ", "truncate ", "grant ", "revoke ",
-                    "exec ", "execute ", "union ", "into ", "call ", "replace ")
+                    "exec ", "execute ", "union ", "into ", "call ", "replace ",
+                    # v0.11.9 — funcoes/comandos perigosos que passavam pela
+                    # blacklist: leitura de arquivo do servidor, large objects,
+                    # conexao externa (SSRF via banco) e DoS.
+                    "pg_read_file", "pg_read_binary_file", "pg_read_server_files",
+                    "pg_ls_dir", "pg_stat_file", "pg_logdir_ls",
+                    "lo_import", "lo_export", "dblink", "pg_sleep",
+                    "pg_terminate_backend", "pg_cancel_backend", "copy ",
+                    "xp_cmdshell", "openrowset", "opendatasource",
+                    "load_file", "into outfile", "benchmark(", "sleep(")
         for p in proibido:
             if p in low:
                 return None

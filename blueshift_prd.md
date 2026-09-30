@@ -1,7 +1,7 @@
 # CL Agents — Product Requirements Document (PRD)
 
 **Produto:** BlueShift IA Platform · **Marca de exibição:** **CL Agents** (by BlueShift IA Platform)
-**Versão do documento:** 0.4 (alinhado à versão 0.11.8 do produto)
+**Versão do documento:** 0.5 (alinhado à versão 0.11.9 do produto)
 **Data:** 2026-09-29
 **Autor:** Nei
 **Base tecnológica:** Flask standalone, Python puro (sem dependência de motor externo de IA)
@@ -295,6 +295,7 @@ Passo a passo completo: **`README.md`**.
 | Skills sem falha silenciosa (uma skill por agente + integridade da referência) | ✅ v0.11.6 | — |
 | Consulta inteligente: modelo do SQL (`BLUESHIFT_SQL_MODEL`) + escalada ao modelo principal | ✅ v0.11.7 | A escalada cobre erro de **execução** (coluna inexistente); consulta que roda com resultado semanticamente errado pede outra estratégia |
 | Resposta objetiva: diretiva de formato no prompt (~2,2x mais rápida, medido na prod) | ✅ v0.11.8 | Cauda de 20-42s do 1% de respostas longas (teto de produto/streaming) e cold start do roteador |
+| Segurança pós-varredura (repositório aberto): injeção SQL fechada por binding de parâmetro + sessão somente-leitura + denylist + validação da query fixa ao salvar; RBAC nas telas com menu na mesma fonte; rate limit de login conta só falha e interrompe; XSS em `onclick` (`templates.j`); segredo de sessão gerado e persistido pelo portal; robustez (erro do provedor explicado, `base_url` com `/v1` normalizada, parâmetro inválido sem 500, gateway autentica antes do corpo, errorhandler 500 apresentável) | ✅ v0.11.9 | Ações destrutivas da interface ainda por link `GET` (POST + token de formulário na próxima versão) |
 | Snowflake | ⏳ decisão pendente | Dependência pesada (`snowflake-connector-python`) x REST com polling — decidir com o cliente |
 | A2A completo (streaming e multi-turno) | ⏳ fase 2 | Implementar quando houver caso de uso |
 | Modelo de roteamento embutido na plataforma | ⏳ avaliado | Hoje: modelo externo dedicado (LM Studio/llama-server); embutir exigiria binário + pesos na imagem |

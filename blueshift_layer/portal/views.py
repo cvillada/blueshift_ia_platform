@@ -101,6 +101,7 @@ def login():
         user = db.autenticar(login_, senha)
         if user:
             auth.fazer_login(user)
+            auth.login_ok()  # v0.11.9 — acerto zera o contador de falhas do IP
             db.registrar_auditoria(
                 user["login"], user["papel"], "login",
                 ip=request.remote_addr, detalhe="acesso ao portal",
@@ -108,6 +109,9 @@ def login():
             flash("Bem-vindo ao Portal BlueShift.", "ok")
             return redirect(url_for("portal.monitorar"))
         flash("Login ou senha inválidos.", "bad")
+        # v0.11.9 — a FALHA e que consome o orcamento do rate limit (5/min ->
+        # bloqueio de 15 min). Antes o contador somava qualquer POST de login.
+        auth.login_registrar_falha()
         # M4: trilha de tentativa falha (detecta brute-force junto com rate limit)
         db.registrar_auditoria(
             login_ or "(vazio)", "sistema", "login_falho",
@@ -764,7 +768,7 @@ def areas():
           <td class="muted">{uso}</td>
           <td class="row-actions">
             <a href="/portal/areas/{a['id']}/editar">editar</a>
-            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {templates.h(a['nome'])}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/areas/{a['id']}/excluir" onclick="return confirm('Excluir área {templates.j(a['nome'])}? Registros existentes mantêm a área no texto, mas ela some dos seletores.')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
     tabela = f"""<table><thead><tr><th>Área</th><th>Uso</th><th></th></tr></thead>
       <tbody>{body or '<tr><td colspan=3 class="empty">Nenhuma área cadastrada.</td></tr>'}</tbody></table>"""
@@ -879,7 +883,7 @@ def agentes():
           <td class="row-actions">
             <a href="/portal/agentes/{a['id']}/testar">testar</a>
             <a href="/portal/agentes/{a['id']}/editar">editar</a>
-            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {templates.h(a['nome'])}?')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/agentes/{a['id']}/excluir" onclick="return confirm('Excluir agente {templates.j(a['nome'])}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
@@ -1336,7 +1340,7 @@ def skills():
           <td><code>v{s.get('version','1.0.0')}</code></td>
           <td class="row-actions">
             <a href="/portal/skills/{s['name']}/editar">editar</a>
-            <a href="/portal/skills/{s['name']}/excluir" onclick="return confirm('Excluir skill {s['name']}?')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/skills/{s['name']}/excluir" onclick="return confirm('Excluir skill {templates.j(s['name'])}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Descrição</th><th>Versão</th><th></th></tr></thead>
@@ -1654,6 +1658,15 @@ def conectores():
             config["sql_sslmode"] = request.form.get("sql_sslmode", "").strip()
             config["wallet_dir"] = request.form.get("sql_wallet_dir", "").strip()
             config["wallet_password"] = request.form.get("sql_wallet_password", "").strip()
+            # D2 (v0.11.9) — a query fixa e validada AO SALVAR (uma instrucao,
+            # SELECT/WITH). Ela nao passa pelo guard do caminho de IA porque
+            # UNION/CTE sao uso legitimo de quem configura; o que nao pode e
+            # entrar DDL/DML aqui.
+            from ..connector_pack import registry as _registry  # import tardio: evita ciclo
+            _erro_query = _registry.validar_query_fixa(config["query"])
+            if _erro_query:
+                flash(_erro_query, "warn")
+                return redirect(url_for("portal.conectores"))
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -1700,8 +1713,8 @@ def conectores():
           <td>{_hb_cell}</td>
           <td class="row-actions">
             <a href="{url_for('portal.conector_editar', cid=k['id'])}">editar</a>
-            <a href="{url_for('portal.conector_alternar', cid=k['id'])}" onclick="return confirm('{_acao_ativo.capitalize()} o conector \'{k['nome']}\'?')">{_acao_ativo}</a>
-            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector \'{k['nome']}\'?')" style="color:var(--bad)">excluir</a>
+            <a href="{url_for('portal.conector_alternar', cid=k['id'])}" onclick="return confirm('{_acao_ativo.capitalize()} o conector {templates.j(k['nome'])}?')">{_acao_ativo}</a>
+            <a href="{url_for('portal.conector_excluir', cid=k['id'])}" onclick="return confirm('Excluir conector {templates.j(k['nome'])}?')" style="color:var(--bad)">excluir</a>
           </td></tr>"""
 
     opts_area = "".join(f'<option value="{a}" {"selected" if a == area_sel else ""}>{a}</option>' for a in listar_areas())
@@ -2151,6 +2164,12 @@ def conector_editar(cid: int):
             config["wallet_dir"] = request.form.get("sql_wallet_dir", "").strip()
             config["wallet_password"] = (request.form.get("sql_wallet_password", "").strip()
                                          or cfg.get("wallet_password", ""))
+            # D2 (v0.11.9) — mesma validacao da criacao, agora na edicao.
+            from ..connector_pack import registry as _registry  # import tardio: evita ciclo
+            _erro_query = _registry.validar_query_fixa(config["query"])
+            if _erro_query:
+                flash(_erro_query, "warn")
+                return redirect(url_for("portal.conector_editar", cid=cid))
 
         config["descricao"] = request.form.get("descricao", "").strip()
         finalidade = request.form.get("finalidade", "").strip()
@@ -3022,7 +3041,7 @@ def teste_ab():
                 just_attr = just.replace("'", "\\'").replace('"', '&quot;') if just else ""
                 cor_a = "rgba(34,197,94,.1)" if v == "A" else ("rgba(239,68,68,.08)" if v == "B" else "")
                 cor_b = "rgba(34,197,94,.1)" if v == "B" else ("rgba(239,68,68,.08)" if v == "A" else "")
-                info_icon = f' <span class="info-icon" onclick="alert(\'{just_attr}\')" title="Clique para detalhes" style="cursor:pointer;font-size:12px;color:var(--muted)">ⓘ</span>' if just else ""
+                info_icon = f' <span class="info-icon" onclick="alert(\'{templates.j(just)}\')" title="Clique para detalhes" style="cursor:pointer;font-size:12px;color:var(--muted)">ⓘ</span>' if just else ""
                 badge_v = {"A": f'<span class="badge ok">Venceu{info_icon}</span>',
                            "B": f'<span class="badge ok">Venceu{info_icon}</span>',
                            "EMPATE": f'<span class="badge neutral">Empate{info_icon}</span>'}.get(v, "")
@@ -4187,7 +4206,7 @@ def modelos():
           <td>{badge}</td>
           <td class="row-actions">
             <a href="/portal/modelos/{m['id']}/editar">editar</a>
-            <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {m['nome']}?')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/modelos/{m['id']}/excluir" onclick="return confirm('Excluir modelo {templates.j(m['nome'])}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Endpoint</th><th>Modelo</th><th>Temperatura</th><th>Status</th><th></th></tr></thead>
@@ -4946,7 +4965,7 @@ def gateway():
           <td class="row-actions">
             <a href="/portal/gateway/{g['id']}/editar">editar</a>
             <a href="/portal/gateway/{g['id']}/alternar">{"pausar" if g['ativo'] else "ativar"}</a>
-            <a href="/portal/gateway/{g['id']}/excluir" onclick="return confirm('Excluir gateway {g['nome']}?')" style="color:var(--bad)">excluir</a>
+            <a href="/portal/gateway/{g['id']}/excluir" onclick="return confirm('Excluir gateway {templates.j(g['nome'])}?')" style="color:var(--bad)">excluir</a>
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Nome</th><th>Canal</th><th>Agente</th><th>Modo</th><th>Status</th><th>Tool calling</th><th>Endpoint (OpenAI)</th><th></th></tr></thead>

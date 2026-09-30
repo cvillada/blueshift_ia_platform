@@ -23,6 +23,21 @@ def csrf_field() -> str:
     return f'<input type="hidden" name="_csrf_token" value="{csrf_token()}">'
 
 
+def j(texto) -> str:
+    """Escapa valor para dentro de string JavaScript num atributo HTML.
+
+    Ordem importa: primeiro o escape de JS (barra invertida, aspas, quebra de
+    linha) e SO DEPOIS o escape HTML do h(). O navegador decodifica o atributo
+    antes do JS interpretar, entao escapar apenas como HTML nao basta: uma aspa
+    no nome do recurso fecha a string do onclick (achado da varredura de
+    2026-09-30 — `onclick="return confirm('Excluir modelo <nome>?')"`).
+    """
+    s = "" if texto is None else str(texto)
+    s = (s.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+         .replace("\r", "\\r").replace("\n", "\\n"))
+    return h(s)
+
+
 def h(texto) -> str:
     """Escapa HTML para prevenir XSS. Aceita qualquer tipo:
     - str/None -> escape (None vira '')
@@ -233,6 +248,11 @@ function fecharFluxo(){var p=document.getElementById("fluxo-popup");if(p)p.style
 
 
 def _nav(active: str, user: dict | None) -> str:
+    # v0.11.9 — RBAC no menu: a MESMA fonte da rota (auth.TELAS_ADMIN) decide o
+    # que aparece. Antes o menu oferecia telas administrativas a qualquer papel.
+    from . import auth as _auth
+    _papel = (user or {}).get("papel", "")
+
     # Icones por pagina
     ICONS = {
         "monitorar": "\U0001f4ca", "workspace": "\U0001f3e2",
@@ -264,6 +284,8 @@ def _nav(active: str, user: dict | None) -> str:
         ("workspace", "Workspace", "/portal/workspace"),
     ]
     ICONS["ajuda"] = "\U0001f4a1"
+
+    itens = [i for i in itens if _auth.pode_ver(_papel, i[2])]
 
     # Submenus: (rotulo, icone_grupo, [(key, label, href), ...])
     submenus = [
@@ -308,6 +330,9 @@ def _nav(active: str, user: dict | None) -> str:
 
     # Submenus (Cadastros, Inteligencia, Operacao, Configuracoes)
     for rotulo, icone_grupo, itens_sub in submenus:
+        itens_sub = [i for i in itens_sub if _auth.pode_ver(_papel, i[2])]
+        if not itens_sub:
+            continue          # grupo so-admin some para quem nao e admin
         keys_sub = {k for k, _, _ in itens_sub}
         aberto = active in keys_sub
         seta = seta_aberto if aberto else seta_fechado

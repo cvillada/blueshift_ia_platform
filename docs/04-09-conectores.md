@@ -198,8 +198,17 @@ coisas convivem: veja "Como o agente decide o caminho" logo abaixo.
 | SSL mode | ❌ | TLS do PostgreSQL — **necessário** para Databricks SQL Warehouse e Postgres gerenciados | `require` |
 | Pasta do wallet (Oracle) | ❌ | Wallet descompactado no servidor (mTLS do Autonomous) | `/opt/blueshift/wallets/meuadb` |
 | Senha do wallet | ❌ | Senha do wallet (quando aplicável) | •••• |
-| Query SQL | ⚠️ | Consulta com placeholders. **Obrigatória** para consulta pontual; **pode ficar vazia** quando o conector existe só para a Consulta inteligente (aí ele responde sempre pelo SELECT montado sobre o schema) | `SELECT * FROM clientes WHERE id = {id_cliente}` ou vazio |
+| Query SQL | ⚠️ | Consulta com placeholders. **Obrigatória** para consulta pontual; **pode ficar vazia** quando o conector existe só para a Consulta inteligente (aí ele responde sempre pelo SELECT montado sobre o schema). Validada **ao salvar**: uma instrução, começando em `SELECT`/`WITH` | `SELECT * FROM clientes WHERE id = {id_cliente}` ou vazio |
 | Consulta inteligente | ❌ | Checkbox (padrão LIGADO) — análise automática sobre o schema real | ✅ |
+
+**Segurança da consulta (v0.11.9):** o valor que vem da pergunta entra como
+**parâmetro** do driver — nunca é escrito dentro do texto do SQL (era por aí que
+`ano=1; DROP TABLE ...` apagava tabela pela tela do agente). A conexão roda em
+**sessão somente-leitura**, funções perigosas do banco (`pg_read_file`, `dblink`,
+`COPY … TO`, `xp_cmdshell`, `LOAD_FILE`…) são bloqueadas na consulta montada pela
+IA e a **query fixa é validada ao salvar** (uma instrução, `SELECT`/`WITH`).
+Complemento recomendado: cadastre o conector com um **usuário de banco sem
+permissão de escrita** — é a camada que não depende do produto.
 
 **Como o agente decide o caminho (query fixa x Consulta inteligente):** a decisão
 não depende do verbo que o usuário digitou. O roteador (a mesma chamada que escolhe

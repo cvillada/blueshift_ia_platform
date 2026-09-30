@@ -4,6 +4,7 @@ __pycache__/
 .env
 models/
 data/
+.portal_secret
 blueshift_profile_*/
 .DS_Store
 *.egg-info/

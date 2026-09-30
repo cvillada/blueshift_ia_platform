@@ -12,6 +12,52 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.9 (2026-09-30) — segurança e robustez: o que a varredura encontrou**
+
+Depois de o repositório virar público, o produto passou por uma varredura
+funcional e de segurança de ponta a ponta. Esta versão entrega as correções.
+
+**Segurança**
+- **Injeção SQL no conector de banco (crítico):** a consulta passou a usar
+  **binding de parâmetro** — o valor vindo da pergunta nunca é escrito dentro do
+  SQL. Antes, `ano=1;DROP/**/TABLE/**/x;--` **apagava tabela** a partir da tela
+  do agente (reproduzido em teste), e `UNION SELECT` lia catálogo e arquivos do
+  servidor. Junto: a conexão roda em **sessão somente-leitura** e há **denylist**
+  de funções perigosas;
+- **RBAC nas telas:** cadastros e configuração (Clientes, Usuários, Áreas,
+  Modelos IA, Skills, Agentes, Conectores, Canais, Gateway, Auditoria, LGPD, SSO,
+  Atualizações, Teste A/B, Fine-tuning, Uso de tokens, Arquivo morto,
+  Observabilidade, Alertas) exigem papel **admin**. Antes, um usuário comum
+  conseguia **ler** essas telas. O **menu sai da mesma lista da rota** — o que
+  aparece é o que pode ser aberto;
+- **Rate limit de login:** conta apenas tentativa **falha**, e a tentativa
+  bloqueada **não é processada**. Antes o aviso não interrompia: com a senha
+  correta o login passava mesmo com o limite estourado. Entrar e sair várias
+  vezes não bloqueia mais ninguém;
+- **XSS em `onclick`:** nome de recurso com aspas não fecha mais a string do
+  JavaScript (novo `templates.j()`, escape específico para string JS);
+- **Segredo de sessão:** o instalador gera o segredo; o valor de exemplo saiu do
+  compose (é público no repositório) e, sem a variável, o portal **gera e
+  guarda** o segredo em `.portal_secret` (permissão 0600, dentro do volume) em
+  vez de sortear um por processo — a sessão sobrevive ao restart e não oscila;
+- **Query fixa do conector validada ao salvar** (uma instrução, começando em
+  `SELECT`/`WITH`): configurar `DROP` na tela deixa de ser possível.
+
+**Robustez**
+- Resposta do provedor **sem `choices`** deixa de vazar o erro cru (`'choices'`)
+  como HTTP 502 na tela — vem mensagem explicando o que o provedor devolveu;
+- **URL base terminando em `/v1`** é normalizada (fim do `/v1/v1/chat/completions`);
+- **Parâmetro inválido** em tela/URL não gera mais erro interno (500);
+- **Gateway OpenAI-compatible** autentica **antes** de validar o corpo (quem não
+  tem token recebe 401, e não 400/404);
+- **Erro interno** agora tem resposta apresentável: página em português no
+  portal e JSON nas rotas de API — o traceback fica no log do container.
+
+**Risco residual conhecido (documentado):** as ações destrutivas do portal
+(excluir, suspender, regenerar) ainda são disparadas por link `GET`. O
+`SameSite=Lax` do cookie já bloqueia o vetor silencioso; o ajuste para
+`POST` + token de formulário está previsto para a próxima versão.
+
 **v0.11.8 (2026-09-29) — resposta objetiva: menos espera, mesmo conteúdo**
 - **diretiva de formato no prompt do agente**: a medição na prod mostrou que a
   espera longa **não vinha do tamanho da resposta**, e sim do modelo
@@ -225,6 +271,7 @@ momento do release aparecem como `—`.
 
 | Versão | Data | Destaques registrados |
 |:-------|:-----|:----------------------|
+| v0.11.9 | 2026-09-30 | segurança: injeção SQL no conector fechada por binding de parâmetro (+ sessão somente-leitura + denylist + validação da query fixa ao salvar), RBAC nas telas de admin com menu na mesma fonte, rate limit de login conta só falha e interrompe, XSS em onclick (templates.j) e segredo de sessão gerado/persistido pelo portal; robustez: resposta sem `choices` sem vazar erro cru, base_url com /v1 normalizada, parâmetro inválido sem 500, gateway autenticando antes do corpo e errorhandler 500 apresentável |
 | v0.11.8 | 2026-09-29 | resposta objetiva: diretiva de formato no prompt do agente (~2,2x mais rápida, medido na prod); `max_tokens` mantido (teto é inerte) e pedido explícito de texto longo preservado |
 | v0.11.7 | 2026-09-29 | consulta inteligente: teto do SELECT 300→900, modelo do SQL (`BLUESHIFT_SQL_MODEL`) e escalada ao modelo principal quando a execução falha; correção do `_selecionar_conectores` (lista em vez de tupla) |
 | v0.11.6 | 2026-09-29 | skills sem falha silenciosa: uma skill por agente (radio, com "nenhuma"), corpo até 8.000 chars + `BLUESHIFT_SKILL_BODY_MAX`, skill em uso não pode ser excluída e skill que não resolve é reportada |
