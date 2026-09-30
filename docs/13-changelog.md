@@ -12,6 +12,32 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.8 (2026-09-29) — resposta objetiva: menos espera, mesmo conteúdo**
+- **diretiva de formato no prompt do agente**: a medição na prod mostrou que a
+  espera longa **não vinha do tamanho da resposta**, e sim do modelo
+  **recapitulando os dados e narrando o raciocínio** — 4.471 tokens gerados
+  para **121 caracteres** de resposta (41,8 s). A plataforma passa a instruir o
+  formato padrão: responder direto o que foi perguntado, sem repetir o mesmo
+  número em texto **e** em tabela, sem recapitular os dados recebidos e sem
+  explicar o raciocínio;
+- **~2,2x mais rápido no padrão** (medido contra o modelo principal da prod,
+  mesmas perguntas e mesmos dados): 5.668 ms → 2.590 ms (*"top 5 produtos"*),
+  4.965 ms → 2.283 ms (*"status do servidor"*) e 7.061 ms → 2.577 ms no caso
+  que mais rampeava;
+- **pedido explícito de texto longo continua atendido — e melhor**: sem a
+  cláusula de exceção o modelo **se recusava** a escrever a "história de 1000
+  palavras" (1.021 caracteres); com ela entrega 4.793;
+- **`max_tokens` não foi tocado**: o teto **não é o instrumento** — medido,
+  8.132 e 1.500 geram o **mesmo texto** (tokens e tempo idênticos), e baixá-lo
+  só arriscaria **cortar** a resposta (resposta cortada chega **vazia** ao
+  usuário);
+- **a regra de formato da skill do cliente continua ganhando**: a diretiva entra
+  **antes** do bloco de SKILLS;
+- nota de rastreio: as respostas **vazias** observadas na prod (7 de 400 traces)
+  traziam o erro `not enough values to unpack` — **o mesmo defeito corrigido na
+  v0.11.7**. Nos traces com **ferramentas do cliente** (gateway), `content`
+  vazio é o **contrato de tool-call**: o cliente recebe `tool_calls`, não texto.
+
 **v0.11.7 (2026-09-29) — consulta inteligente: o SELECT não falha mais em silêncio (modelo do SQL + escalada)**
 - **teto de saída do SELECT: 300 → 900 tokens** (1500 na escalada). Com 300 a
   consulta era cortada — e resposta cortada chega **vazia**, não truncada: o

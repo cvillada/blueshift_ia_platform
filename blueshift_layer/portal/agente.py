@@ -180,6 +180,26 @@ def _skill_body_max() -> int:
         return _SKILL_BODY_MAX
 
 
+# Formato da resposta (v0.11.8). O modelo principal (reasoning) gastava a maior
+# parte da geracao "pensando em voz alta" e recapitulando os dados: medido na
+# prod, 4.471 tokens gerados para 121 chars de resposta (41,8s de espera).
+# A diretiva corta o padrao em ~2,2x SEM tocar em max_tokens — provado inerte
+# (8132 e 1500 geram o MESMO texto) e capaz apenas de cortar a resposta.
+# A clausula de excecao existe porque sem ela o modelo se recusava a atender
+# pedido explicito de texto longo ("historia de 1000 palavras": 1.021 chars
+# antes, 4.793 chars com ela). Vai ANTES do bloco de SKILLS de proposito: a
+# regra de formato da skill do cliente, quando existir, continua ganhando.
+_DIRETIVA_RESPOSTA = (
+    "FORMATO DA RESPOSTA: seja objetivo — responda direto o que foi perguntado, "
+    "sem repetir os mesmos números em texto E em tabela, sem recapitular os "
+    "dados recebidos e sem explicar seu raciocínio. Use tabela apenas quando "
+    "houver dados comparáveis. Se o usuário pedir explicitamente um texto longo "
+    "(ex.: 'conte uma história de 1000 palavras', 'relatório completo'), atenda "
+    "o pedido dele: a objetividade vale para o padrão, não para um pedido "
+    "explícito.\n"
+)
+
+
 def _skills_blocos(skills_csv: str) -> tuple[str, list[str]]:
     """(bloco de instrucao, nomes que NAO resolveram) das skills do agente.
 
@@ -639,6 +659,7 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
     system = (
         f"Você é o agente corporativo '{agente['nome']}' "
         f"(área: {area or 'geral'}).\n"
+        f"{_DIRETIVA_RESPOSTA}"
     )
     if skills_txt:
         system += ("\nSKILLS DO AGENTE (instrucoes das skills anexadas — as "

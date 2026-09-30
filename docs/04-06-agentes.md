@@ -59,6 +59,18 @@ agente é instruído a NÃO inventar valores (datas, nomes, números, IDs) —
 responde "não encontrei" e sugere reformular a pergunta (ex: informar
 `id_cliente=58`).
 
+**Formato da resposta (objetividade):** todo agente recebe no prompt a diretiva
+de formato — responder direto o que foi perguntado, **sem repetir o mesmo número
+em texto e em tabela**, sem recapitular os dados recebidos e sem narrar o
+raciocínio. Medido contra o modelo principal da prod: **~2,2x mais rápido** com
+o mesmo conteúdo (5.668 ms → 2.590 ms), porque a espera longa era o modelo
+"pensando em voz alta" (4.471 tokens gerados para 121 caracteres de resposta).
+**Pedido explícito de texto longo continua sendo atendido** ("conte uma história
+de 1000 palavras", "relatório completo") — a objetividade vale para o padrão.
+Detalhe importante para quem escreve skills: a diretiva entra **antes** do bloco
+de SKILLS, então uma **skill do cliente com regra de formato própria tem
+precedência** sobre ela.
+
 **Importante:** os conectores do agente são herdados automaticamente da
 **área** dele (não há mais checkboxes de ERP/CRM/RH no formulário).
 **Modelo secundário (fallback):** o campo `modelo_secundario_id` define o modelo
