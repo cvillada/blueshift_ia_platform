@@ -12,6 +12,149 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.11 (2026-10-03) — Mestre + Workers: um agente orquestra vários agentes**
+
+### Novo
+- **Agente mestre com workers**: na tela do agente, o card **Workers** monta a
+  orquestração — a lista mostra os workers do mestre, com **↑ ↓** (ordem de
+  execução), **editar** e **excluir** por linha, e **➕ Cadastrar worker** cria o
+  agente já vinculado (Nome, Área, Modelo) sem sair da tela. Cada worker roda
+  **só os conectores da área dele** e devolve dados; o mestre recebe os blocos
+  rotulados (`[WORKER 1: Agente Vendas (vendas) | consulta.tool]`) e consolida a
+  resposta final. Sem workers, o comportamento é exatamente o de antes.
+- **Execução em paralelo** (até 3 simultâneos): o tempo do mestre é o do worker
+  mais lento + a consolidação, e não a soma dos workers. Sem workers no caminho,
+  o custo por chamada é o mesmo de sempre.
+- **Custo visível**: as chamadas de **consulta inteligente** (text-to-SQL) —
+  que antes não apareciam em relatório nenhum — passam a ser contabilizadas em
+  Uso de Tokens com a origem **`sql`**, **na chamada do mestre** (inclui as
+  consultas feitas por cada worker, que não têm relatório próprio).
+- **Lista de Agentes e Workspace** mostram só o **mestre** (com a etiqueta
+  **🧩 mestre de N workers** e os nomes dos workers no card); worker não tem linha
+  na tela de Agentes nem card no Workspace — os avisos lembram onde eles se
+  cadastram. `↑`/`↓` no card Workers mudam a ordem **sem** jogar a tela para o
+  topo; editar um worker e desistir (ou salvar) **volta para o mestre**, no ponto
+  do card.
+- **Worker não escolhe modelo**: ele **herda o modelo do mestre** (inclusive na
+  consulta inteligente de cada worker). O cadastro de worker no card do mestre
+  pede só **Nome** e **Área**, e na tela do worker o campo de modelo aparece como
+  *herda do mestre* — antes havia um select ali que a cadeia ignorava
+  (configuração morta na tela).
+- **Skill própria do worker:** o agente sozinho continua igual (a skill dele
+  responde ao usuário). No mestre+workers o worker usa a **skill dele** para
+  organizar o dado da área antes de entregar, e o mestre responde com a skill
+  dele; o dado bruto segue junto e o Rastreio mostra os dois. O cadastro de worker
+  no card do mestre passou a ter **Skill do worker (opcional)** — worker sem skill
+  devolve só o dado, como antes (+0 chamada de LLM). Com skill: **+1 chamada de
+  LLM** por worker, com retry automático (teto maior + espera) quando o modelo
+  devolve vazio ou o servidor está ocupado. As leituras rodam na **fase 2** —
+  depois que **todos** os workers terminaram os conectores e **uma por vez**: foi
+  essa sobreposição (leitura de um worker x geração de SQL do outro) que devolvia
+  **HTTP 500** num servidor de IA de um slot e deixava o worker sem leitura
+  (traces #357/#359). O dado bruto continua indo em paralelo.
+- **Rastreio — conectores:** a linha de cada conector contava registros por
+  `resultado.length`; quando o retorno é **objeto** (conector de API e o bloco de
+  leitura do worker) o JavaScript mostrava **`undefined registros`**. Agora
+  `bsConector()` (JS global) mostra registros para lista, **campos** para objeto,
+  o texto da **leitura organizada pela skill** e o motivo no caso de erro.
+- **Rastreio — valor do parâmetro ligado:** o SQL executado aparece com o
+  marcador (`WHERE r.customer_id = %s`) porque, desde a v0.11.9, o valor do
+  `{id_cliente}` viaja como **parâmetro do driver** e nunca é escrito no texto do
+  SQL (é o que fecha a injeção). Faltava mostrar o valor: agora a linha do
+  conector traz também **`valores ligados (vão como PARÂMETRO do driver, FORA do
+  texto do SQL): ["22"]`**, ao lado do SQL — dá para conferir o filtro sem
+  adivinhar (dúvida levantada no Rastreio #364).
+- **Prompt — bloco de dados legível:** o bloco ia para o modelo como dump Python
+  (`args=[...] -> [{'sql': ...}]`). Medido: o modelo **recitava o SQL** na resposta
+  e o worker com skill **ecoava** o bloco em vez de organizar. Agora o bloco é
+  texto legível (`1 linha(s): coluna=valor`), com o SQL **fora** do prompt (o
+  Rastreio continua guardando o SQL gerado).
+- **Prompt do text-to-SQL — critério explícito:** o prompt de geração ganhou três
+  regras, todas vindas de Rastreio real (`#368`, `#369`, `#370` e o E2E do
+  cliente 22): (1) **`LIMIT`/`TOP` nunca sem `ORDER BY`** e nunca com direção
+  implícita — "maior/mais recente/último/top" pede `DESC`, "menor/mais
+  antigo/primeiro" pede `ASC` (o `#369` saiu `ORDER BY r.rental_date` sem
+  direção, o MySQL resolveu como `ASC` e devolveu o mais **antigo**); (2) a
+  **coluna do critério** e as **colunas do filtro** têm de vir **no `SELECT`**
+  (`SELECT c.customer_id, f.title, r.rental_date …`) para o resultado provar a
+  ordem e a quem o dado pertence; (3) **contagem sem join 1:N** — `COUNT(*)`
+  com `GROUP BY`/`ORDER BY`, `COUNT(DISTINCT chave_do_evento)` quando o nome vem
+  de outra tabela (medido: `JOIN film_actor` para contar aluguel devolvia o
+  número de **atores** — "DROP WATERFRONT = 8" em vez de 1, e 122 aluguéis em vez
+  de 22). Empate no topo é reportado com a contagem; o modelo não escolhe um
+  registro como se fosse o único.
+- **Prompt do text-to-SQL — regras repetidas no pedido e topo com contagem:** as
+  mesmas regras passaram a ser **repetidas na mensagem do usuário** (bloco
+  `LEMBRETES`, colado na pergunta, antes do `SQL:`) — no E2E do cliente 22 o
+  modelo seguiu a regra numa pergunta e ignorou na seguinte quando ela estava só
+  no *system*. E o topo agora vem **com a contagem** (`LIMIT 5`) em vez de
+  `LIMIT 1` quando a pergunta não pede uma linha só: o `LIMIT 1` cortava o
+  empate e o modelo respondia "não é possível confirmar" sem mostrar os pares.
+- **B3 — ordem e empate (fase da resposta):** o bloco de dados passou a trazer o
+  **critério da consulta** em vez do texto do SQL — `(consulta: ordenado por
+  rental_date (maior/mais recente primeiro); no máximo 1 linha(s))`, extraído da
+  query executada (`registry._criterio_da_consulta`). Causa medida no E2E do
+  cliente 22: o modelo de resposta **não via a consulta** (o SQL sai do prompt
+  desde a v0.11.9, para não ser recitado), então recebia uma linha de uma
+  consulta `ORDER BY … DESC LIMIT 1` e respondia com ressalva ("não veio
+  classificada"). Com o critério, a diretiva `ORDEM E ATUALIDADE` **autoriza
+  afirmar**: a primeira linha é o maior/mais recente — e continua proibindo
+  afirmar quando o bloco não traz ordenação. No mesmo guard, **empate**: quando o
+  topo vem com contagens iguais (ou contagem 1), a resposta diz o empate e nunca
+  apresenta um registro como único vencedor (era o caso do "top 1" respondendo
+  `BARBARELLA STREETCAR` num empate de 22 títulos com 1 locação cada).
+- **Repetição quando o SQL gerado não existe no banco:** no E2E do cliente 22 a
+  pergunta "filme mais alugado" falhou com `(1054, "Unknown column 'f.title'")` —
+  o modelo escreveu `f.title` sem juntar `film`, e a resposta virava "não há dado"
+  existindo dado. Agora, quando o erro é do **SQL gerado** (coluna/tabela
+  inexistente, sintaxe — `registry._erro_sql_invalido`), a consulta inteligente
+  repete **uma vez com o mesmo modelo**: escalar para o principal não funcionava
+  aqui porque `BLUESHIFT_SQL_MODEL` e o modelo do agente apontavam para o mesmo
+  alvo (a regra "não escalar para o mesmo modelo" barrava a segunda tentativa).
+  Resultado **vazio** e **timeout** continuam fora da repetição. Nunca três
+  chamadas: 1 tentativa + 1 repetição.
+
+### Segurança / integridade
+- Worker **não pode ter workers** (profundidade 1): a tela do worker não oferece o
+  card e o servidor recusa, mesmo por chamada direta. Além disso, sem nome ou sem
+  modelo o worker não é criado, e acima de 10 workers o cadastro é recusado.
+- **Excluir o mestre leva os workers junto** (o `confirm` nomeia quais) — evita
+  worker órfão respondendo sem se saber de quem ele era; pela listagem, excluir um
+  worker em uso continua **recusado** (o caminho é o card do mestre).
+- Toda ação da orquestração (cadastrar, subir, descer, excluir) é **POST com o
+  token da sessão** e entra na auditoria.
+- A lista de workers é **avisada** quando: o worker está pausado ou sem conector
+  na área (a linha mostra "sem conector"), dois workers estão na mesma área
+  (consulta repetida) ou a área do mestre tem conector ativo (o mestre também
+  consulta).
+
+### Correções
+- **Consulta inteligente (text-to-SQL)**: quando o modelo devolvia **duas
+  consultas coladas** (separadas por linha em branco em vez de `;`), o texto ia
+  inteiro como uma só consulta e o banco recusava com erro de sintaxe — perdendo
+  também a consulta que estava correta. Agora as consultas coladas são separadas
+  (linha em branco ou logo após um `LIMIT`), validadas e executadas uma a uma.
+- **Rastreio**: quando a consulta inteligente falha, o bloco passa a mostrar o
+  **SQL que o modelo gerou** — antes só havia a mensagem do banco, e não dava
+  para saber o que o modelo escreveu sem reproduzir a chamada.
+- **Honestidade da resposta (ordem)**: o agente não afirma mais "o mais recente",
+  "o último" ou "o maior" quando os dados recebidos não vieram ordenados
+  (consulta sem `ORDER BY`) — nesse caso apresenta os itens sem o qualificador e
+  diz que a consulta não trouxe essa ordenação.
+- **JavaScript do portal**: uma linha inválida no script global (uma palavra do
+  Python que entrou no JS) fazia o navegador **descartar o script inteiro** — menu,
+  popup e botões paravam de responder sem erro visível na página. Corrigido, e
+  agora existe checagem automática: `python tools/js_check.py` percorre as telas,
+  valida cada `<script>` com `node --check` e confere se todo handler inline
+  (`onclick`/`onsubmit`…) chama função que existe.
+
+### Operação
+- **Voz**: não usar workers em agente de telefonia/voz (a cadeia acrescenta
+  segundos; a voz exige resposta abaixo de 1s). Regra de operação, avisada na
+  própria tela.
+- **Banco**: `PRAGMA busy_timeout` explícito no acesso ao `portal.db` (vários
+  conectores gravando heartbeat em paralelo).
+
 **v0.11.10 (2026-09-30) — ação destrutiva exige POST; campo inválido não derruba a tela**
 
 ### Segurança

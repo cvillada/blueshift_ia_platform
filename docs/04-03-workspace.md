@@ -16,9 +16,13 @@
     conectores → RAG → LLM, com 👍/👎 feedback e 🔍 rastreio);
   - **fluxo**: abre o popup do **fluxo de execução** do agente (diagrama
     de fluxo horizontal, 100% offline, sem lib externa):
-    `Entrada (Chat/API) → fontes de dados (conectores da área) → LLM
-    (modelo + fallback) → skills (1 caixinha por skill) → Resposta →
-    Envio (Chat/API)`.
+    `Entrada (Chat/API) → botões 🧩 (workers do mestre) → fontes de dados
+    (conectores da área) → LLM (modelo + fallback) → skills (1 caixinha
+    por skill) → Resposta → Envio (Chat/API)`.
     As caixinhas são **arrastáveis** (as linhas acompanham) e os dados
-    são dinâmicos do agente (modelo, fallback, skills, conectores).
+    são dinâmicos do agente (modelo, fallback, skills, conectores, workers).
+- **Workers não têm card aqui**: quem responde ao usuário é o **mestre**, então o
+  Workspace lista só ele — o card do mestre mostra `🧩 mestre de N worker(s):
+  nome, nome` e o popup **fluxo** desenha a cadeia na ordem gravada. O KPI
+  "Agentes" também conta só os mestres/agentes soltos (worker não infla a conta).
 - Acesso: qualquer usuário autenticado.

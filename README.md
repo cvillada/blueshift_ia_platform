@@ -187,6 +187,14 @@ A **BlueShift IA Platform** é uma plataforma de inteligência artificial projet
 
 ### 🤖 Agentes (Agent Factory)
 
+- **Agente mestre + workers** — um agente pode orquestrar **agentes folha**: cada
+  worker roda **só os conectores da área dele**, em **paralelo** (até 3
+  simultâneos), e devolve o dado da área; o mestre consolida a resposta final.
+  O worker **herda o modelo do mestre** e, quando tem **skill própria**,
+  organiza o dado da área antes de entregar (+1 chamada de LLM; sem skill,
+  devolve o dado cru, como antes). Sem workers, o agente se comporta
+  **exatamente** como antes. Os workers se cadastram **no próprio card do
+  mestre** e não aparecem na lista de Agentes nem no Workspace.
 - **Modelo principal + fallback automático** — se o endpoint principal falha, tenta o secundário
 - **Skills do catálogo** — skills reutilizáveis por área
 - **Conectores da área com ROTEAMENTO inteligente** — uma IA curta decide
@@ -225,6 +233,13 @@ análise ("quem alugou mais e menos", "quantos por categoria"), o agente monta o
 SELECT sozinho a partir do **schema real da fonte** (tabelas/views + colunas),
 genérico por driver (MySQL/PostgreSQL/SQL Server/Oracle), com validação de
 segurança (somente SELECT de leitura + LIMIT) e checkbox por conector na tela.
+O prompt do SQL exige **critério explícito** (`ORDER BY` com `DESC`/`ASC`,
+coluna do critério e do filtro no `SELECT`, contagem sem `JOIN` que multiplica) e,
+quando o SELECT gerado **não existe no banco** (coluna/tabela inventada ou `JOIN`
+esquecido), a geração **repete uma vez** antes de desistir. O bloco de dados que
+chega ao modelo leva o **critério da consulta** (ordenação/limite) — é o que
+permite afirmar "o mais recente" sem recitar o SQL e reportar **empate** em vez
+de apontar um vencedor único.
 
 **Gráficos:** pedidos de gráfico (pizza/barras/linha) geram a imagem
 automaticamente a partir dos dados dos conectores (matplotlib embutido), anexada

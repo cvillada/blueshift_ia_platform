@@ -263,7 +263,12 @@ com o **modelo principal do agente**, que é maior e mais robusto. Escalou, o
 trace grava `escalada_sql`. Não é cascata: no máximo duas tentativas por consulta
 (uma do modelo configurado, uma do principal). Apontar `BLUESHIFT_SQL_MODEL` para
 o próprio modelo principal **desliga** a escalada (não faz sentido repetir a
-mesma chamada). Detalhes de tamanho de modelo na §5.8.
+mesma chamada) **com uma exceção**: se o SELECT gerado **não existe no banco**
+(coluna/tabela inventada, JOIN esquecido — `Unknown column`, *doesn't exist*,
+erro de sintaxe), a plataforma repete **uma vez com o mesmo modelo** antes de
+desistir, porque aí o problema é o deslize da geração e não o tamanho do modelo.
+Resultado vazio e timeout **não** entram nessa repetição (repetir a mesma chamada
+não muda nada neles). Detalhes de tamanho de modelo na §5.8.
 
 Desligar o checkbox = só a query fixa (a análise automática não entra).
 

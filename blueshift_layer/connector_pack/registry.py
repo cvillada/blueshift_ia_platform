@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -28,6 +29,38 @@ from ..portal import db
 # --------------------------------------------------------------------------- #
 # Engine principal: executa conectores de uma area                           #
 # --------------------------------------------------------------------------- #
+
+# Consumo de tokens do caminho da CONSULTA INTELIGENTE (text-to-SQL), por thread.
+# O llm_client ja devolve `usage`, mas esse consumo era DESCARTADO: so a resposta
+# final entrava em `uso_tokens`. Com agente que gera SQL (e com mestre+workers,
+# que multiplica o numero de consultas) o custo real ficava invisivel no relatorio.
+# Thread-local de proposito: os workers do mestre rodam em threads paralelas e
+# cada uma acumula o proprio consumo; `consumir_tokens_sql()` le e zera.
+_tokens_sql = threading.local()
+
+
+def _somar_tokens_sql(tok: dict | None) -> None:
+    """Acumula o `usage` de uma chamada do caminho SQL na thread atual."""
+    if not tok:
+        return
+    atual = getattr(_tokens_sql, "acumulado", None) or {
+        "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for k in atual:
+        atual[k] = int(atual.get(k, 0) or 0) + int(tok.get(k, 0) or 0)
+    _tokens_sql.acumulado = atual
+
+
+def consumir_tokens_sql() -> dict:
+    """Devolve (e ZERA) o consumo de tokens do caminho SQL DESTA thread.
+
+    Quem chama e o dono da thread: o `responder()` (conectores do mestre) e o
+    `executar_worker()` (workers, cada um na sua thread). Sem acumulador, o
+    custo por consulta inteligente nao aparece em lugar nenhum.
+    """
+    atual = dict(getattr(_tokens_sql, "acumulado", None) or {})
+    _tokens_sql.acumulado = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    return atual
+
 
 def executar_conectores_area(cliente_id: int, area: str, pergunta: str,
                              parametros: dict | None = None,
@@ -752,6 +785,7 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
             rows = _rodar_select(conn, sql, driver, params=valores)
             conn.commit()
             return {"tool": "sql:query", "args": sql, "valores": valores,
+                    "criterio": _criterio_da_consulta(sql),
                     "resultado": rows, "truncado": len(rows) >= _LIMITE_LINHAS}
         finally:
             conn.close()
@@ -822,12 +856,54 @@ def _descobrir_schema(config: dict, max_tabelas: int = 15,
     return "\n".join(blocos) or "(schema vazio)"
 
 
+def _separar_selects_colados(sql: str) -> list[str]:
+    """Separa DUAS consultas que o modelo colou sem o ';' entre elas.
+
+    Medido (v0.11.11, trace #337): o modelo devolveu
+        SELECT ... ORDER BY r.rental_date DESC LIMIT 1
+        <linha em branco, sem ';'>
+        SELECT ... WHERE a.postal_code = '03679040';
+    A divisao por ';' via UM statement, a validacao aprovava e o banco recusava
+    o texto inteiro com erro de sintaxe (1064) — derrubando tambem a consulta
+    que estava CORRETA. Aqui elas viram duas consultas e cada uma roda.
+
+    Dois sinais de consulta nova (nunca um subselect, que vem entre parenteses):
+      - SELECT iniciando linha depois de LINHA EM BRANCO;
+      - SELECT iniciando linha logo depois de um LIMIT n.
+    Em ambos, a divisao so vale se o texto anterior tiver os parenteses
+    FECHADOS (senao o SELECT e subselect de uma consulta aberta, nao uma nova).
+    """
+    def _dentro_de_parenteses(texto: str) -> bool:
+        return texto.count("(") > texto.count(")")
+
+    cortes = [m.start() for m in re.finditer(r"\n\s*\n\s*(?=select\b)", sql, flags=re.I)
+              if not _dentro_de_parenteses(sql[:m.start()])]
+    partes: list[str] = []
+    ini = 0
+    for b in cortes:
+        partes.append(sql[ini:b])
+        ini = b
+    partes.append(sql[ini:])
+
+    saida: list[str] = []
+    for p in partes:
+        while True:
+            m = re.search(r"(?i)(\blimit\s+\d+)\s*\n\s*(?=select\b)", p)
+            if not m or _dentro_de_parenteses(p[:m.end(1)]):
+                break
+            saida.append(p[:m.end(1)])
+            p = p[m.end():]
+        saida.append(p)
+    return [s.strip() for s in saida if s.strip()]
+
+
 def _validar_sql_gerado(sql: str) -> list[str] | None:
     """Valida SQL gerado por IA: uma ou mais consultas SELECT de leitura.
 
-    Divide por ';' e valida CADA statement (somente SELECT, sem DDL/DML,
-    comentarios, UNION, INTO...). Cada um ganha LIMIT 50 quando o dialeto
-    nao trouxe. Retorna a lista de SQLs validados, ou None se qualquer
+    Divide por ';' (e por consultas coladas SEM ';', ver
+    `_separar_selects_colados`) e valida CADA statement (somente SELECT, sem
+    DDL/DML, comentarios, UNION, INTO...). Cada um ganha LIMIT 50 quando o
+    dialeto nao trouxe. Retorna a lista de SQLs validados, ou None se qualquer
     statement falhar (ex: "mais e menos" gera 2 SELECTs legitimos).
     """
     if not sql:
@@ -835,8 +911,14 @@ def _validar_sql_gerado(sql: str) -> list[str] | None:
     statements = [s.strip() for s in sql.split(";") if s.strip()]
     if not statements:
         return None
-    validados: list[str] = []
+    # v0.11.11 — o modelo tambem cola duas consultas sem ';' entre elas (linha
+    # em branco ou logo apos o LIMIT). Sem isto o texto ia inteiro como UM
+    # statement e o banco recusava com 1064, matando a consulta que estava certa.
+    expandidos: list[str] = []
     for st in statements:
+        expandidos.extend(_separar_selects_colados(st))
+    validados: list[str] = []
+    for st in expandidos:
         limpo = st.rstrip().strip()
         low = limpo.lower()
         if not low.startswith("select"):
@@ -880,10 +962,43 @@ def _gerar_sql_ia(pergunta: str, schema: str, modelo: dict,
             f"O banco e {dialeto}. Responda APENAS com o SQL: sem markdown, sem "
             "explicacoes, sem ponto e virgula no final. Use apenas tabelas e "
             "colunas existentes no schema. Se a pergunta pedir ranking/limite, "
-            "use LIMIT (ou TOP no SQL Server).")},
-        {"role": "user", "content": f"SCHEMA:\n{schema}\n\nPERGUNTA: {pergunta}\n\nSQL:"},
+            "use LIMIT (ou TOP no SQL Server).\n"
+            "ORDENACAO (obrigatorio): nunca use LIMIT/TOP sem ORDER BY, e nunca "
+            "deixe a direcao implicita — escreva DESC ou ASC. Pergunta por "
+            "'maior/mais recente/ultimo/top/mais caro' pede ORDER BY <coluna> "
+            "DESC; por 'menor/mais antigo/primeiro' pede ASC. Quando a pergunta "
+            "citar o criterio (ex: 'ordene pela maior data de aluguel'), traga "
+            "TAMBEM no SELECT a coluna usada no ORDER BY, para o resultado "
+            "provar a ordem: SELECT f.title, r.rental_date FROM ... ORDER BY "
+            "r.rental_date DESC LIMIT 1.\n"
+            "CONTAGEM: 'mais alugado/mais vendido/mais frequente' pede "
+            "contagem — COUNT(*) com GROUP BY e ORDER BY COUNT(*) DESC, "
+            "trazendo a contagem no SELECT (ex: SELECT f.title, COUNT(*) AS n "
+            "... GROUP BY f.title ORDER BY n DESC). Se o topo empatar, o SELECT "
+            "traz a contagem; nao escolha um registro como se fosse o unico. "
+            "Conte alugueis/vendas e nao linhas de join: CADA JOIN 1:N MULTIPLICA "
+            "A CONTAGEM (join em film_actor para contar aluguel de filme devolve "
+            "o numero de ATORES, nao de alugueis) — nao junte tabela que nao "
+            "filtra nada; se o nome vier de outra tabela, use COUNT(DISTINCT "
+            "chave_do_evento) (ex: COUNT(DISTINCT r.rental_id)). Sem pedido "
+            "explicito de UMA linha ('top 1', 'qual o'), devolva o topo COM a "
+            "contagem (LIMIT 5) e deixe o empate visivel — reserve LIMIT 1 para "
+            "quando o usuario pedir um so.\n"
+            "FILTRO: traga tambem no SELECT as colunas usadas no WHERE (ex: "
+            "SELECT c.customer_id, f.title ... WHERE c.customer_id = 22), para o "
+            "resultado provar a quem o dado pertence.")},
+        {"role": "user", "content": (
+            f"SCHEMA:\n{schema}\n\nPERGUNTA: {pergunta}\n\n"
+            "LEMBRETES: ORDER BY sempre com DESC ou ASC (nunca implicito) e nunca "
+            "LIMIT/TOP sem ORDER BY; traga no SELECT as colunas usadas no ORDER BY "
+            "e no WHERE; 'mais alugado/vendido' e COUNT(*) com GROUP BY (sem join "
+            "que multiplica a contagem) e o topo vem COM a contagem (LIMIT 5), "
+            "nao LIMIT 1.\n\nSQL:")},
     ]
     out = llm_client.chat(modelo, mensagens, max_tokens=max_tokens, temperatura=0.0)
+    # O consumo desta chamada entra no acumulador da thread (uso_tokens): gerar
+    # SQL e uma chamada PAGA ao provedor e antes nao aparecia em relatorio nenhum.
+    _somar_tokens_sql(out.get("tokens"))
     if not out.get("ok"):
         return None
     texto = (out.get("content") or "").strip()
@@ -923,6 +1038,62 @@ def _mesmo_alvo(a: dict | None, b: dict | None) -> bool:
     return _chave(a) == _chave(b)
 
 
+def _criterio_da_consulta(sql: str) -> str:
+    """Criterio LEGIVEL da consulta: o que ela ordenou e quantas linhas pediu.
+
+    Vai no bloco de dados NO LUGAR do SQL (v0.11.11). Motivo medido: sem o SQL o
+    modelo nao sabia que a ordem das linhas era autoridade (E2E do cliente 22 —
+    recebeu 1 linha de uma consulta "ORDER BY rental_date DESC LIMIT 1" e
+    respondeu com ressalva "nao veio classificada"); com o SQL ele RECITAVA a
+    consulta na resposta. O criterio entrega a informacao sem o texto do SQL.
+    """
+    s = " ".join(str(sql or "").split())
+    if not s:
+        return ""
+    partes = []
+    m = re.search(r"\border\s+by\s+(.+?)(?:\blimit\b|\boffset\b|$)", s, re.IGNORECASE)
+    if m:
+        expr = m.group(1).strip()
+        tem_desc = bool(re.search(r"\bdesc\b", expr, re.IGNORECASE))
+        tem_asc = bool(re.search(r"\basc\b", expr, re.IGNORECASE))
+        cols = re.sub(r"\b(asc|desc)\b", "", expr, flags=re.IGNORECASE).strip(" ,")
+        if tem_desc:
+            sentido = "maior/mais recente primeiro"
+        elif tem_asc:
+            sentido = "menor/mais antigo primeiro"
+        else:
+            sentido = "direcao implicita do banco (ASC)"
+        partes.append(f"ordenado por {cols} ({sentido})")
+    m = (re.search(r"\blimit\s+(\d+)", s, re.IGNORECASE)
+         or re.search(r"\btop\s+(\d+)", s, re.IGNORECASE))
+    if m:
+        partes.append(f"no maximo {m.group(1)} linha(s)")
+    if re.search(r"\bgroup\s+by\b", s, re.IGNORECASE) and re.search(
+            r"\b(count|sum|avg|min|max)\s*\(", s, re.IGNORECASE):
+        partes.append("uma linha por grupo, com contagem/agregacao")
+    return "; ".join(partes)
+
+
+_ERROS_SQL_INVALIDO = (
+    "unknown column", "unknown table", "no such column", "no such table",
+    "unknown field", "invalid column name", "invalid object name",
+    "doesn't exist", "does not exist", "undefined table", "undefined column",
+    "syntax error", "syntaxerror", "ora-00904", "ora-00942", "42s22", "42703",
+    "(1054", "(1146", "(1051", "(1064",
+)
+
+
+def _erro_sql_invalido(msg) -> bool:
+    """True quando o erro e' do SQL GERADO (coluna/tabela inexistente, sintaxe).
+
+    Quem chama usa isto para decidir a REPETICAO da consulta inteligente com o
+    MESMO modelo. Resultado vazio e timeout ficam de fora de proposito: repetir a
+    mesma chamada nao muda nada neles.
+    """
+    m = str(msg or "").lower()
+    return any(t in m for t in _ERROS_SQL_INVALIDO) if m else False
+
+
 def _tentar_sql_dinamico(pergunta: str, schema: str, dialeto: str, config: dict,
                          modelo: dict, max_tokens: int) -> dict:
     """UMA tentativa completa: LLM monta o SELECT -> valida -> executa.
@@ -955,7 +1126,10 @@ def _tentar_sql_dinamico(pergunta: str, schema: str, dialeto: str, config: dict,
                 rows = _rodar_select(conn, s, driver)
                 blocos.append({"sql": s, "linhas": rows})
             conn.commit()
-            return {"tool": "sql:analise", "args": sqls, "resultado": blocos,
+            return {"tool": "sql:analise", "args": sqls,
+                    "criterio": "; ".join(x for x in
+                                          (_criterio_da_consulta(s) for s in sqls) if x),
+                    "resultado": blocos,
                     "truncado": any(len(b["linhas"]) >= _LIMITE_LINHAS for b in blocos)}
         finally:
             conn.close()
@@ -1011,11 +1185,32 @@ def _executar_sql_dinamico(nome: str, config: dict, pergunta: str,
             r["modelo_sql"] = str(modelo_escalada.get("nome")
                                   or modelo_escalada.get("modelo") or "")
             return r
+    elif t1.get("erro") == "execucao" and _erro_sql_invalido(t1["res"].get("erro")):
+        # Mesmo modelo (modelo do SQL == principal, sem escalada possivel): UMA
+        # segunda amostra quando o SQL gerado NAO EXISTE no banco — coluna ou
+        # tabela que o modelo inventou, ou JOIN esquecido. Medido no E2E do
+        # cliente 22 (pergunta "filme mais alugado"): o modelo escreveu
+        # `f.title` sem juntar `film` -> (1054, "Unknown column 'f.title'") e a
+        # tela respondia "nao ha dado" havendo dado. Repetir a GERACAO resolve
+        # esse deslize; repetir resultado VAZIO nao resolve nada, e por isso o
+        # repeticao e' restrita a este caso.
+        t2 = _tentar_sql_dinamico(pergunta, schema, dialeto, config, modelo,
+                                  _SQL_MAX_TOKENS_ESCALADA)
+        if t2["ok"]:
+            r = t2["res"]
+            r["retentativa_sql"] = True
+            return r
 
     # nenhuma tentativa entregou linha: o erro que o usuario ve e o da
     # PRIMEIRA tentativa (a configurada) — e a mensagem nao mente sobre o
     # caminho que foi tentado.
-    return t1["res"]
+    res = t1["res"]
+    if t1.get("sql"):
+        # O SQL que falhou vai para o trace: so com a mensagem do banco o
+        # Rastreio nao mostra o que o modelo escreveu e nao da para diagnosticar
+        # sem reproduzir a chamada (foi assim no trace #337).
+        res["sql_gerado"] = t1["sql"]
+    return res
 
 
 # --------------------------------------------------------------------------- #

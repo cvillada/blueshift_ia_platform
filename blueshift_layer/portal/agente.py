@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import re
+import time
+import threading
 import json as _json
 from pathlib import Path
 
@@ -211,6 +213,49 @@ _DIRETIVA_DADOS_AUSENTES = (
     "claramente que nao ha esse dado disponivel e o que faltou — NUNCA estime, "
     "aproxime, arredonde por conta propria nem invente numero, nome ou data. "
     "Se parte dos dados veio e parte nao, responda apenas o que veio.\n"
+)
+
+# Ordem/atualidade nao afirmada (v0.11.11). Medido no trace #337: a consulta
+# devolveu 20 linhas SEM ordenacao e a resposta as apresentou como "os filmes
+# mais recentes" — qualificador que o dado nao sustenta (o usuario pediu "o
+# ULTIMO filme alugado" e recebeu uma lista arbitraria). Mesma familia do
+# guard de numero inventado: aqui o que se inventa e a ORDEM.
+#
+# Reescrita (v0.11.11, E2E do cliente 22): agora o bloco de dados informa o
+# CRITERIO da consulta ("consulta: ordenado por X (maior/mais recente primeiro)")
+# — sem o texto do SQL. Com o criterio, a ordem das linhas E autoridade e a
+# resposta pode afirmar; sem o criterio, continua proibido afirmar. E quando a
+# contagem do topo empata, o que se afirma e o EMPATE, nunca um vencedor unico
+# (o trace #370 respondeu "BARBARELLA STREETCAR e o top 1" num empate de 22).
+_DIRETIVA_ORDEM_NAO_AFIRMADA = (
+    "ORDEM E ATUALIDADE: o bloco de dados pode trazer o criterio da consulta "
+    "(\"consulta: ordenado por <coluna> (maior/mais recente primeiro)\"). Com "
+    "esse criterio a ORDEM DAS LINHAS e a resposta: a PRIMEIRA linha e o maior/"
+    "mais recente e voce PODE afirmar isso, sem ressalva de ordenacao. Sem o "
+    "criterio, nao afirme ser 'o mais recente', 'o ultimo', 'o primeiro', 'o "
+    "maior' ou 'o principal' (consulta sem ORDER BY ou lista sem ranking): "
+    "apresente os itens como estao e diga que a consulta nao trouxe essa "
+    "ordenacao. EMPATE: se o topo vier com contagens iguais entre si (ou a "
+    "contagem for 1), o que existe e EMPATE — diga que ha empate e quantos itens "
+    "(e qual e a contagem de cada um); NUNCA apresente um registro como unico "
+    "vencedor.\n"
+)
+
+# Atribuicao por origem (v0.11.11). Medido no trace #340: dois conectores
+# devolveram um campo "endereço" (o SQL do Sakila trouxe o endereço do cliente; o
+# conector de CEP trouxe a rua do CEP) e a resposta deu a rua do CEP usando o valor
+# do OUTRO bloco. O rotulo do bloco existe justamente para isso: o dado responde a
+# parte da pergunta correspondente ao conector que o trouxe.
+_DIRETIVA_ATRIBUICAO = (
+    "ORIGEM DO DADO: cada bloco de dados vem rotulado com o worker/area/conector "
+    "que o produziu. Use cada valor para a parte da pergunta que aquele conector "
+    "responde — nunca troque o dado de um conector pelo de outro, mesmo que dois "
+    "blocos tenham um campo com o mesmo nome (ex.: um endereco que veio do "
+    "conector de CEP responde a pergunta de CEP; o endereco que veio da consulta "
+    "SQL responde a pergunta do cliente). Cite a origem (area ou conector) SOMENTE "
+    "quando for preciso separar duas respostas parecidas — e cite o nome de "
+    "negocio, nao o interno. NAO reproduza o SQL, o nome da tool nem o texto do "
+    "bloco na resposta, e nao comece a resposta anunciando o conector executado.\n"
 )
 
 
@@ -573,6 +618,532 @@ def _selecionar_conectores(pergunta: str, conectores: list[dict],
     return None, intencao  # ambiguo ou falha total -> executa todos (seguro)
 
 
+# --------------------------------------------------------------------------- #
+# Mestre + workers (v0.11.11)                                                 #
+# --------------------------------------------------------------------------- #
+# Um agente "mestre" pode orquestrar uma lista ORDENADA de agentes workers.
+# Decisoes (com o Nei):
+#   - sem workers = comportamento atual, ZERO mudanca;
+#   - worker e FOLHA (profundidade 1): nunca dispara outro worker;
+#   - workers rodam em PARALELO, com teto de simultaneidade; a ORDEM do cadastro
+#     decide a APRESENTACAO (blocos e trace) e nunca a ordem de conclusao —
+#     blocos em ordem variavel mudam o prompt e a resposta para a MESMA pergunta;
+#   - transporte do worker = CHAMADA DE FUNCAO (mesmo processo, mesmo banco).
+#     O conector `api` para o gateway/portal exigiria 1 canal + 1 gateway por
+#     worker (e cairia SILENCIOSAMENTE em outro agente se o worker nao estivesse
+#     publicado), rodaria o responder() inteiro (~2 LLM por worker + memoria +
+#     trace) e nao permite pedir "so conectores";
+#   - modo worker = SO os conectores da area do worker: sem RAG, sem LLM final,
+#     sem memoria de conversa, sem trace proprio. Custo = 1 consulta inteligente.
+_MAX_WORKERS_CONCORRENTES = 3   # teto de simultaneidade (LLM local costuma ter 1 slot)
+_MAX_WORKERS_AVISO = 5          # acima disso a tela avisa (quem monta decide)
+_MAX_WORKERS_LIMITE = 10        # corte duro no cadastro
+_WORKER_TIMEOUT_S = 60          # teto por worker: o que nao termina vira bloco honesto
+
+# Skill PROPRIA do worker (v0.11.11). O agente sozinho nao muda; quando um worker
+# TEM skill, ela governa o que ele ENTREGA: o worker le os dados brutos da area
+# dele e devolve um bloco organizado para o mestre. Sao +1 chamada de LLM por
+# worker COM skill (worker sem skill = zero chamada, comportamento de antes).
+_WORKER_LEITURA_TOKENS = 400    # teto da leitura organizada (curta de proposito)
+_WORKER_LEITURA_CHARS = 1200    # teto do que a leitura ocupa no prompt do mestre
+# As leituras dos workers vao UMA POR VEZ: o dado bruto de cada worker continua em
+# paralelo, mas a chamada de leitura e serializada. Motivo medido (trace #357/#358):
+# com dois workers lendo ao mesmo tempo num servidor local de UM slot o segundo
+# recebe HTTP 500 e o worker volta SEM leitura. Serializar custa ~1 leitura por
+# worker e devolve a leitura de todos (comportamento correto > paralelismo aqui).
+_LEITURA_LOCK = threading.Lock()
+
+
+def workers_do_agente(agente: dict) -> list[int]:
+    """IDs da lista ORDENADA `workers` (CSV). Ignora lixo e repetidos."""
+    vistos: set[int] = set()
+    ids: list[int] = []
+    for parte in (agente.get("workers") or "").split(","):
+        parte = parte.strip()
+        if not parte.isdigit():
+            continue
+        wid = int(parte)
+        if wid not in vistos:
+            vistos.add(wid)
+            ids.append(wid)
+    return ids
+
+
+def agentes_que_usam_worker(wid: int) -> list[str]:
+    """Nomes dos agentes cujo `workers` cita este ID (integridade ao excluir).
+
+    `agentes.workers` e CSV sem chave estrangeira: sem esta checagem, excluir um
+    worker deixaria um ID pendurado na lista do mestre (o worker simplesmente
+    pararia de existir no meio da cadeia, sem aviso).
+    """
+    usam = []
+    for a in db.listar_agentes():
+        if wid in workers_do_agente(a):
+            usam.append(a.get("nome") or f"#{a.get('id')}")
+    return usam
+
+
+def mestre_do_worker(wid: int, cliente_id: int | None = None) -> dict | None:
+    """Mestre que orquestra este agente (None = ele não é worker de ninguém).
+
+    Usado na tela do agente (esconder o card de workers e mostrar o caminho de
+    volta) e nas rotas de worker (worker é folha: não pode virar mestre).
+    """
+    for a in db.listar_agentes(cliente_id=cliente_id):
+        if wid in workers_do_agente(a):
+            return a
+    return None
+
+
+def papeis_workers(agentes: list[dict]) -> tuple[dict[int, dict], dict[int, int]]:
+    """(worker_id -> mestre, mestre_id -> quantos workers) em UMA passada.
+
+    A listagem de agentes mostra as duas etiquetas ("mestre de N" / "worker de
+    X"): com uma consulta por linha seriam N+1 varreduras de `agentes`.
+    """
+    mestre_de: dict[int, dict] = {}
+    contagem: dict[int, int] = {}
+    for a in agentes:
+        ids = workers_do_agente(a)
+        if not ids:
+            continue
+        contagem[a["id"]] = len(ids)
+        for wid in ids:
+            mestre_de.setdefault(wid, a)
+    return mestre_de, contagem
+
+
+def validar_workers(mestre_id: int | None, cliente_id: int, ids: list[int]) -> list[str]:
+    """Erros de cadastro da lista de workers (lista vazia = tudo certo).
+
+    Bloqueia: worker inexistente, de outro cliente, o proprio mestre, worker que
+    ja tem workers (folha — senao "sem limite" vira grafo/ciclo e recursao) e
+    lista acima do teto. Avisos (pausado/sem area/sem conector/area repetida)
+    NAO entram aqui: aparecem na tela e nao impedem o cadastro.
+    """
+    erros: list[str] = []
+    if len(ids) > _MAX_WORKERS_LIMITE:
+        erros.append(f"no máximo {_MAX_WORKERS_LIMITE} workers por agente")
+    for wid in ids:
+        if mestre_id and wid == mestre_id:
+            erros.append("um agente não pode ser worker de si mesmo")
+            continue
+        w = db.buscar_agente(wid)
+        if not w:
+            erros.append(f"worker #{wid} não existe")
+            continue
+        if w.get("cliente_id") != cliente_id:
+            erros.append(f"worker '{w.get('nome')}' é de outro cliente")
+            continue
+        if workers_do_agente(w):
+            erros.append(f"worker '{w.get('nome')}' já é um mestre "
+                         "(worker não pode ter workers — profundidade 1)")
+    return erros
+
+
+def avisos_workers(mestre: dict | None, ids: list[int]) -> list[str]:
+    """Avisos que NAO bloqueiam o cadastro (regra de operacao, nao de banco).
+
+    Voz nao entra no codigo: a plataforma nao tem marca de "agente de voz" (o
+    CL_Fone e cliente externo do gateway), entao a regra "voz sem worker" e
+    operacional e documentada — aqui so o que da para conferir no cadastro.
+    """
+    avisos: list[str] = []
+    if not ids:
+        return avisos
+    if len(ids) > _MAX_WORKERS_AVISO:
+        avisos.append(f"{len(ids)} workers: cada um é uma consulta à fonte e o "
+                      "mestre só responde depois do mais lento")
+    mestre_id = (mestre or {}).get("id")
+    area_mestre = ((mestre or {}).get("area") or "").strip()
+    if mestre_id and area_mestre:
+        ativos = [c for c in db.listar_conectores(cliente_id=(mestre or {}).get("cliente_id"),
+                                                  area=area_mestre) if c.get("ativo", 1)]
+        if ativos:
+            avisos.append(
+                f"a área '{area_mestre}' do mestre tem {len(ativos)} conector(es) "
+                "ativo(s): o mestre VAI executá-los também, além dos workers "
+                "(para mestre só despachante, use uma área sem conectores)")
+    areas: dict[str, list[str]] = {}
+    for wid in ids:
+        w = db.buscar_agente(wid)
+        if not w:
+            continue
+        nome = w.get("nome") or f"#{wid}"
+        if (w.get("status") or "ativo") == "pausado":
+            avisos.append(f"worker '{nome}' está PAUSADO — não será consultado")
+        area = (w.get("area") or "").strip()
+        if not area:
+            avisos.append(f"worker '{nome}' está sem área — não há conector para ele")
+        else:
+            if not [c for c in db.listar_conectores(cliente_id=w["cliente_id"], area=area)
+                    if c.get("ativo", 1)]:
+                avisos.append(f"worker '{nome}': a área '{area}' não tem conector "
+                              "ativo — ele volta sem dados")
+            areas.setdefault(area, []).append(nome)
+    for area, nomes in areas.items():
+        if len(nomes) > 1:
+            avisos.append(f"workers na mesma área '{area}' ({', '.join(nomes)}) "
+                          "consultam os MESMOS conectores — consulta repetida")
+    return avisos
+
+
+def _origem_da_ferramenta(f: dict) -> str:
+    """Rotulo de origem de um bloco: `WORKER 1: X (area) | conector 'Y'`.
+
+    Sem worker (conector do proprio agente) devolve so o conector — o texto que
+    ja existia, para o caso sem workers nao mudar nada. Com worker, o motivo do
+    descarte passa a dizer DE QUEM foi: era o buraco que deixava o mestre atribuir
+    a falta de parametro de um worker (ex.: Airbnb) a resposta de outro dominio.
+    """
+    w = f.get("worker")
+    c = f.get("conector")
+    if w and c:
+        return f"{w} | conector '{c}'"
+    return str(c or w or "conector")
+
+
+def _leitura_do_worker(worker: dict, pergunta: str, ferramentas: list[dict],
+                       modelo: dict | None) -> tuple[str, str, dict]:
+    """Skill PROPRIA do worker: organiza os dados da area antes de entregar ao mestre.
+
+    O agente sozinho NAO muda (quem escreve a resposta ao usuario e sempre o
+    agente/mestre, com a skill DELE). Quando o worker TEM skill, ela passa a
+    governar o que ele entrega: ele le os dados brutos da area e devolve um bloco
+    organizado (ordem, agrupamento, rotulo, o que faltou).
+
+    O dado BRUTO continua indo junto para o mestre: e a auditoria (o Rastreio
+    mostra os dois) e o guard de honestidade — se a leitura inventasse, o numero
+    bruto esta no mesmo bloco para desmentir.
+
+    Devolve (leitura, erro, tokens). Sem skill no worker: ("", "", {}) — nenhuma
+    chamada extra, comportamento identico ao que ja existia.
+    """
+    if not (worker.get("skills") or "").strip():
+        return "", "", {}
+    skill_txt, ausentes = _skills_blocos(worker["skills"])
+    if ausentes:
+        # Skill que nao resolve e configuracao quebrada: o worker volta com o dado
+        # bruto (que ja esta no bloco) e o motivo vai para o prompt e o Rastreio.
+        return "", f"skill do worker nao encontrada: {', '.join(ausentes)}", {}
+    if not modelo:
+        return "", "worker com skill, mas sem modelo (o mestre nao tem modelo)", {}
+    _d = _blocos_dados(ferramentas)
+    if not _d["blocos"]:
+        # sem dado do conector nao ha o que organizar; o guard do prompt do mestre
+        # (motivo/sem dados) ja conta a verdade — nao gastamos LLM a toa.
+        return "", "", {}
+    nome = worker.get("nome") or f"#{worker.get('id')}"
+    area = (worker.get("area") or "").strip()
+    system = (
+        f"Voce e o agente '{nome}' (area '{area}') da empresa. Voce NAO responde "
+        "ao usuario final: voce ORGANIZA os dados da sua area e devolve para o "
+        "agente que responde ao usuario. Aplique a SUA SKILL aos dados abaixo.\n\n"
+        "FORMATO DA SUA RESPOSTA: escreva APENAS o dado da sua area em texto "
+        "corrido e curto (no maximo 10 linhas), como voce contaria para um "
+        "colega. NUNCA copie o bloco de dados recebido, nunca escreva 'args=', "
+        "'->', JSON, chaves ou o SQL, e nao repita o nome interno do conector; "
+        "nao explique seu raciocinio. Se os dados da sua area nao tem nada a ver "
+        "com a pergunta, responda exatamente: fora da minha area.\n\n"
+        "SKILLS DO WORKER (as regras abaixo DEVEM ser seguidas):\n"
+        + skill_txt + "\n\n" + _DIRETIVA_DADOS_AUSENTES + _DIRETIVA_ORDEM_NAO_AFIRMADA
+    )
+    avisos: list[str] = []
+    if _d["motivos"]:
+        avisos.append("conectores nao executados: " + "; ".join(_d["motivos"]))
+    if _d["ausentes"]:
+        avisos.append("faltou informar: " + ", ".join(sorted(set(_d["ausentes"]))))
+    if _d["sem_dados"]:
+        avisos.append("a consulta rodou e voltou SEM valores: " + ", ".join(_d["sem_dados"]))
+    user = (f"PERGUNTA DO USUARIO: {pergunta}\n\nDADOS DA SUA AREA:\n"
+            + "\n".join(_d["blocos"])
+            + ("\n\nAVISOS:\n" + "\n".join(avisos) if avisos else "")
+            + "\n\nDevolva APENAS o dado da sua area organizado pela sua skill:")
+    # RETRY com teto maior e ESPERA: modelo local devolve VAZIO com max_tokens
+    # curto e devolve HTTP 500 quando esta ocupado (mesmo tratamento do extrator
+    # P2 e do roteador). Medido no trace #357: a leitura do worker de CEP voltou
+    # vazia/500 e virava erro na tela — sem retry, um worker com skill ia a zero
+    # por causa de uma resposta vazia do modelo ou de um pico no servidor.
+    conteudo, tokens, _erro_llm = "", {}, ""
+    for _i, _mt in enumerate((_WORKER_LEITURA_TOKENS, _WORKER_LEITURA_TOKENS * 2,
+                              _WORKER_LEITURA_TOKENS * 2)):
+        if _i:
+            time.sleep(0.6 * _i)  # espera o servidor de IA liberar (1 slot)
+        with _LEITURA_LOCK:  # uma leitura por vez (servidor de LLM com 1 slot)
+            out = llm_client.chat(
+                modelo, [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+                max_tokens=_mt, temperatura=0.0)
+        tokens = _somar_tokens(tokens, out.get("tokens") or {})
+        conteudo = (out.get("content") or "").strip()
+        if out.get("ok") and conteudo:
+            break
+        _erro_llm = out.get("erro") or out.get("error") or ""
+    if not conteudo:
+        return "", ("leitura pela skill falhou: o modelo nao devolveu texto "
+                    f"({_erro_llm or 'resposta vazia'}) — o dado bruto da area foi "
+                    "entregue ao mestre"), tokens
+    return conteudo[:_WORKER_LEITURA_CHARS], "", tokens
+
+
+def executar_worker(agente_worker: dict, pergunta: str, params: dict,
+                    modelo_sql: dict | None, modelo_escalada: dict | None) -> dict:
+    """Modo worker: SO os conectores da area do worker. Devolve o bloco de dados.
+
+    A LEITURA pela skill propria do worker NAO acontece aqui: ela roda na fase 2
+    de `_executar_workers`, depois que TODOS os workers terminaram os conectores
+    (o passo de leitura e LLM e, sobreposto a geracao de SQL de outro worker, o
+    servidor de um slot devolvia HTTP 500 — medido nos traces #357/#359).
+
+    Roda na thread do worker (o acumulador de tokens do caminho SQL e por thread,
+    por isso a leitura aqui). Nao grava memoria/trace e nao roda RAG nem LLM
+    final: quem consolida e o mestre, uma unica vez.
+    """
+    from ..connector_pack import registry
+    nome = agente_worker.get("nome") or f"#{agente_worker.get('id')}"
+    area = (agente_worker.get("area") or "").strip()
+    if (agente_worker.get("status") or "ativo") == "pausado":
+        return {"nome": nome, "area": area, "ferramentas": [],
+                "erro": "worker pausado — nenhuma consulta foi feita", "ms": 0,
+                "tokens": {}}
+    if not area:
+        return {"nome": nome, "area": area, "ferramentas": [],
+                "erro": "worker sem área — nenhum conector aplicável", "ms": 0,
+                "tokens": {}}
+    _t0 = time.time()
+    erro = ""
+    try:
+        ferramentas = registry.executar_conectores_area(
+            agente_worker["cliente_id"], area, pergunta, parametros=dict(params or {}),
+            somente_ids=None, modelo=modelo_sql, intencao=None,
+            modelo_escalada=modelo_escalada)
+    except Exception as e:  # noqa: BLE001 — worker que falha vira BLOCO, nao excecao
+        ferramentas, erro = [], str(e)
+    return {"nome": nome, "area": area, "ferramentas": ferramentas, "erro": erro,
+            "tokens": registry.consumir_tokens_sql(),
+            "ms": int((time.time() - _t0) * 1000)}
+
+
+def _executar_workers(mestre: dict, pergunta: str, params: dict,
+                      modelo_sql: dict | None, modelo_escalada: dict | None,
+                      modelo_mestre: dict | None = None) -> list[dict]:
+    """Roda os workers em PARALELO e devolve os resultados NA ORDEM declarada.
+
+    Teto de simultaneidade (`_MAX_WORKERS_CONCORRENTES`): o gargalo real e o
+    servidor de LLM (a consulta inteligente de cada worker) e o banco do cliente
+    — N conexoes simultaneas num ERP licenciado por sessao nao e detalhe. Teto
+    por worker + deadline GLOBAL: um worker travado nao segura a resposta alem do
+    combinado, e o que nao terminou entra como bloco honesto (nunca como numero).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    ids = workers_do_agente(mestre)
+    if not ids:
+        return []
+    resultados: dict[int, dict] = {}
+    fila: list[tuple[int, dict]] = []
+    for i, wid in enumerate(ids):
+        w = db.buscar_agente(wid)
+        if w:
+            fila.append((i, w))
+        else:
+            resultados[i] = {
+                "nome": f"worker #{wid}", "area": "", "ferramentas": [], "tokens": {},
+                "erro": "worker não encontrado — atualize a lista de workers do mestre",
+                "ms": 0}
+    _limite = time.time() + _WORKER_TIMEOUT_S
+    if fila:
+        pool = ThreadPoolExecutor(max_workers=min(len(fila), _MAX_WORKERS_CONCORRENTES))
+        try:
+            futuros = {pool.submit(executar_worker, w, pergunta, params,
+                                   modelo_sql, modelo_escalada): (i, w) for i, w in fila}
+            for fut, (i, w) in futuros.items():
+                try:
+                    resultados[i] = fut.result(timeout=max(0.0, _limite - time.time()))
+                except Exception:  # noqa: BLE001 — timeout/erro do worker
+                    resultados[i] = {
+                        "nome": w.get("nome") or f"worker #{w.get('id')}",
+                        "area": (w.get("area") or ""), "ferramentas": [], "tokens": {},
+                        "erro": f"não respondeu em {_WORKER_TIMEOUT_S}s (sem dados)",
+                        "ms": _WORKER_TIMEOUT_S * 1000}
+        finally:
+            # wait=False: thread orfa termina sozinha quando o driver expirar —
+            # nunca segura a resposta do mestre (mesmo padrao do _com_timeout).
+            pool.shutdown(wait=False)
+    # --- FASE 2: leitura pela skill PROPRIA de cada worker -------------------
+    # Depois de TODOS os conectores: a leitura e uma chamada de LLM e, quando
+    # rodava dentro da thread do worker, ficava sobreposta a geracao de SQL do
+    # outro worker — num servidor de um slot isso volta HTTP 500 e o worker
+    # entregava sem leitura (traces #357/#359). Aqui as leituras rodam uma por
+    # vez, com o dado bruto de todos ja pronto; o que nao couber no prazo entra
+    # sem leitura (o dado bruto vai do mesmo jeito).
+    for i, w in fila:
+        r = resultados.get(i)
+        if not r or r.get("erro") or not (w.get("skills") or "").strip():
+            continue
+        if time.time() > _limite:
+            r["ferramentas"] = list(r.get("ferramentas") or []) + [{
+                "conector": w.get("nome") or f"worker #{w.get('id')}",
+                "tool": "skill (worker)", "skill": (w.get("skills") or "").strip(),
+                "erro": "sem tempo de organizar pela skill (o dado bruto foi entregue)"}]
+            continue
+        leitura, erro_leitura, tok = _leitura_do_worker(
+            w, pergunta, r.get("ferramentas") or [], modelo_mestre)
+        r["tokens"] = _somar_tokens(r.get("tokens") or {}, tok)
+        if leitura:
+            r["ferramentas"] = list(r.get("ferramentas") or []) + [{
+                "conector": w.get("nome") or f"worker #{w.get('id')}",
+                "tool": "skill (worker)", "args": None,
+                "skill": (w.get("skills") or "").strip(),
+                "resultado": {"leitura": leitura}}]
+        elif erro_leitura:
+            r["ferramentas"] = list(r.get("ferramentas") or []) + [{
+                "conector": w.get("nome") or f"worker #{w.get('id')}",
+                "tool": "skill (worker)", "skill": (w.get("skills") or "").strip(),
+                "erro": erro_leitura}]
+    return [resultados[i] for i in range(len(ids))]
+
+
+def _ferramentas_dos_workers(resultados: list[dict]) -> tuple[list[dict], dict]:
+    """Converte as saidas dos workers em blocos rotulados + tokens consumidos.
+
+    Rotulo (P2): a saida do worker entra no DADOS DE SISTEMA como
+    `[WORKER n: Nome (area) | conector.tool]` — bloco rotulado, nunca o texto
+    solto que disparava tool_call cru em modelo tool-tuned. Worker que falhou
+    vira erro com motivo: o guard do prompt (que ja existe) conta a verdade.
+    """
+    ferramentas: list[dict] = []
+    tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for i, r in enumerate(resultados, start=1):
+        etiqueta = f"WORKER {i}: {r.get('nome')}" + (f" ({r['area']})" if r.get("area") else "")
+        if r.get("erro"):
+            ferramentas.append({"conector": etiqueta, "tipo": "worker", "erro": r["erro"]})
+        for f in r.get("ferramentas") or []:
+            ferramentas.append({**f, "worker": etiqueta})
+        for k in tokens:
+            tokens[k] += int((r.get("tokens") or {}).get(k, 0) or 0)
+    return ferramentas, tokens
+
+
+def _render_resultado(res, teto_chars: int = 1200) -> str:
+    """Renderiza o resultado do conector como TEXTO LEGIVEL para o prompt.
+
+    Antes o bloco ia como `args=<repr> -> <repr>` — o dump Python do resultado,
+    com o SQL dentro. Medido (v0.11.11): o modelo RECITAVA esse dump na resposta
+    ao usuario ("o conector X foi executado com a consulta SELECT ...") e o worker
+    com skill EOAVA o bloco em vez de organizar o dado. O dump tambem gastava
+    token a toa. Aqui: as chaves internas (sql/query/consulta) SAEM do prompt (o
+    Rastreio continua guardando o SQL gerado), as linhas viram `coluna=valor` e o
+    total e limitado por caracteres.
+    """
+    _ignorar = {"sql", "query", "consulta"}
+
+    def _curto(v) -> str:
+        if isinstance(v, (dict, list)):
+            s = _json.dumps(v, ensure_ascii=False, default=str)
+        else:
+            s = str(v)
+        s = " ".join(s.split())
+        return s[:80] + ("…" if len(s) > 80 else "")
+
+    def _linha(d: dict) -> str:
+        return ", ".join(f"{k}={_curto(v)}" for k, v in d.items()
+                         if str(k).lower() not in _ignorar)
+
+    dados = res
+    # {"sql": ..., "linhas": [...]} / {"rows": [...]} -> usa so as linhas
+    if isinstance(dados, list) and len(dados) == 1 and isinstance(dados[0], dict):
+        for _k in ("linhas", "rows"):
+            if _k in dados[0]:
+                dados = dados[0][_k]
+                break
+    if isinstance(dados, dict) and not any(str(k).lower() not in _ignorar for k in dados):
+        return "(sem valores)"
+    if isinstance(dados, list):
+        if not dados:
+            return "(nenhuma linha)"
+        if isinstance(dados[0], dict):
+            return (f"{len(dados)} linha(s): "
+                    + " | ".join(_linha(d) for d in dados if isinstance(d, dict)))[:teto_chars]
+        return (f"{len(dados)} valor(es): "
+                + ", ".join(_curto(x) for x in dados))[:teto_chars]
+    if isinstance(dados, dict):
+        return _linha(dados)[:teto_chars] or "(sem valores)"
+    return _curto(dados)
+
+
+def _blocos_dados(ferramentas: list[dict]) -> dict:
+    """Monta os blocos de DADOS DE SISTEMA e as notas de guarda do prompt.
+
+    Extraido do bloco inline do prompt (mesma semantica, um unico lugar) para que
+    os guards de honestidade — parametro ausente, motivo do descarte, resultado
+    SEM DADOS e truncamento por volume — valham IGUAL para o mestre e para os
+    workers. Worker rotulado entra como `[WORKER n: Nome (area) | conector.tool]`;
+    worker que falhou entra como erro com motivo (nunca como numero inventado).
+    """
+    blocos: list[str] = []
+    ausentes: list[str] = []
+    ausentes_orig: list[str] = []
+    motivos: list[str] = []
+    sem_dados: list[str] = []
+    truncado = False
+    for f in ferramentas:
+        if f.get("truncado"):
+            truncado = True
+        if "erro" in f:
+            # erro vai pro trace; parametro_ausente vira AVISO no prompt
+            _e = str(f.get("erro", ""))
+            _orig = _origem_da_ferramenta(f)
+            if _e.startswith("parametro_ausente:"):
+                _ps = [x.strip() for x in _e.split(":", 1)[1].split(",") if x.strip()]
+                ausentes.extend(_ps)
+                # COM ORIGEM: o mestre nao pode usar a falta de parametro de um
+                # worker como motivo para nao responder o que outro JA trouxe
+                # (medido: "nao da para contar os filmes porque falta adults,
+                # cep, checkin..." — parametros do Airbnb/CEP).
+                ausentes_orig.append(f"{_orig} — falta: {', '.join(_ps)}")
+            else:
+                # sem isto o modelo recebia ZERO sinal e improvisava dados
+                motivos.append(f"{_orig}: {f.get('motivo') or _e}")
+            continue
+        if f.get("motivo"):
+            motivos.append(f"{_origem_da_ferramenta(f)}: {f['motivo']}")
+        _vazio = _resultado_vazio(f.get("resultado"))
+        if _vazio:
+            # v0.11.9 / B6 — o resultado sem valores precisa ser DITO no
+            # bloco: `{"sum": null}` sozinho o modelo lia como "sem
+            # informacao" e completava o numero que faltava.
+            sem_dados.append(str(f.get("conector") or "conector"))
+        _rot = f"{f['worker']} | " if f.get("worker") else ""
+        _tool = f" · {f.get('tool')}" if f.get("tool") else ""
+        # criterio da consulta (ordenacao/limite/agregacao) SEM o texto do SQL:
+        # e o que autoriza a resposta a afirmar "o mais recente" (e a nao afirmar
+        # quando o bloco nao traz ordenacao)
+        _crit = str(f.get("criterio") or "").strip()
+        blocos.append(f"[{_rot}{f.get('conector')}{_tool}] "
+                      + (f"(consulta: {_crit}) " if _crit else "")
+                      + _render_resultado(f.get("resultado"))
+                      + (" (SEM DADOS: a consulta rodou e nao retornou valores)"
+                         if _vazio else ""))
+    return {"blocos": blocos, "ausentes": ausentes, "ausentes_orig": ausentes_orig,
+            "motivos": motivos,
+            "sem_dados": sem_dados, "truncado": truncado}
+
+
+def _tokens_sql_da_thread() -> dict:
+    """Le (e zera) o consumo de tokens do caminho SQL da thread atual."""
+    from ..connector_pack import registry
+    return registry.consumir_tokens_sql()
+
+
+def _somar_tokens(*fontes: dict) -> dict:
+    """Soma acumuladores de tokens do caminho SQL (mestre + cada worker)."""
+    total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for f in fontes:
+        for k in total:
+            total[k] += int((f or {}).get(k, 0) or 0)
+    return total
+
+
 def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
               anonimizar: bool = True, contexto_extra: str = "",
               tools: list | None = None, tool_choice=None,
@@ -669,6 +1240,28 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         except Exception as e:  # noqa: BLE001
             ferramentas = [{"erro": str(e)}]
 
+    # Consumo de tokens do caminho SQL DESTA thread (conectores do mestre): o
+    # llm_client ja devolvia `usage` e ele era DESCARTADO — sem isso o custo do
+    # text-to-SQL (do proprio agente e de cada worker) nao aparecia em relatorio.
+    _tok_sql = _tokens_sql_da_thread()
+
+    # --- 1b. Workers do mestre (v0.11.11) — em PARALELO, ordem do cadastro ---
+    # Modo worker: cada worker roda SO os conectores da propria area (sem RAG,
+    # sem LLM final, sem memoria, sem trace proprio) e devolve um BLOCO rotulado.
+    # O mestre recebe todos os blocos e consolida uma unica vez, na mesma
+    # chamada final — sem prompt novo, entao as diretivas anti-alucinacao e
+    # anti-tag que ja valem para os conectores valem para os workers tambem.
+    _workers_res: list[dict] = []
+    if workers_do_agente(agente):
+        _marca = _time.time()
+        _workers_res = _executar_workers(
+            agente, pergunta, locals().get("params") or {},
+            locals().get("modelo_sql") or modelo, modelo, modelo)
+        _ms_conn += (_time.time() - _marca) * 1000
+        _f_workers, _t_workers = _ferramentas_dos_workers(_workers_res)
+        ferramentas = list(ferramentas) + _f_workers
+        _tok_sql = _somar_tokens(_tok_sql, _t_workers)
+
     # --- 2. RAG: complementa contexto mesmo se conectores retornaram dados ---
     tem_dados_vivos = any(
         f.get("resultado") for f in ferramentas
@@ -694,6 +1287,8 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         f"(área: {area or 'geral'}).\n"
         f"{_DIRETIVA_RESPOSTA}"
         f"{_DIRETIVA_DADOS_AUSENTES}"
+        f"{_DIRETIVA_ORDEM_NAO_AFIRMADA}"
+        f"{_DIRETIVA_ATRIBUICAO}"
     )
     if skills_txt:
         system += ("\nSKILLS DO AGENTE (instrucoes das skills anexadas — as "
@@ -710,39 +1305,25 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         "chamadas de funcao nem tags (<tool_call>, <function=...>, <parameter=...) "
         "— responda apenas em texto corrido.\n\n"
     )
-    ausentes_nota: list = []
-    motivos_nota: list = []      # diagnostico honesto: consulta nao feita e por que
-    sem_dados_nota: list = []    # consulta RODOU e voltou sem valor (B6)
-    truncado_nota = False        # consulta bateu no teto de linhas
-    if ferramentas:
-        blocos = []
-        for f in ferramentas:
-            if f.get("truncado"):
-                truncado_nota = True
-            if "erro" in f:
-                # erro vai pro trace; parametro_ausente vira AVISO no prompt
-                _e = str(f.get("erro", ""))
-                if _e.startswith("parametro_ausente:"):
-                    ausentes_nota.extend(
-                        x.strip() for x in _e.split(":", 1)[1].split(",") if x.strip())
-                else:
-                    # sem isto o modelo recebia ZERO sinal e improvisava dados
-                    motivos_nota.append(f"{f.get('conector')}: {f.get('motivo') or _e}")
-                continue
-            if f.get("motivo"):
-                motivos_nota.append(f"{f.get('conector')}: {f['motivo']}")
-            _vazio = _resultado_vazio(f.get("resultado"))
-            if _vazio:
-                # v0.11.9 / B6 — o resultado sem valores precisa ser DITO no
-                # bloco: `{"sum": null}` sozinho o modelo lia como "sem
-                # informacao" e completava o numero que faltava.
-                sem_dados_nota.append(str(f.get("conector") or "conector"))
-            blocos.append(f"[{f.get('conector')}.{f.get('tool')}] "
-                          f"args={f.get('args')} -> {f.get('resultado')}"
-                          + (" (SEM DADOS: a consulta rodou e nao retornou valores)"
-                             if _vazio else ""))
-        if blocos:
-            system += "DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n" + "\n".join(blocos) + "\n\n"
+    _dados = _blocos_dados(ferramentas)
+    ausentes_nota: list = _dados["ausentes"]
+    motivos_nota: list = _dados["motivos"]      # diagnostico honesto: consulta nao feita e por que
+    sem_dados_nota: list = _dados["sem_dados"]  # consulta RODOU e voltou sem valor (B6)
+    truncado_nota = _dados["truncado"]          # consulta bateu no teto de linhas
+    if _dados["blocos"]:
+        system += ("DADOS DE SISTEMA (conectores executados — FONTE PRIMARIA):\n"
+                   + "\n".join(_dados["blocos"]) + "\n\n")
+    if any(f.get("tool") == "skill (worker)" for f in ferramentas):
+        # O worker passou a ter skill PROPRIA: a leitura dele entra como bloco
+        # rotulado e o dado bruto continua ao lado. Dizer isso ao mestre evita que
+        # ele trate o texto do worker como numero novo (honestidade: bruto manda).
+        system += (
+            "SOBRE OS WORKERS: os blocos `[WORKER n: ... · skill (worker)]` "
+            "sao a LEITURA ORGANIZADA que cada worker fez do dado da area dele, "
+            "seguindo a skill DAQUELE worker. O bloco do conector ao lado e o DADO "
+            "BRUTO (a verdade): use a leitura como organizacao e, se divergir, "
+            "vale o dado bruto — nunca tire numero que nao esteja no bruto.\n\n"
+        )
     if ausentes_nota:
         # Reforço anti-alucinação: o conector NAO rodou — o modelo nao pode
         # responder com memoria/treino nem citar o conector como fonte.
@@ -754,6 +1335,17 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "tool_call nem tags (<tool_call>, <function=, <parameter=) — "
             "responda apenas em texto corrido pedindo o dado.\n"
         )
+        if _dados.get("ausentes_orig"):
+            # Cada falta PERTENCE a uma origem: sem isto o modelo tratava o
+            # parametro que falta no worker A como impedimento para responder o
+            # dado que o worker B JA trouxe (medido com workers de areas
+            # diferentes na mesma pergunta).
+            system += (
+                "Origem de cada falta (vale so para o conector citado — o que "
+                "JA veio dos outros conectores deve ser respondido normalmente "
+                "e NAO depende disso):\n- "
+                + "\n- ".join(_dados["ausentes_orig"]) + "\n"
+            )
     if motivos_nota:
         # Diagnostico honesto (v0.11.2): quando a consulta nao foi feita, o
         # modelo PRECISA saber disso — antes o erro so existia no trace, o
@@ -955,6 +1547,25 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         )
         db.registrar_auditoria(usuario, "sistema", "agente_responder", alvo=agente["nome"],
                                cliente_id=cliente_id, detalhe=detalhe)
+
+    # Consumo do caminho da CONSULTA INTELIGENTE (text-to-SQL) em registro
+    # proprio: e outra chamada ao provedor (e outra despesa), feita pelo modelo
+    # do roteador/SQL — nao pelo modelo que assinou a resposta. Antes ficava
+    # invisivel; com mestre+workers sao N chamadas por pergunta. Registra mesmo
+    # se a resposta final falhou: a consulta foi paga de qualquer forma.
+    if _tok_sql.get("total_tokens"):
+        try:
+            db.registrar_uso_token(
+                cliente_id=cliente_id,
+                modelo=(locals().get("modelo_sql") or modelo).get("modelo", modelo_usado),
+                total_tokens=_tok_sql.get("total_tokens", 0),
+                prompt_tokens=_tok_sql.get("prompt_tokens", 0),
+                completion_tokens=_tok_sql.get("completion_tokens", 0),
+                agente_id=agente.get("id"),
+                quem=usuario, origem="sql",
+            )
+        except Exception:  # noqa: BLE001 — contabilidade nao derruba a resposta
+            pass
 
     # --- Feedback implicito: detecta pergunta repetida ---
     if out["ok"] and agente.get("id"):

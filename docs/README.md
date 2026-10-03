@@ -55,6 +55,23 @@ sem documentação; a qualidade do texto continua sendo trabalho de quem escreve
 Quando `--lista` mostrar algo que passou a ser documentado, remova o item de
 `_pendentes.json` para a dívida não crescer (a checagem já ignora o que está na doc).
 
+## Checagem automática (`tools/js_check.py`)
+
+```bash
+python tools/js_check.py        # falha se algum <script> do portal não parsear
+python tools/js_check.py -v     # mostra página por página o que passou
+```
+
+Percorre todas as telas GET do portal (com um usuário temporário, criado e apagado
+na hora), pega cada bloco `<script>` servido e roda `node --check`, além de conferir
+se todo `onclick`/`onchange`/`onsubmit` inline chama uma função que existe na página.
+
+Por que existe: **um** erro de parse (ex.: uma palavra do Python que entrou no JS)
+faz o navegador descartar o **script inteiro** — menu, popup e botões param de
+responder, a página continua respondendo 200 e nada mais acusa. Aconteceu na
+v0.11.11 com o `manterPos` da tela do mestre. Sem `node` instalado, ele avisa e
+checa só os handlers.
+
 ## Site público (pré-venda)
 
 O mesmo `docs/` gera um site estático para pré-venda, com menu curado:

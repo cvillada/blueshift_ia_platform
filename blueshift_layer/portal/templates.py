@@ -34,7 +34,15 @@ def acao_form(url: str, rotulo: str, confirmar: str = "", vermelho: bool = False
     `confirmar` entra numa string de JavaScript: quem chamar precisa passar o
     nome do recurso JA escapado com j() (ex.: f'Excluir {j(nome)}?').
     """
-    onsub = f""" onsubmit="return confirm('{confirmar}')" """ if confirmar else " "
+    # `manterPos(this.action)` grava a rolagem ANTES do POST: as acoes do card
+    # Workers (cadastrar/excluir/subir/descer) voltam para a MESMA tela e o JS
+    # devolve o operador onde ele estava — sem isso a tela ia para o topo a cada
+    # clique nas setas. Nas demais acoes (excluir agente/modelo/usuario) o
+    # comportamento continua o de antes: a pagina sobe e mostra o aviso.
+    if confirmar:
+        onsub = f' onsubmit="manterPos(this.action);return confirm(\'{confirmar}\')" '
+    else:
+        onsub = ' onsubmit="manterPos(this.action)" '
     cor = ' style="color:var(--bad)"' if vermelho else ""
     return (f'<form method="post" action="{url}" class="acao-inline"{onsub.strip()}>'
             f'{csrf_field()}<button type="submit" class="linklike"{cor}>{rotulo}</button></form>')
@@ -118,16 +126,48 @@ document.addEventListener("click",function(e){var m=document.getElementById("the
 window.addEventListener("load",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}aplicarTema(t);var i=document.getElementById("theme-icon");if(i)i.textContent=temaIcone(t)})
 if(window.matchMedia){window.matchMedia("(prefers-color-scheme: light)").addEventListener("change",function(){var t="dark";try{t=localStorage.getItem("bs_theme")||"dark"}catch(e){}if(t==="system")aplicarTema("system")})}
 function escFluxo(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function manterPos(url){if((url||"").indexOf("/workers/")<0)return;try{sessionStorage.setItem("bs_scroll",location.pathname+"|"+window.scrollY)}catch(e){}}
+function bsConector(f){
+  if(!f)return "";
+  var tool=f.tool||"";
+  var ehLeitura=tool.indexOf("skill")>=0;
+  var rot="<b>"+escFluxo(f.conector||"conector")+"</b>"+(tool?"."+escFluxo(tool):"");
+  var sk=f.skill?' <span class="badge neutral">skill: '+escFluxo(f.skill)+'</span>':"";
+  if(f.erro){return '<div style="color:var(--bad)">ERRO '+rot+sk+": "+escFluxo(String(f.erro))+'</div>';}
+  var r=f.resultado, det="";
+  if(ehLeitura){
+    var lei=(r&&typeof r==="object")?(r.leitura||r.leitura_organizada||""):(r===null||r===undefined?"":String(r));
+    lei=String(lei);
+    det='<span style="font-size:11px">leitura organizada pela skill do worker: '+escFluxo(lei.substring(0,400))+(lei.length>400?"…":"")+'</span>';
+  }else if(r===null||r===undefined||r===""){
+    det='<span class="muted" style="font-size:11px">sem retorno</span>';
+  }else if(Array.isArray(r)){
+    det='<span class="muted" style="font-size:11px">'+r.length+' registro(s) · '+escFluxo(JSON.stringify(r).substring(0,300))+'</span>';
+  }else if(typeof r==="object"){
+    det='<span class="muted" style="font-size:11px">'+Object.keys(r).length+' campo(s) · '+escFluxo(JSON.stringify(r).substring(0,300))+'</span>';
+  }else{
+    det='<span class="muted" style="font-size:11px">'+escFluxo(String(r).substring(0,300))+'</span>';
+  }
+  var args="";
+  var _cab=[];
+  if(f.args!==null&&f.args!==undefined){_cab.push("args: "+escFluxo(String(JSON.stringify(f.args)).substring(0,200)));}
+  if(f.valores!==null&&f.valores!==undefined){_cab.push("valores ligados (vao como PARAMETRO do driver, FORA do texto do SQL): "+escFluxo(String(JSON.stringify(f.valores)).substring(0,200)));}
+  if(_cab.length){args='<span class="muted" style="font-size:11px">'+_cab.join("<br>")+'</span><br>';}
+  return "<div>OK "+rot+sk+"<br>"+args+det+"</div>";
+}
+if(window.addEventListener){window.addEventListener("load",function(){try{var v=(sessionStorage.getItem("bs_scroll")||"").split("|");if(v.length===2&&v[0]===location.pathname&&location.hash==="#workers"){window.scrollTo(0,parseInt(v[1],10)||0)}sessionStorage.removeItem("bs_scroll")}catch(e){}})}
 function abrirFluxo(d){
   var skills=(d.skills&&d.skills.length)?d.skills:[];
   var conns=(d.conectores&&d.conectores.length)?d.conectores:[];
-  var n=Math.max(skills.length,conns.length,1);
+  var workers=(d.workers&&d.workers.length)?d.workers:[];
+  var n=Math.max(skills.length,conns.length,workers.length,1);
   var H=150+n*92;
-  var C={ent:"#3b82f6",llm:"#f59e0b",skill:"#22c55e",res:"#e879f9",conn:"#38bdf8",mut:"#aab6d4"};
-  var wEnt=100,wConn=140,wLlm=140,wSki=140,wRes=110,wEnv=80,gap=36;
+  var C={ent:"#3b82f6",llm:"#f59e0b",skill:"#22c55e",res:"#e879f9",conn:"#38bdf8",wk:"#a78bfa",mut:"#aab6d4"};
+  var wEnt=100,wConn=140,wLlm=140,wSki=140,wRes=110,wEnv=80,wWk=150,gap=36;
   var xEnt=16;
-  var xConn=xEnt+wEnt+gap;
-  var xLlm=conns.length?xConn+wConn+gap:xEnt+wEnt+gap;
+  var xWk=workers.length?xEnt+wEnt+gap:0;
+  var xConn=workers.length?xWk+wWk+gap:xEnt+wEnt+gap;
+  var xLlm=conns.length?xConn+wConn+gap:(workers.length?xWk+wWk+gap:xEnt+wEnt+gap);
   var xSki=xLlm+wLlm+gap;
   var xRes=skills.length?xSki+wSki+gap:xLlm+wLlm+gap;
   var xEnv=xRes+wRes+gap;
@@ -140,14 +180,16 @@ function abrirFluxo(d){
   }
   function addEdge(from,to){edges.push({from:from.id,to:to.id,el:null});}
   var nEnt=addNode(xEnt,cy-38,wEnt,76,C.ent,"💬","Entrada","Chat / API");
-  var nCon=[],nSki=[];
+  var nCon=[],nSki=[],nWk=[];
   if(conns.length){var yc0=cy-((conns.length*58-16)/2);for(var i=0;i<conns.length;i++){nCon.push(addNode(xConn,yc0+i*58,wConn,50,C.conn,"🔌",conns[i].nome,conns[i].tipo));}}
+  if(workers.length){var yw0=cy-((workers.length*56-14)/2);for(var i=0;i<workers.length;i++){nWk.push(addNode(xWk,yw0+i*56,wWk,46,C.wk,"🧩",(i+1)+". "+workers[i].nome,workers[i].area+(workers[i].conectores?" · "+workers[i].conectores+" conector(es)":" · sem conector")));}}
   var nLlm=addNode(xLlm,cy-40,wLlm,80,C.llm,"🧠","LLM",d.modelo+(d.fallback?" · fb: "+d.fallback:""));
   if(skills.length){var ys0=cy-((skills.length*56-14)/2);for(var i=0;i<skills.length;i++){nSki.push(addNode(xSki,ys0+i*56,wSki,42,C.skill,"⚙️",skills[i],""));}}
   var nRes=addNode(xRes,cy-38,wRes,76,C.res,"📤","Resposta","final");
   var nEnv=addNode(xEnv,cy-38,wEnv,76,C.ent,"📡","Envio","Chat/API");
   if(nCon.length){for(var i=0;i<nCon.length;i++){addEdge(nEnt,nCon[i]);addEdge(nCon[i],nLlm);}}
-  else{addEdge(nEnt,nLlm);}
+  else if(!nWk.length){addEdge(nEnt,nLlm);}
+  if(nWk.length){for(var i=0;i<nWk.length;i++){addEdge(nEnt,nWk[i]);addEdge(nWk[i],nLlm);}}
   if(nSki.length){for(var i=0;i<nSki.length;i++){addEdge(nLlm,nSki[i]);addEdge(nSki[i],nRes);}}
   else{addEdge(nLlm,nRes);}
   addEdge(nRes,nEnv);
@@ -257,7 +299,7 @@ function fecharFluxo(){var p=document.getElementById("fluxo-popup");if(p)p.style
       <button class="btn ghost" onclick="fecharFluxo()" title="Fechar">✕</button>
     </div>
     <div id="fluxo-conteudo" class="fluxo-canvas"></div>
-    <div class="muted" style="font-size:10px;margin-top:14px">Fluxo de execução do agente: a pergunta entra (Chat/API), o LLM processa com o modelo e as skills, e a resposta é enviada de volta (Chat/API). Dados dinâmicos deste agente.</div>
+    <div class="muted" style="font-size:10px;margin-top:14px">Fluxo de execução do agente: a pergunta entra (Chat/API), o LLM processa com o modelo e as skills, e a resposta é enviada de volta (Chat/API). Workers (🧩) consultam as fontes das áreas deles em PARALELO e entregam dados ao LLM do mestre, que consolida a resposta. Dados dinâmicos deste agente.</div>
   </div>
 </div>
 </body>

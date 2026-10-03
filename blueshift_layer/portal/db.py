@@ -66,6 +66,10 @@ def get_conn():
     # o gateway le o MESMO arquivo do volume enquanto o portal grava. E
     # propriedade persistente do banco; ativar por conexao e idempotente.
     conn.execute("PRAGMA journal_mode=WAL")
+    # Espera pela escrita concorrente em vez de estourar na hora (default do
+    # driver: 5s — mas explicito documenta a intencao). Importa desde os
+    # workers do mestre: N conectores em PARALELO gravam heartbeat cada um.
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
@@ -123,6 +127,7 @@ def init_db() -> None:
                 modelo_secundario_id INTEGER,                    -- FK opcional -> modelos(id) usado em fallback
                 skills      TEXT,                              -- CSV de skills
                 conectores  TEXT,                              -- CSV de conectores MCP
+                workers     TEXT,                              -- CSV ORDENADO de IDs de agentes (workers do mestre)
                 status      TEXT NOT NULL DEFAULT 'ativo',    -- ativo|pausado
                 criado_em   TEXT NOT NULL
             );
@@ -432,6 +437,7 @@ def _migrar_colunas() -> None:
             ("modelo_id", "INTEGER"),
             ("modelo_secundario_id", "INTEGER"),
             ("lgpd_ativado", "INTEGER DEFAULT 1"),
+            ("workers", "TEXT"),
         ],
         "modelos": [
             ("max_tokens", "INTEGER"),
@@ -606,12 +612,13 @@ def buscar_agente(aid: int) -> dict | None:
 
 def criar_agente(cliente_id, nome, area="", modelo="bonsai-8b", skills="", conectores="",
                  modelo_id=None, modelo_secundario_id=None,
-                 lgpd_ativado: int = 1) -> int:
+                 lgpd_ativado: int = 1, workers="") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, lgpd_ativado, status, criado_em)
-               VALUES (?,?,?,?,?,?,?,?,?, 'ativo', ?)""",
-            (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, lgpd_ativado, now_iso()),
+            """INSERT INTO agentes (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores, workers, lgpd_ativado, status, criado_em)
+               VALUES (?,?,?,?,?,?,?,?,?,?, 'ativo', ?)""",
+            (cliente_id, nome, area, modelo, modelo_id, modelo_secundario_id, skills, conectores,
+             workers, lgpd_ativado, now_iso()),
         )
         return cur.lastrowid
 

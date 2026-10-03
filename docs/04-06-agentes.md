@@ -12,6 +12,7 @@
 | Modelo de IA (principal) | ✅ | `bonsai-8b` | Modelo cadastrado em Modelos IA |
 | Modelo de IA (fallback) | ❌ | `hermes-3-llama-3.1-8b` | Usado se o principal falhar |
 | Skill do agente | ❌ | `vendas` | **Radio — uma só** (ou "nenhuma"); ver §5.7 |
+| Workers | ❌ | `Agente Vendas`, `Agente Suporte` | Lista ordenada de agentes que o mestre orquestra; vazio = só o mestre |
 | Status | ❌ | `ativo` | ativo / pausado |
 | 🔒 Aplicar LGPD | checkbox | ativo por padrão | Anonimiza a resposta na saída |
 
@@ -76,3 +77,83 @@ precedência** sobre ela.
 **Modelo secundário (fallback):** o campo `modelo_secundario_id` define o modelo
 usado quando o principal falha ou está indisponível. Sem ele, o agente responde
 apenas com o modelo principal e devolve o erro quando ele não responde.
+
+**Workers (mestre + workers):** dentro da tela do agente existe o card **Workers** —
+é ali que a orquestração é montada. O agente que tem workers é o **mestre** (quem
+consolida e responde ao usuário) e cada linha da lista é um **worker** (folha: só
+consulta e devolve dados). A lista mostra **somente os workers deste mestre**, com
+`↑` `↓` (ordem de execução), **editar** e **excluir** por linha; `➕ Cadastrar
+worker` cria o agente **já vinculado** (Nome, Área) sem sair da tela — **o worker
+não escolhe modelo: ele herda o modelo do mestre**. O
+cadastro de agente **não** tem campo de workers: worker se cria dentro do mestre
+(não há como vincular um agente existente nem transformar outra pessoa em worker).
+Ao clicar em `↑`/`↓` a tela **não sobe para o topo**: ela volta para o card, na
+mesma posição (a ordem reordenada é o próprio retorno visual — não há aviso
+vermelho fora da vista).
+
+- **Worker não aparece nas listas**: na tela **Agentes** (um aviso conta quantos
+  estão ocultos e lembra que eles se cadastram no card do mestre) e no
+  **Workspace** (onde só o mestre tem card — ele é quem responde ao usuário; o
+  card mostra `🧩 mestre de N worker(s): nome, nome`). O botão **fluxo** desenha a
+  cadeia na ordem gravada.
+
+- **O que o worker faz:** roda **somente os conectores da área dele** (sem RAG,
+  sem LLM final, sem memória e sem rastreio próprios) e devolve o **bloco de
+  dados** — `[WORKER 1: Agente Vendas (vendas) | consulta]`. O mestre recebe
+  todos os blocos rotulados e faz **uma** consolidação final. Os workers rodam
+  **em paralelo** (até 3 ao mesmo tempo). O modelo usado por eles (inclusive na
+  leitura e na consulta inteligente de cada um) é o **do mestre**: na tela do
+  worker o campo de modelo aparece como *herda do mestre* (sem select), e salvar
+  a tela do worker não altera modelo nem fallback.
+- **Skill do worker (própria):** o agente **sozinho** não muda em nada — a skill
+  dele é a que responde ao usuário. No mestre+workers, o **worker usa a skill
+  DELE** para **organizar o dado da área** antes de entregar: o worker lê o
+  resultado bruto dos conectores dele e devolve uma leitura organizada
+  (`[WORKER 1: … | Agente Vendas · skill (worker)]`), e o **mestre responde com a
+  skill dele**. O dado **bruto continua indo junto** (auditoria e honestidade: se
+  a leitura divergir, vale o bruto). **Worker sem skill** devolve só o dado da
+  área — comportamento igual ao de antes, sem chamada extra. Custo de um worker
+  com skill: **+1 chamada de LLM** (com retry automático quando o modelo devolve
+  vazio ou o servidor está ocupado). As leituras rodam **depois que todos os
+  workers terminaram os conectores** e **uma por vez** — leitura sobreposta à
+  geração de SQL de outro worker fazia o servidor de IA de um slot devolver
+  **HTTP 500** e o worker entregava sem leitura (traces #357/#359). No Rastreio, o
+  bloco de leitura aparece com o texto organizado e a skill usada; falha da
+  leitura aparece como ERRO com o motivo, e o dado bruto continua indo para o
+  mestre.
+- **Latência e custo:** o tempo é o do **worker mais lento** + a consolidação
+  (não é a soma), e cada worker gasta **1 consulta inteligente** (text-to-SQL). O
+  limite de 3 simultâneos existe porque o gargalo real é o modelo de IA e as
+  conexões do banco do cliente.
+- **Ordem:** a numeração é a ordem em que o mestre recebe os blocos (e a ordem no
+  Rastreio), não a ordem de conclusão — `↑`/`↓` é que mandam.
+- **Editar um worker:** abre a tela do próprio agente, com o aviso **"este agente
+  é worker de \<mestre\>"** e um botão **← voltar ao mestre** no lugar do
+  "Cancelar" — e **salvar também volta para o mestre**, no ponto do card (antes
+  caía na lista de Agentes, longe da cadeia). A tela do worker **não** tem card
+  Workers (worker é folha; worker não pode ter workers — a recusa também vale no
+  servidor, mesmo por chamada direta).
+- **Excluir um worker:** tira da lista **e apaga o agente** (worker só existe
+  dentro do mestre). Pela listagem de Agentes a exclusão de um worker em uso é
+  recusada — o caminho é o card do mestre.
+- **Excluir o mestre:** leva os workers junto (o `confirm` nomeia quais). Assim
+  ninguém fica órfão: um worker solto continuaria respondendo sem que se soubesse
+  de quem ele era.
+- **Recusa no cadastro de worker:** sem nome ou sem modelo, nada é criado; acima
+  de 10 workers o cadastro é recusado.
+- **Avisos (não bloqueiam):** worker **pausado** ou **sem conector na área** volta
+  sem dados (o mestre diz isso, não inventa — e a própria linha mostra
+  "sem conector"); **dois workers na mesma área** consultam os mesmos conectores;
+  e se a **área do mestre** tem conector ativo, o mestre também executa esses
+  conectores — para um mestre que só despacha, use uma área sem conectores (ex.:
+  `operacoes`).
+- **Voz:** **não** use workers em agente que atende telefonia/voz — a cadeia
+  acrescenta segundos e a voz exige resposta abaixo de 1s. Regra de operação,
+  avisada na própria tela (a plataforma não marca "agente de voz").
+- **Ordem sob controle, com a tela no lugar**: `↑`/`↓` por linha mudam a ordem de
+  execução sem jogar a página para o topo (o card fica na mesma posição).
+
+Rotas da orquestração (todas `POST` com o token da sessão, admin):
+`/portal/agentes/<id>/workers/novo`, `/portal/agentes/<id>/workers/<wid>/subir`,
+`/portal/agentes/<id>/workers/<wid>/descer` e
+`/portal/agentes/<id>/workers/<wid>/excluir`.

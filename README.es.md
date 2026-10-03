@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@bcc02156f41e | checar: python tools/readme_check.py -->
+<!-- sync: README.md@c6f9a34b964b | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · [English](README.en.md) · **Español**
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -187,6 +187,14 @@ La **BlueShift IA Platform** es una plataforma de inteligencia artificial diseñ
 
 ### 🤖 Agentes (Agent Factory)
 
+- **Agente maestro + workers** — un agente puede orquestar **agentes hoja**: cada
+  worker ejecuta **solo los conectores de su área**, en **paralelo** (hasta 3
+  simultáneos), y devuelve el dato del área; el maestro consolida la respuesta
+  final. El worker **hereda el modelo del maestro** y, cuando tiene **skill
+  propia**, organiza el dato del área antes de entregarlo (+1 llamada de LLM; sin
+  skill devuelve el dato crudo, como antes). Sin workers, el agente se comporta
+  **exactamente** como antes. Los workers se registran **en la propia tarjeta del
+  maestro** y no aparecen en la lista de Agentes ni en el Workspace.
 - **Modelo principal + fallback automático** — si el endpoint principal falla, intenta el secundario
 - **Skills del catálogo** — skills reutilizables por área
 - **Conectores del área con ENRUTAMIENTO inteligente** — una IA corta decide
@@ -225,6 +233,13 @@ análisis ("quién alquiló más y menos", "cuántos por categoría"), el agente
 SELECT solo a partir del **schema real de la fuente** (tablas/views + columnas),
 genérico por driver (MySQL/PostgreSQL/SQL Server/Oracle), con validación de
 seguridad (solo SELECT de lectura + LIMIT) y checkbox por conector en la pantalla.
+El prompt del SQL exige **criterio explícito** (`ORDER BY` con `DESC`/`ASC`, la
+columna del criterio y del filtro en el `SELECT`, conteo sin `JOIN` que multiplica
+filas) y, cuando el SELECT generado **no existe en la base** (columna/tabla
+inventada o `JOIN` olvidado), la generación **repite una vez** antes de desistir.
+El bloque de datos que llega al modelo lleva el **criterio de la consulta**
+(orden/límite) — es lo que permite afirmar "el más reciente" sin recitar el SQL y
+reportar **empate** en vez de señalar un ganador único.
 
 **Gráficos:** los pedidos de gráfico (torta/barras/línea) generan la imagen
 automáticamente a partir de los datos de los conectores (matplotlib embutido), adjunta

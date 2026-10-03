@@ -64,6 +64,15 @@ O fluxo com parâmetros continua valendo para perguntas específicas
 ("aluguel do cliente 30"). Desligável por conector (checkbox "Consulta
 inteligente" no cadastro/edição).
 
+**Por que o agente não diz qual foi "o último" / "o maior"?**
+Porque a consulta que voltou não estava ordenada (sem `ORDER BY`). O agente
+responde o que os dados mostram: se a lista veio sem ordem, ele apresenta os
+itens sem afirmar que são os mais recentes/maiores e avisa que a consulta não
+trouxe essa ordenação. Para responder "o último", a query do conector (ou a
+consulta inteligente) precisa trazer a ordenação — é o mesmo princípio do dado
+ausente: não inventar o que não veio. Se a consulta inteligente falhar, o
+**Rastreio** mostra o SQL gerado e a mensagem do banco.
+
 **O agente pode gerar gráficos?**
 Sim — perguntas como "faça um gráfico de pizza/barras/linha" geram a
 imagem automaticamente quando há dados dos conectores (barras para

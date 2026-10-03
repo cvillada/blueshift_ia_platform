@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@bcc02156f41e | checar: python tools/readme_check.py -->
+<!-- sync: README.md@c6f9a34b964b | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · **English** · [Español](README.es.md)
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -187,6 +187,14 @@
 
 ### 🤖 Agents (Agent Factory)
 
+- **Master agent + workers** — an agent can orchestrate **leaf agents**: each
+  worker runs **only the connectors of its own area**, in **parallel** (up to 3
+  at a time), and returns that area's data; the master consolidates the final
+  answer. A worker **inherits the master's model** and, when it has its **own
+  skill**, it organizes the area data before handing it over (+1 LLM call; with
+  no skill it returns the raw data, as before). With no workers, the agent
+  behaves **exactly** as before. Workers are registered **in the master's own
+  card** and do not appear in the Agents list or in the Workspace.
 - **Main model + automatic fallback** — if the main endpoint fails, it tries the secondary one
 - **Catalog skills** — reusable skills per area
 - **Area connectors with intelligent ROUTING** — a short AI pass decides
@@ -225,6 +233,13 @@ analysis ("who rented the most and the least", "how many per category"), the age
 SELECT itself from the source's **real schema** (tables/views + columns),
 generic per driver (MySQL/PostgreSQL/SQL Server/Oracle), with security
 validation (read-only SELECT + LIMIT) and a per-connector checkbox on the screen.
+The SQL prompt demands an **explicit criterion** (`ORDER BY` with `DESC`/`ASC`,
+the criterion and filter columns in the `SELECT`, counting without a `JOIN` that
+multiplies rows) and, when the generated SELECT **does not exist in the database**
+(invented column/table or a forgotten `JOIN`), the generation **retries once**
+before giving up. The data block that reaches the model carries the **query
+criterion** (ordering/limit) — that is what allows it to state "the most recent"
+without quoting the SQL and to report a **tie** instead of naming a single winner.
 
 **Charts:** chart requests (pie/bar/line) generate the image
 automatically from the connector data (embedded matplotlib), attached

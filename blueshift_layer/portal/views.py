@@ -380,6 +380,14 @@ def workspace():
     else:
         agentes = db.listar_agentes()
 
+    # WORKERS NAO APARECEM NO WORKSPACE: eles nao respondem ao usuario — quem
+    # responde e o mestre, e o card do mestre ja lista a cadeia (e o painel
+    # "fluxo" desenha os workers). Listar aqui inflava a contagem de "Agentes da
+    # area" e mostrava card de agente que ninguem chama direto.
+    from . import agente as _ag_mod_ws
+    _mestre_de_ws, _ = _ag_mod_ws.papeis_workers(db.listar_agentes())
+    agentes = [a for a in agentes if a["id"] not in _mestre_de_ws]
+
     # conhecimento do cliente (RAG já é por cliente); sem área no doc, mostra tudo
     docs = db.listar_documentos()
 
@@ -403,21 +411,39 @@ def workspace():
         sel = f'<form method="get" style="margin-bottom:14px"><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">todas</option>{opts}</select></form>'
 
     cards_agentes = ""
+    from . import agente as _agente_mod
+    agente_mod_workers = _agente_mod.workers_do_agente
+    _modelos_nome = {m["id"]: m["nome"] for m in db.listar_modelos()}
     for a in agentes:
         _conns = [{"nome": c["nome"], "tipo": c["tipo"]}
                   for c in db.listar_conectores(cliente_id=a.get("cliente_id"), area=a.get("area") or "")]
+        # Workers do mestre (v0.11.11): o fluxo mostra a cadeia na ORDEM gravada.
+        _workers = []
+        for _wid in agente_mod_workers(a):
+            _w = db.buscar_agente(_wid)
+            _workers.append({
+                "nome": (_w or {}).get("nome") or f"#{_wid}",
+                "area": (_w or {}).get("area") or "sem área",
+                "conectores": len([c for c in db.listar_conectores(
+                    cliente_id=(_w or {}).get("cliente_id"), area=(_w or {}).get("area") or "")
+                    if c.get("ativo", 1)]) if _w else 0,
+            })
         _fluxo = json.dumps({
             "id": a["id"], "nome": a["nome"],
             "modelo": a.get("modelo") or "-",
-            "fallback": a.get("modelo_secundario") or "",
+            # modelo_secundario_id era lido como "modelo_secundario" (coluna que
+            # nao existe): o painel mostrava "fb" vazio sempre.
+            "fallback": _modelos_nome.get(a.get("modelo_secundario_id"), ""),
             "skills": [s.strip() for s in (a.get("skills") or "").split(",") if s.strip()],
             "conectores": _conns,
+            "workers": _workers,
         }, ensure_ascii=False)
         cards_agentes += f"""
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <strong>{templates.h(a['nome'])}</strong>{templates.badge(a['status'])}</div>
           <div class="muted" style="font-size:12px;margin:6px 0">modelo {templates.h(a['modelo'])} · skills [{templates.h(a['skills'] or '-')}] · ⚡ {_fmt_tokens(tokens_por_agente.get(a['id'], 0))} tokens ({dias}d)</div>
+          {"<div class='muted' style='font-size:12px;margin:6px 0'>🧩 mestre de " + str(len(_workers)) + " worker(s): " + templates.h(", ".join(w["nome"] for w in _workers)) + "</div>" if _workers else ""}
           <div style="display:flex;gap:8px">
             <a class="btn ghost" href="/portal/agentes/{a['id']}/testar">testar agente</a>
             <button class="btn ghost" type="button" onclick='abrirFluxo({_fluxo})' title="Ver o fluxo de execução do agente">fluxo</button>
@@ -875,7 +901,23 @@ def area_excluir(aid: int):
 def agentes():
     from . import agente as agente_mod
     clientes = {c["id"]: c["nome"] for c in db.listar_clientes()}
-    rows = db.listar_agentes()
+    todos = db.listar_agentes()
+    # Papeis de orquestracao em UMA passada (mestre de N / worker de X): com uma
+    # consulta por linha seriam N+1 varreduras da tabela de agentes.
+    _mestre_de, _contagem_w = agente_mod.papeis_workers(todos)
+    # WORKERS NAO APARECEM NESTA LISTA: worker so existe dentro do mestre (se
+    # lista aqui, ele parece um agente solto e alguem edita/exclui a cadeia pela
+    # porta dos fundos). O paragrafo abaixo conta os ocultos para ninguem achar
+    # que um agente sumiu.
+    rows = [a for a in todos if a["id"] not in _mestre_de]
+    ocultos = len(todos) - len(rows)
+    aviso_ocultos = ""
+    if ocultos:
+        aviso_ocultos = (
+            f'<div class="muted" style="font-size:12px;margin:6px 0 10px">🧩 {ocultos} '
+            f'worker{"s" if ocultos > 1 else ""} não aparece'
+            f'{"m" if ocultos > 1 else ""} aqui: worker se cadastra/edita dentro do '
+            f'<b>card Workers</b> do agente mestre (cada linha de "🧩 mestre de N" acima).</div>')
     body = ""
     for a in rows:
         sec = a.get("modelo_secundario_id")
@@ -891,8 +933,24 @@ def agentes():
         if sec:
             m2 = db.buscar_modelo(sec)
             modelo_sec_txt = f" → fallback: {templates.h(m2['nome'])}" if m2 else ""
+        # Etiqueta de orquestracao: quem orquestra.
+        _papel_txt = ""
+        _n_ws = _contagem_w.get(a["id"], 0)
+        if _n_ws:
+            _papel_txt = (f' <span class="badge ok" title="orquestra {_n_ws} worker(s) em paralelo: '
+                          f'eles consultam as áreas deles e o mestre consolida">🧩 mestre de '
+                          f'{_n_ws} worker{"s" if _n_ws > 1 else ""}</span>')
+        # Excluir um MESTRE leva os workers junto (eles nascem dentro dele): o texto
+        # do confirm nomeia quem vai embora.
+        if _n_ws:
+            _ws_nomes = [w["nome"] for w in (db.buscar_agente(i)
+                                             for i in agente_mod.workers_do_agente(a)) if w]
+            _confirma = (f"Excluir o agente {templates.j(a['nome'])}? Os {_n_ws} worker(s) "
+                         f"também serão excluídos: {templates.j(', '.join(_ws_nomes))}.")
+        else:
+            _confirma = f"Excluir o agente {templates.j(a['nome'])}?"
         body += f"""<tr>
-          <td><b>{templates.h(a['nome'])}</b></td>
+          <td><b>{templates.h(a['nome'])}</b>{_papel_txt}</td>
           <td>{templates.h(a['area'] or '-')}</td>
           <td>{templates.h(a['modelo'])}{modelo_sec_txt}</td>
           <td>{skill_txt}</td>
@@ -902,7 +960,7 @@ def agentes():
           <td class="row-actions">
             <a href="/portal/agentes/{a['id']}/testar">testar</a>
             <a href="/portal/agentes/{a['id']}/editar">editar</a>
-            {templates.acao_form(f"/portal/agentes/{a['id']}/excluir", 'excluir', f"Excluir o agente {templates.j(a['nome'])}?", True)}
+            {templates.acao_form(f"/portal/agentes/{a['id']}/excluir", 'excluir', _confirma, True)}
           </td>
         </tr>"""
     tabela = f"""<table><thead><tr><th>Agente</th><th>Área</th><th>Modelo</th><th>Skills</th><th>Conectores (área)</th><th>Status</th><th>Cliente</th><th></th></tr></thead>
@@ -937,6 +995,7 @@ def agentes():
     </div>
     {aviso}
     {checklist}
+    {aviso_ocultos}
     {tabela}"""
     return templates.page("Agentes", content, active="agentes", user=_user())
 
@@ -1091,10 +1150,7 @@ def agente_testar(aid: int):
         h+=pk.length?pk.map(function(k){{return '<code style="background:var(--panel-soft);padding:2px 6px;border-radius:4px">'+k+' = '+p[k]+'</code>'}}).join(' '):'<span class="muted">Nenhum parametro extraido</span>';
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
-        if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
-          if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
-          else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
-        }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
+        if(c.length){{for(var i=0;i<c.length;i++){{h+=bsConector(c[i]);}}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px"><div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
         h+=rg.length?'<span class="muted">'+rg.map(function(x){{return (x.texto||'').substring(0,80)}}).join(' | ')+'</span>':'<span class="muted">Vazio</span>';
@@ -1109,6 +1165,103 @@ def agente_testar(aid: int):
     function fecharRastreio(){{document.getElementById('modal-rastreio').classList.remove('show');}}
     </script>"""
     return templates.page(f"Testar {a['nome']}", content, active="agentes", user=u)
+
+
+def _workers_card(a: dict, avisos: list[str] | None = None) -> str:
+    """Card "Workers" da tela do agente: a LISTA (só os workers) + cadastrar.
+
+    Antes era um `<select multiple>` com o catálogo inteiro de agentes: a tela não
+    mostrava "os workers deste mestre", tirar um item exigia Ctrl+clique (um
+    clique simples troca a seleção) e o botão "limpar" só apagava o destaque — a
+    interação não se anunciava. Agora a tabela lista SOMENTE os workers, na ordem
+    de execução, com subir/descer/editar/excluir por LINHA (todo estado muda por
+    POST com token, como no resto do portal — não há link GET destrutivo).
+    """
+    from . import agente as agente_mod
+    aid = a["id"]
+    workers = [w for w in (db.buscar_agente(i) for i in agente_mod.workers_do_agente(a)) if w]
+
+    linhas = ""
+    for i, w in enumerate(workers, 1):
+        area = w.get("area") or ""
+        ativos = [c["nome"] for c in db.listar_conectores(cliente_id=w.get("cliente_id"), area=area)
+                  if c.get("ativo") in (1, "1", True, None)]
+        _st = "" if (w.get("status") or "ativo") == "ativo" else \
+            ' <span class="badge warn">pausado</span>'
+        _con = templates.h(", ".join(ativos)) if ativos else (
+            '<span class="badge warn" title="nenhum conector ativo nesta área: este '
+            'worker não traz dados">sem conector</span>')
+        linhas += f"""<tr>
+          <td class="muted" style="width:34px">{i}</td>
+          <td><b>{templates.h(w["nome"])}</b>{_st}</td>
+          <td>{templates.h(area or '-')}</td>
+          <td style="font-size:12px">{_con}</td>
+          <td class="row-actions" style="white-space:nowrap">
+            {templates.acao_form(f"/portal/agentes/{aid}/workers/{w['id']}/subir", "↑", "", False)}
+            {templates.acao_form(f"/portal/agentes/{aid}/workers/{w['id']}/descer", "↓", "", False)}
+            <a href="/portal/agentes/{w['id']}/editar">editar</a>
+            {templates.acao_form(f"/portal/agentes/{aid}/workers/{w['id']}/excluir", "excluir",
+                                 f"Excluir o worker {templates.j(w['nome'])}? O agente também será apagado.", True)}
+          </td></tr>"""
+    if not linhas:
+        linhas = ('<tr><td colspan="5" class="muted">nenhum worker — o agente responde '
+                  'sozinho, como sempre</td></tr>')
+
+    areas_opts = "".join(f'<option value="{templates.h(ar)}">{templates.h(ar)}</option>'
+                         for ar in listar_areas())
+    try:
+        _sk_disp = agente_mod.listar_skills()
+    except Exception:  # noqa: BLE001 — card nao pode derrubar a tela
+        _sk_disp = []
+    skopts_worker = "".join(
+        f'<option value="{templates.h(s["name"])}">{templates.h(s["name"])}</option>'
+        for s in _sk_disp)
+    aviso_txt = "".join(
+        f'<div class="badge warn" style="display:block;margin:6px 0;font-size:12px">'
+        f'⚠️ {templates.h(x)}</div>' for x in (avisos or []))
+
+    return f"""
+      <label style="margin-top:14px;display:block;font-size:13px;padding-left:2px">
+        Workers deste agente <span class="muted" style="font-weight:400">
+        (executam em PARALELO; a ordem é a ordem dos blocos que o mestre recebe)</span></label>
+      <table style="margin-top:6px"><thead><tr>
+        <th>#</th><th>Worker</th><th>Área</th><th>Conectores da área</th><th>Ações</th>
+      </tr></thead><tbody>{linhas}</tbody></table>
+      {aviso_txt}
+      <details style="margin-top:10px">
+        <summary class="btn ghost" style="display:inline-block;cursor:pointer">➕ Cadastrar worker</summary>
+        <div class="card" style="margin-top:8px">
+          <form method="post" action="/portal/agentes/{aid}/workers/novo">
+            {templates.csrf_field()}
+            <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+              <div><label>Nome do worker</label>
+                <input name="nome" placeholder="Agente Vendas" required></div>
+              <div><label>Área (define os conectores)</label>
+                <select name="area">{areas_opts}</select></div>
+            </div>
+            <div style="margin-top:10px"><label>Skill do worker (opcional)</label>
+              <select name="skills"><option value="">-- nenhuma (devolve o dado cru) --</option>{skopts_worker}</select>
+              <span class="muted" style="font-size:11px">A skill do worker organiza o dado que ele
+                entrega ao mestre (o mestre responde com a skill dele).</span></div>
+            <button class="btn" style="margin-top:10px">Cadastrar e vincular</button>
+            <span class="muted" style="font-size:11px;margin-left:8px">
+              cria o agente já vinculado a este mestre (a área dele decide os conectores que ele roda;
+              o modelo é o do mestre — worker não escolhe modelo)</span>
+          </form>
+        </div>
+      </details>
+      <span class="muted" style="font-size:11px;padding-left:2px">
+        Cada worker roda só os conectores da <b>área dele</b> e devolve dados; o mestre
+        consolida uma única resposta — o tempo é o do worker mais lento + a consolidação.
+        O worker também <b>herda o modelo do mestre</b>. Worker não pode ter workers.
+        <b>Na voz não use workers</b> (a resposta precisa sair em menos de 1s).
+      </span>"""
+
+
+def _worker_do_mestre(aid: int) -> dict | None:
+    """Mestre que orquestra este agente (None = ele não é worker de ninguém)."""
+    from . import agente as agente_mod
+    return agente_mod.mestre_do_worker(aid)
 
 
 def _skills_radio(skills_disp: list[dict], selecionadas: list[str] | None = None) -> str:
@@ -1192,6 +1345,8 @@ def agente_novo():
             flash(f"Agente '{nome}' criado.", "ok")
             return redirect(url_for("portal.agentes"))
     opts = _opts_cliente()
+    _clientes = db.listar_clientes()
+    _cid_lista = _clientes[0]["id"] if _clientes else 0
     areas_opts = "".join(f'<option value="{templates.h(ar)}">{templates.h(ar)}</option>' for ar in listar_areas())
     mopts = "".join(f'<option value="{m["id"]}">{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos) \
         or '<option value="">-- cadastre um modelo em Modelos IA --</option>'
@@ -1220,6 +1375,8 @@ def agente_novo():
           Vá em <a href="/portal/conectores">Conectores</a> para cadastrar APIs, servidores MCP ou consultas SQL
           como fonte de dados para os agentes da área.
         </div>
+        <span class="muted" style="font-size:11px;padding-left:2px">
+          Workers (orquestração) se cadastram <b>depois</b>, na tela do agente mestre.</span>
         <label style="margin-top:12px;display:block;font-size:13px;padding-left:2px">
           <input type="checkbox" name="lgpd_ativado" value="1" checked style="width:auto;margin:0;vertical-align:middle">
           🔒 Aplicar LGPD (anonimizar resposta do agente)
@@ -1240,6 +1397,13 @@ def agente_editar(aid: int):
     if not a:
         flash("Agente não encontrado.", "warn")
         return redirect(url_for("portal.agentes"))
+    # Se este agente e WORKER, o "voltar" e o pos-salvar levam de volta ao MESTRE
+    # (com a ancora do card): senao o operador edita um worker, desiste e cai na
+    # lista de Agentes, longe da cadeia que ele estava montando.
+    _meu_mestre = _worker_do_mestre(aid)
+    _destino = (url_for("portal.agente_editar", aid=_meu_mestre["id"]) + "#workers"
+                if _meu_mestre else url_for("portal.agentes"))
+    _rotulo_cancelar = "← voltar ao mestre" if _meu_mestre else "Cancelar"
     modelos = db.listar_modelos()
     skills_disp = agente_mod.listar_skills()
     skills_sel = [s.strip() for s in (a["skills"] or "").split(",") if s.strip()]
@@ -1253,26 +1417,45 @@ def agente_editar(aid: int):
         '⚠️ skill não encontrada — NÃO está sendo aplicada no prompt: '
         + templates.h(", ".join(faltantes)) + '</div>'
     ) if faltantes else ""
+    # No worker a skill tem FUNCAO PROPRIA (v0.11.11): ela organiza o dado que o
+    # worker devolve ao mestre. Sem esta nota o operador nao saberia que a skill
+    # dele age diferente da skill do agente que responde.
+    nota_skill_worker = ""
+    if _meu_mestre:
+        nota_skill_worker = (
+            '<div class="muted" style="font-size:12px;margin:6px 0">'
+            f'Este agente é <b>worker</b> de <b>{templates.h(_meu_mestre.get("nome") or "")}</b>: '
+            'a skill abaixo organiza os dados da área dele antes de entregar ao mestre '
+            '(o mestre responde ao usuário com a skill dele). Worker <b>sem</b> skill '
+            'devolve só o dado da área, como antes.</div>')
     if request.method == "POST":
         campos = {}
         if request.form.get("nome", "").strip():
             campos["nome"] = request.form["nome"].strip()
         if request.form.get("area", ""):
             campos["area"] = request.form["area"]
-        mid = request.form.get("modelo_id") or None
-        if mid:
-            campos["modelo_id"] = int(mid)
-            # atualiza tambem o texto legado 'modelo' com o nome do modelo
-            m = db.buscar_modelo(int(mid))
-            if m:
-                campos["modelo"] = m["nome"]
-        mid2 = request.form.get("modelo_secundario_id") or None
-        if mid2:
-            mid2 = int(mid2)
-        if mid2 == campos.get("modelo_id"):
-            mid2 = None
-        campos["modelo_secundario_id"] = mid2
+        if not _meu_mestre:
+            # Worker herda o modelo do mestre: os campos de modelo NAO existem no
+            # formulario dele (nao ha select), entao nao se grava nada aqui —
+            # gravar o que veio do form zeraria a coluna a cada salvamento.
+            mid = request.form.get("modelo_id") or None
+            if mid:
+                campos["modelo_id"] = int(mid)
+                # atualiza tambem o texto legado 'modelo' com o nome do modelo
+                m = db.buscar_modelo(int(mid))
+                if m:
+                    campos["modelo"] = m["nome"]
+            mid2 = request.form.get("modelo_secundario_id") or None
+            if mid2:
+                mid2 = int(mid2)
+            if mid2 == campos.get("modelo_id"):
+                mid2 = None
+            campos["modelo_secundario_id"] = mid2
         campos["skills"] = ",".join(s.strip() for s in request.form.getlist("skills") if s.strip())
+        # Workers NAO entram neste formulario: a lista e o cadastro de workers
+        # vivem no card proprio (formularios proprios, com token) logo abaixo —
+        # formulario dentro de formulario e HTML invalido e o navegador descarta
+        # o de dentro (o botao "cadastrar worker" acabaria enviando este editar).
         # Integridade referencial: nao grava nome de skill que nao resolve
         # (referencia pendurada = instrucoes perdidas em silencio).
         _validos = {s["name"] for s in skills_disp}
@@ -1287,12 +1470,52 @@ def agente_editar(aid: int):
         db.atualizar_agente(aid, **campos)
         db.registrar_auditoria(_user()["login"], "admin", "editar_agente", alvo=request.form.get("nome", a["nome"]),
                                cliente_id=a["cliente_id"], ip=request.remote_addr)
-        flash("Agente atualizado.", "ok")
-        return redirect(url_for("portal.agentes"))
+        flash(f"{'Worker' if _meu_mestre else 'Agente'} atualizado.", "ok")
+        return redirect(_destino)
     mopts = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
     mopts2 = "".join(f'<option value="{m["id"]}" {"selected" if m["id"]==a.get("modelo_secundario_id") else ""}>{templates.h(m["nome"])} ({templates.h(m["modelo"])})</option>' for m in modelos)
+    if _meu_mestre:
+        # Worker HERDA o modelo do mestre: mostrar select aqui seria configuracao
+        # morta (a cadeia nao le o modelo do worker) e o operador acharia que
+        # mudou alguma coisa. Mostra de quem herda, sem campo.
+        _mid_m = _meu_mestre.get("modelo_id") or 0
+        _mod_m = (db.buscar_modelo(_mid_m) or {}) if _mid_m else {}
+        campo_modelo = (
+            '<label>Modelo de IA (principal)</label>'
+            f'<div class="muted" style="font-size:13px;padding:6px 0">'
+            f'herda do mestre — <b>{templates.h(_meu_mestre["nome"])}</b>'
+            f'{" usa " + templates.h(_mod_m.get("nome") or "") if _mod_m.get("nome") else ""}'
+            f'</div>')
+        campo_fallback = (
+            '<label>Modelo de IA (fallback)</label>'
+            '<div class="muted" style="font-size:13px;padding:6px 0">'
+            'herda do mestre (worker não escolhe modelo)</div>')
+    else:
+        campo_modelo = (f'<label>Modelo de IA (principal)</label><select name="modelo_id">'
+                        f'<option value="">--</option>{mopts}</select>')
+        campo_fallback = (f'<label>Modelo de IA (fallback)</label><select '
+                          f'name="modelo_secundario_id"><option value="">-- nenhum --</option>'
+                          f'{mopts2}</select>\n          <span class="muted" '
+                          f'style="font-size:11px">Usado automaticamente se o principal falhar.</span>')
     skopts = _skills_radio(skills_disp, skills_sel)
     copts = ""
+    _wids_atuais = agente_mod.workers_do_agente(a)
+    if _meu_mestre:
+        # Worker e FOLHA (profundidade 1): sem card de workers — em vez dele, quem
+        # e o mestre e o caminho de volta (senao o operador nem descobre a cadeia).
+        workers_bloco = f"""
+      <div class="card muted" style="font-size:13px">
+        <b>🧩 Este agente é worker de <a href="/portal/agentes/{_meu_mestre['id']}/editar">{templates.h(_meu_mestre['nome'])}</a></b><br>
+        Worker é folha: ele executa os conectores da área dele e devolve os dados, e quem
+        consolida a resposta é o mestre. Por isso não há workers aqui.
+        <div style="margin-top:10px">
+          <a class="btn ghost" href="/portal/agentes/{_meu_mestre['id']}/editar">← voltar ao mestre</a>
+        </div>
+      </div>"""
+    else:
+        workers_bloco = ('<div class="card"><h3 style="margin-top:0">Workers</h3>'
+                         + _workers_card(a, agente_mod.avisos_workers(a, _wids_atuais))
+                         + '</div>')
     areas_opts = "".join(f'<option value="{templates.h(ar)}" {"selected" if ar==a.get("area") else ""}>{templates.h(ar)}</option>' for ar in listar_areas())
     content = f"""
     <div class="card" style="max-width:700px">
@@ -1303,12 +1526,12 @@ def agente_editar(aid: int):
           <div><label>Área</label><select name="area"><option value="">--</option>{areas_opts}</select></div>
         </div>
         <div class="form-row">
-          <div><label>Modelo de IA (principal)</label><select name="modelo_id"><option value="">--</option>{mopts}</select></div>
+          <div>{campo_modelo}</div>
           <div><label>Status</label><select name="status"><option value="ativo" {"selected" if a.get("status")=="ativo" else ""}>Ativo</option><option value="pausado" {"selected" if a.get("status")=="pausado" else ""}>Pausado</option></select></div>
         </div>
-        <div class="form-row" style="grid-template-columns:1fr"><div><label>Modelo de IA (fallback)</label><select name="modelo_secundario_id"><option value="">-- nenhum --</option>{mopts2}</select>
-          <span class="muted" style="font-size:11px">Usado automaticamente se o principal falhar.</span></div></div>
+        <div class="form-row" style="grid-template-columns:1fr"><div>{campo_fallback}</div></div>
         <label>Skill do agente (uma só)</label>
+        {nota_skill_worker}
         {aviso_skill}
         <table style="width:100%;border:none;background:transparent"><tbody>{skopts}</tbody></table>
         <div class="card muted" style="font-size:13px;margin-top:12px;padding:12px">
@@ -1323,10 +1546,11 @@ def agente_editar(aid: int):
         </label>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>
-          <a class="btn ghost" href="/portal/agentes">Cancelar</a>
+          <a class="btn ghost" href="{_destino}">{_rotulo_cancelar}</a>
         </div>
       </form>
-    </div>"""
+    </div>
+    <div id="workers" style="max-width:700px;margin-top:14px">{workers_bloco}</div>"""
     return templates.page(f"Editar {a['nome']}", content, active="agentes", user=_user())
 
 
@@ -1335,11 +1559,165 @@ def agente_editar(aid: int):
 def agente_excluir(aid: int):
     a = db.buscar_agente(aid)
     if a:
+        from . import agente as agente_mod
+        # Integridade referencial: agente EM USO como worker nao e excluido — a
+        # lista do mestre ficaria com um ID pendurado e o worker sumiria da
+        # cadeia sem aviso (mesmo padrao da skill em uso).
+        usam = agente_mod.agentes_que_usam_worker(aid)
+        if usam:
+            flash(f"'{a['nome']}' é worker do(s) agente(s): " + ", ".join(usam)
+                  + ". Desvincule na tela do mestre antes de excluir.", "warn")
+            return redirect(url_for("portal.agentes"))
+        # MESTRE: os workers nascem dentro dele (nao sao vinculaveis de fora), entao
+        # excluir o mestre sem eles deixaria os workers orfaos — e um agente orfao
+        # segue respondendo sozinho, sem ninguem saber de quem ele era. O confirm()
+        # da listagem nomeia os workers; o servidor faz a cascata.
+        _ws = [w for w in (db.buscar_agente(i) for i in agente_mod.workers_do_agente(a)) if w]
+        for w in _ws:
+            db.deletar_agente(w["id"])
         db.deletar_agente(aid)
         db.registrar_auditoria(_user()["login"], "admin", "excluir_agente", alvo=a["nome"],
                                cliente_id=a["cliente_id"], ip=request.remote_addr)
-        flash(f"Agente '{a['nome']}' excluído.", "ok")
+        if _ws:
+            db.registrar_auditoria(_user()["login"], "admin", "excluir_agentes_workers",
+                                   alvo=", ".join(w["nome"] for w in _ws),
+                                   cliente_id=a["cliente_id"], ip=request.remote_addr)
+            flash(f"Agente '{a['nome']}' e {len(_ws)} worker(s) excluídos: "
+                  + ", ".join(w["nome"] for w in _ws) + ".", "ok")
+        else:
+            flash(f"Agente '{a['nome']}' excluído.", "ok")
     return redirect(url_for("portal.agentes"))
+
+
+# ---------------------------------------------------------------------------
+# WORKERS — cadastro/ordem/exclusao DENTRO da tela do mestre (v0.11.11)
+# ---------------------------------------------------------------------------
+
+def _mestre_ou_erro(aid: int) -> tuple[dict | None, str]:
+    """(mestre, erro). Impede que um WORKER vire mestre (profundidade 1)."""
+    from . import agente as agente_mod
+    a = db.buscar_agente(aid)
+    if not a:
+        return None, "Agente não encontrado."
+    _dono = _worker_do_mestre(aid)
+    if _dono:
+        return None, (f"'{a['nome']}' é worker de '{_dono['nome']}' — worker é folha "
+                      "e não pode ter workers.")
+    return a, ""
+
+
+def _salvar_ordem_workers(a: dict, ids: list[int]) -> None:
+    db.atualizar_agente(a["id"], workers=",".join(str(i) for i in ids))
+
+
+def _volta(rota: str):
+    """Volta para o card Workers (mesma posicao).
+
+    A ancora `#workers` e o sinal que o JS usa para devolver a rolagem: so as
+    acoes que DERAM CERTO voltam com ela. Quando ha mensagem de erro, a resposta
+    vai sem a ancora — a pagina sobe e o erro fica visivel (aviso no topo), em vez
+    de o operador ficar olhando um card sem entender por que nada aconteceu.
+    """
+    return redirect(rota + "#workers")
+
+
+@bp.route("/agentes/<int:aid>/workers/novo", methods=["POST"])
+@auth.admin_required
+def agente_worker_novo(aid: int):
+    """Cria um agente JÁ vinculado como worker do mestre (não há vínculo de terceiros)."""
+    from . import agente as agente_mod
+    a, erro = _mestre_ou_erro(aid)
+    if a is None:
+        flash(erro, "warn")
+        return redirect(url_for("portal.agente_editar", aid=aid))
+    nome = request.form.get("nome", "").strip()
+    area = request.form.get("area", "").strip()
+    # O worker HERDA o modelo do mestre: nao ha campo de modelo no cadastro dele
+    # (escolher um modelo que a cadeia ignoraria era configuracao morta na tela).
+    mid = _int_ou(str(a.get("modelo_id") or 0), 0)
+    # Skill PROPRIA do worker (opcional no cadastro): e ela que organiza o dado
+    # da area antes do worker entregar ao mestre. Vazia = devolve o dado cru.
+    sk = (request.form.get("skills") or "").strip()
+    if sk and agente_mod.skills_ausentes(sk):
+        flash(f"Skill '{sk}' não existe no catálogo — worker criado sem skill.", "warn")
+        sk = ""
+    _ids = agente_mod.workers_do_agente(a)
+    if not nome:
+        flash("Nome do worker é obrigatório.", "warn")
+    elif len(_ids) >= agente_mod._MAX_WORKERS_LIMITE:
+        flash(f"No máximo {agente_mod._MAX_WORKERS_LIMITE} workers por agente.", "warn")
+    elif not db.buscar_modelo(mid):
+        flash("O mestre precisa de um modelo de IA definido — é ele que os workers herdam.",
+              "warn")
+    else:
+        m = db.buscar_modelo(mid) or {}
+        wid = db.criar_agente(a["cliente_id"], nome, area, m.get("nome") or "", sk,
+                              modelo_id=mid)
+        _salvar_ordem_workers(a, _ids + [wid])
+        db.registrar_auditoria(_user()["login"], "admin", "criar_worker", alvo=nome,
+                               cliente_id=a["cliente_id"], ip=request.remote_addr)
+        _avisos = agente_mod.avisos_workers(db.buscar_agente(aid), _ids + [wid])
+        flash(f"Worker '{nome}' cadastrado e vinculado.", "ok")
+        if _avisos:
+            flash("Atenção: " + " · ".join(_avisos), "warn")
+        return _volta(url_for("portal.agente_editar", aid=aid))
+    return redirect(url_for("portal.agente_editar", aid=aid))
+
+
+def _mover_worker(aid: int, wid: int, passo: int):
+    from . import agente as agente_mod
+    a, erro = _mestre_ou_erro(aid)
+    if a is None:
+        flash(erro, "warn")
+        return redirect(url_for("portal.agente_editar", aid=aid))
+    _ids = agente_mod.workers_do_agente(a)
+    if wid in _ids:
+        i = _ids.index(wid)
+        j = i + passo
+        if 0 <= j < len(_ids):
+            _ids[i], _ids[j] = _ids[j], _ids[i]
+            _salvar_ordem_workers(a, _ids)
+            db.registrar_auditoria(_user()["login"], "admin", "ordem_workers",
+                                   alvo=f"#{wid} posição {j + 1}",
+                                   cliente_id=a["cliente_id"], ip=request.remote_addr)
+            # SEM flash: a resposta volta para a mesma tela e o JS mantem a rolagem
+            # na posicao — a mensagem apareceria no topo, fora da vista. O proprio
+            # reordenamento da linha e o retorno visual (fica na auditoria).
+    return _volta(url_for("portal.agente_editar", aid=aid))
+
+
+@bp.route("/agentes/<int:aid>/workers/<int:wid>/subir", methods=["POST"])
+@auth.admin_required
+def agente_worker_subir(aid: int, wid: int):
+    return _mover_worker(aid, wid, -1)
+
+
+@bp.route("/agentes/<int:aid>/workers/<int:wid>/descer", methods=["POST"])
+@auth.admin_required
+def agente_worker_descer(aid: int, wid: int):
+    return _mover_worker(aid, wid, 1)
+
+
+@bp.route("/agentes/<int:aid>/workers/<int:wid>/excluir", methods=["POST"])
+@auth.admin_required
+def agente_worker_excluir(aid: int, wid: int):
+    """Tira o worker da lista E apaga o agente (worker só existe dentro do mestre)."""
+    from . import agente as agente_mod
+    a, erro = _mestre_ou_erro(aid)
+    if a is None:
+        flash(erro, "warn")
+        return redirect(url_for("portal.agente_editar", aid=aid))
+    _ids = agente_mod.workers_do_agente(a)
+    w = db.buscar_agente(wid)
+    if wid in _ids:
+        _salvar_ordem_workers(a, [i for i in _ids if i != wid])
+        if w:
+            db.deletar_agente(wid)
+        db.registrar_auditoria(_user()["login"], "admin", "excluir_worker",
+                               alvo=(w or {}).get("nome") or f"#{wid}",
+                               cliente_id=a["cliente_id"], ip=request.remote_addr)
+        flash(f"Worker '{(w or {}).get('nome') or wid}' excluído.", "ok")
+    return _volta(url_for("portal.agente_editar", aid=aid))
 
 
 # ---------------------------------------------------------------------------
@@ -2740,10 +3118,7 @@ def auditoria():
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#7c3aed">2. Conectores executados</div>';
-        if(c.length){{for(var i=0;i<c.length;i++){{var f=c[i];
-          if(f.erro){{h+='<div style="color:var(--bad)"> ERRO '+f.conector+': '+f.erro+'</div>';}}
-          else{{h+='<div> OK <b>'+f.conector+'</b>.'+f.tool+'<br><span class="muted" style="font-size:11px">args: '+JSON.stringify(f.args)+' | retorno: '+(f.resultado?f.resultado.length+' registros':'vazio')+'</span></div>';}}
-        }}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
+        if(c.length){{for(var i=0;i<c.length;i++){{h+=bsConector(c[i]);}}}}else{{h+='<span class="muted">Nenhum conector executado</span>';}}
         h+='</div>';
         h+='<div style="margin-bottom:8px;background:var(--code-bg);border-radius:6px;padding:8px">';
         h+='<div style="font-weight:600;color:#059669">3. RAG (base de conhecimento)</div>';
