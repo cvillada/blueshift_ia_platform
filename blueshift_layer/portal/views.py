@@ -5486,11 +5486,17 @@ def atualizacoes():
     if request.method == "POST":
         res = update_client.apply()
         if res.get("ok"):
-            flash(f"Atualização {'simulada (dev) ' if res.get('dry_run') else ''}aplicada: "
-                  f"{res.get('versao')}", "ok")
+            if res.get("dry_run"):
+                flash(f"Atualização simulada (dev): {res.get('versao')}", "ok")
+            else:
+                flash(f"Atualização {res.get('versao')} iniciada — o portal "
+                      f"reiniciará ao concluir.", "ok")
         else:
             flash(f"Não aplicada: {res.get('motivo')}", "bad")
-        return redirect(url_for("portal.atualizacoes"))
+        _dest = url_for("portal.atualizacoes")
+        if res.get("ok") and not res.get("dry_run"):
+            _dest = url_for("portal.atualizacoes", atualizando=1)
+        return redirect(_dest)
     from blueshift_layer import __version__
     # ── Card de licenca da plataforma ──
     import os as _os
@@ -5584,7 +5590,69 @@ docker ps
 git describe --tags</pre>
       <p class="muted" style="font-size:12px;margin:8px 0 0">Linux sem Docker (processo direto): <code>bash update_bare.sh vX.Y.Z</code> (reinicia o serviço via systemd). <b>Nunca</b> rode <code>docker compose down -v</code> — apaga o volume de dados. Se o botão acusar repo não encontrado, rode no host: <code>docker exec blueshift-platform bash -c 'git config --global --add safe.directory /opt/blueshift/repo'</code> (dubious ownership — o entrypoint já configura, o container irmão do update pula o entrypoint).</p>
     </div>"""
-    content = f"""
+    estado = update_client.status(info)
+    _em_update = bool(estado["em_andamento"] or request.args.get("atualizando"))
+    _js_progresso = """<script>
+(function(){var bar=document.getElementById('up-bar'),eta=document.getElementById('up-etapa'),lg=document.getElementById('up-log');function poll(){fetch('/portal/atualizacoes/status',{headers:{'Accept':'application/json'}}).then(function(r){return r.json()}).then(function(d){if(bar)bar.style.width=(d.progresso||0)+'%';if(eta)eta.textContent=(d.etapa||'')+' ('+(d.progresso||0)+'%)';if(lg)lg.textContent=d.log||'';if(d.concluido||d.aplicado){setTimeout(function(){location.reload()},1200)}else{setTimeout(poll,2500)}}).catch(function(){setTimeout(poll,4000)})}poll()})();
+</script>"""
+    _progresso_ui = ""
+    if _em_update:
+        _progresso_ui = (
+            '<div class="card" style="max-width:680px">'
+            '<h3 style="margin-top:0">Atualização em andamento</h3>'
+            '<p class="muted" style="margin-top:0">A plataforma está sendo '
+            'atualizada. O portal reinicia sozinho ao concluir — não feche esta '
+            'página nem clique em "Aplicar" novamente.</p>'
+            '<div style="height:10px;background:var(--line-soft);border-radius:6px;'
+            'overflow:hidden;margin:12px 0 4px">'
+            '<div id="up-bar" style="height:100%;width:' + str(estado["progresso"])
+            + '%;background:var(--ok);transition:width .7s ease"></div></div>'
+            '<div id="up-etapa" class="muted" style="font-size:12px">'
+            + templates.h(str(estado["etapa"])) + ' (' + str(estado["progresso"]) + '%)</div>'
+            '<pre id="up-log" style="background:var(--code-bg);padding:10px;'
+            'border-radius:6px;font-size:11px;max-height:220px;overflow:auto;'
+            'margin-top:10px;white-space:pre-wrap">'
+            + templates.h(str(estado["log"])) + '</pre></div>'
+            + _js_progresso
+        )
+    # "baixado mas nao aplicado" — frase clara, sem induzir a re-clique
+    _nao_aplicado_msg = ""
+    if info.get("aplicado") is False:
+        _nao_aplicado_msg = (
+            '<div class="badge bad" style="margin-top:10px">⚠️ A versão <b>'
+            + templates.h(str(info.get('atual', ''))) + '</b> já está no '
+            'repositório, mas os containers em execução ainda rodam a <b>'
+            + templates.h(str(info.get('codigo', ''))) + '</b> (' + _nao_aplicado_desc
+            + '). Use o botão abaixo para reconstruir os containers.</div>'
+        )
+    # botao + confirmacao (sim/nao)
+    _botao_update = ""
+    if info.get("disponivel") or info.get("aplicado") is False:
+        _alvo = info.get("disponivel_version") if info.get("disponivel") else info.get("atual", "")
+        _desc = "a nova versão" if info.get("disponivel") else "os containers (versão já baixada)"
+        _botao_update = (
+            '<form method="post" id="form-update" style="display:none">'
+            + templates.csrf_field() + '</form>'
+            '<div style="margin-top:12px"><button class="btn" type="button" '
+            'onclick="document.getElementById(\'confirma-update\').showModal()">'
+            'Aplicar atualização</button></div>'
+            '<dialog id="confirma-update" style="border:1px solid var(--line-soft);'
+            'border-radius:10px;padding:20px;max-width:440px;background:var(--bg)">'
+            '<h3 style="margin-top:0">Confirmar atualização</h3>'
+            '<p style="margin:8px 0">Deseja aplicar ' + _desc + ' <b>'
+            + templates.h(str(_alvo)) + '</b>? Os containers serão reconstruídos e '
+            'o portal reiniciará ao concluir (os dados são preservados).</p>'
+            '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">'
+            '<button class="btn ghost" type="button" '
+            'onclick="this.closest(\'dialog\').close()">Não, cancelar</button>'
+            '<button class="btn" type="button" '
+            'onclick="document.getElementById(\'form-update\').submit()">Sim, atualizar</button>'
+            '</div></dialog>'
+        )
+    if _em_update:
+        content = f"""{_progresso_ui}{card_manual}{card_licenca}{card_ambiente}"""
+    else:
+        content = f"""
     <div class="card" style="max-width:680px">
       <h3 style="margin-top:0">Update via Git (canal de atualização)</h3>
       <p class="muted">Versão instalada: <b>{templates.h(str(info.get('atual', '')))}</b>
@@ -5592,8 +5660,8 @@ git describe --tags</pre>
       <p class="muted" style="font-size:12px">Repo: <code>{templates.h(str(info.get('repo', '')))}</code></p>
       {'<p class="muted">Nenhuma atualização disponível no remoto (ou sem acesso ao repositório).</p>' if not info.get('disponivel') else ''}
       {'<div class="badge ok">Nova versão disponível: ' + templates.h(str(info.get('disponivel_version'))) + '</div>' if info.get('disponivel') else ''}
-      {('<div class="badge bad" style="margin-top:10px">⚠️ Update baixado mas <b>NÃO aplicado</b>: o repositório está na tag <b>' + templates.h(str(info.get('atual',''))) + '</b>, mas a versão em execução é <b>' + templates.h(str(info.get('codigo',''))) + '</b> (' + _nao_aplicado_desc + '). Clique em <b>Aplicar</b> para reconstruir os containers e, se falhar, confira o log abaixo.</div>') if info.get('aplicado') is False else ''}
-      {('<form method="post">' + templates.csrf_field() + '<div style="margin-top:12px"><button class="btn" type="submit">Aplicar atualização</button></div></form>') if (info.get('disponivel') or info.get('aplicado') is False) else ''}
+      {_nao_aplicado_msg}
+      {_botao_update}
     </div>
     <div class="card muted" style="max-width:680px;font-size:13px">
       O update puxa a tag aprovada do repositório Git e recria os containers
@@ -5605,6 +5673,14 @@ git describe --tags</pre>
     {card_ambiente}
     """
     return templates.page("Atualizações", content, active="atualizacoes", user=_user())
+
+
+@bp.route("/atualizacoes/status")
+@auth.admin_required
+def atualizacoes_status():
+    """JSON do progresso da atualizacao (polling da barra na tela)."""
+    from blueshift_layer import update_client
+    return jsonify(update_client.status())
 
 
 # --------------------------------------------------------------------------- #

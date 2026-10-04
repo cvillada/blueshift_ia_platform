@@ -328,3 +328,50 @@ def ler_log(linhas: int = 60) -> str:
             return "".join(f.readlines()[-linhas:])
     except OSError:
         return ""
+
+
+def status(info: dict | None = None) -> dict:
+    """Progresso da atualizacao em andamento, lido dos marcadores do log.
+
+    O update.sh escreve etapas claras no LOG_FILE ("git fetch", "git checkout",
+    "docker compose up", "Update concluido") e o apply() marca o inicio com
+    "=== update <tag> iniciado". A tela Atualizacoes usa isto para desenhar a
+    barra de progresso e o painel de log AO VIVO durante o rebuild (o portal
+    reinicia no fim — o log, num volume, sobrevive).
+
+    `info` e o resultado de check() ja calculado pelo chamador (evita um
+    segundo git ls-remote na mesma request).
+    """
+    if info is None:
+        info = check()
+    log = ler_log(400)
+    idx = log.rfind("=== update ")
+    trecho = log[idx:] if idx >= 0 else ""
+    # Etapa -> (marcador no log, rotulo para a tela, progresso em %)
+    etapas = (
+        ("git fetch origin", "Baixando a versao do repositorio…", 18),
+        ("git checkout", "Aplicando a tag…", 36),
+        ("docker compose up", "Reconstruindo os containers…", 58),
+    )
+    progresso = 6
+    etapa = "Preparando a atualizacao…"
+    for marc, rotulo, pct in etapas:
+        if marc in trecho:
+            progresso = pct
+            etapa = rotulo
+    concluido = "Update concluido" in trecho
+    if concluido:
+        progresso = 100
+        etapa = "Atualizacao concluida."
+    em_andamento = bool(trecho) and not concluido
+    return {
+        "em_andamento": em_andamento,
+        "concluido": concluido,
+        "progresso": progresso,
+        "etapa": etapa,
+        "log": log,
+        "aplicado": info.get("aplicado"),
+        "codigo": info.get("codigo"),
+        "atual": info.get("atual"),
+        "container_status": info.get("container_status"),
+    }

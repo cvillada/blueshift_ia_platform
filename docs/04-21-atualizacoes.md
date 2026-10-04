@@ -13,10 +13,15 @@ remoto. Admin-only.
 - Versão instalada = `git describe --tags` do repo (ex: `v0.9.3`)
 - Versão disponível = tags do remoto (`git ls-remote`), ordenadas por
   versão; a mais recente diferente da instalada aparece como atualização
-- **Aplicar atualização** roda `update.sh <tag>` em background:
+- **Aplicar atualização** pede confirmação (modal "Sim, atualizar / Não,
+  cancelar") antes de rodar `update.sh <tag>` em background:
   `git fetch` + `git checkout <tag>` + `docker compose up -d --build`
   (dados preservados — volumes intactos). O portal reinicia ao concluir;
-  log em `/opt/blueshift/update.log`
+  log em `/opt/blueshift/update.log`. Durante o rebuild a tela mostra uma
+  **barra de progresso** — as etapas vêm dos marcadores do log (`git fetch`,
+  `git checkout`, `docker compose up`, `Update concluido`) — e o log ao vivo;
+  o endpoint interno `GET /portal/atualizacoes/status` devolve o progresso em
+  JSON para o polling da tela
 - A configuração da instalação (ex.: `BLUESHIFT_LICENSE_URL`, chave de
   licença, roteador) é **repassada ao portal recriado** via env do próprio
   container em execução — o update não depende do compose ler o `.env` do

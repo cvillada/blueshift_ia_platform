@@ -1325,16 +1325,33 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
             "vale o dado bruto — nunca tire numero que nao esteja no bruto.\n\n"
         )
     if ausentes_nota:
-        # Reforço anti-alucinação: o conector NAO rodou — o modelo nao pode
-        # responder com memoria/treino nem citar o conector como fonte.
-        system += (
-            "\nAVISO: a chamada ao conector NAO foi executada porque faltou "
-            "informar: " + ", ".join(sorted(set(ausentes_nota))) + ". Peca esse "
-            "dado ao usuario de forma natural e NAO responda com dados de "
-            "memoria/treino nem cite o conector como fonte. NUNCA emita "
-            "tool_call nem tags (<tool_call>, <function=, <parameter=) — "
-            "responda apenas em texto corrido pedindo o dado.\n"
-        )
+        _faltas = ", ".join(sorted(set(ausentes_nota)))
+        if _dados["blocos"]:
+            # HA dado vivo: a falta e PARCIAL e nao pode virar "peca ao usuario"
+            # enterrando o que JA veio (medido no teste de producao: "5 produtos
+            # em 2026" tinha os dados do conector inteligente, mas o
+            # `parametro_ausente` do conector "Top Produtos (param ano/limite)"
+            # — nome batendo com a pergunta — fez o modelo responder "falta o
+            # ano" e descartar a resposta pronta). Com dado nos blocos, a falta
+            # vira NOTA, nao ordem de parar.
+            system += (
+                "\nNOTA: alguns conectores nao rodaram por falta de parametro ("
+                + _faltas + "), mas os DADOS DE SISTEMA acima ja trazem o que a "
+                "pergunta pede. Responda com o que veio; cite o que ficou sem "
+                "dado apenas se alguma PARTE da pergunta depender do parametro "
+                "que faltou.\n"
+            )
+        else:
+            # Reforço anti-alucinação: o conector NAO rodou — o modelo nao pode
+            # responder com memoria/treino nem citar o conector como fonte.
+            system += (
+                "\nAVISO: a chamada ao conector NAO foi executada porque faltou "
+                "informar: " + _faltas + ". Peca esse "
+                "dado ao usuario de forma natural e NAO responda com dados de "
+                "memoria/treino nem cite o conector como fonte. NUNCA emita "
+                "tool_call nem tags (<tool_call>, <function=, <parameter=) — "
+                "responda apenas em texto corrido pedindo o dado.\n"
+            )
         if _dados.get("ausentes_orig"):
             # Cada falta PERTENCE a uma origem: sem isto o modelo tratava o
             # parametro que falta no worker A como impedimento para responder o

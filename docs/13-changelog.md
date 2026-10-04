@@ -12,6 +12,25 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.12 (2026-10-03) — confirmação e progresso no update; parâmetro ausente não bloqueia resposta**
+
+### Novo
+- **Atualizações com confirmação e barra de progresso**: o botão "Aplicar
+  atualização" agora abre um modal de confirmação ("Sim, atualizar" / "Não,
+  cancelar") antes de rodar o update. Confirmado, a tela vira "Atualização em
+  andamento" com barra de progresso por etapas (baixar → aplicar tag →
+  reconstruir containers) e o log ao vivo (endpoint interno
+  `GET /portal/atualizacoes/status`); a página recarrega sozinha ao concluir. A
+  mensagem "Update baixado mas NÃO aplicado", que induzia a clicar de novo, foi
+  reescrita para deixar claro que é só reconstruir os containers.
+
+### Correções
+- **Parâmetro ausente não enterra a resposta pronta**: quando um conector
+  reportava "falta parâmetro" (ex.: `ano`) enquanto outro conector já tinha
+  trazido os dados, o agente respondia "falta o ano" e descartava a resposta
+  pronta. Agora, com dado vivo nos blocos, a falta vira nota parcial e o agente
+  responde com o que veio; só pede o parâmetro quando nenhum conector trouxe dado.
+
 **v0.11.11 (2026-10-03) — Mestre + Workers: um agente orquestra vários agentes**
 
 ### Novo
