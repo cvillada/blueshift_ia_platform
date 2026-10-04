@@ -12,7 +12,7 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
-**v0.11.15 (2026-10-03) — corrige a barra de progresso e o popup do update**
+**v0.11.16 (2026-10-03) — corrige a barra de progresso e o popup do update**
 
 ### Correções
 - **Barra de progresso não regride mais**: o log do update ficava no layer
