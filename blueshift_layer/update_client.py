@@ -31,7 +31,7 @@ UPDATE_BARE_SCRIPT = os.getenv(
     os.path.join(os.path.dirname(os.getenv("BLUESHIFT_UPDATE_SCRIPT",
                                            "/opt/blueshift/repo/update.sh")),
                  "update_bare.sh"))
-LOG_FILE = os.getenv("BLUESHIFT_UPDATE_LOG", "/opt/blueshift/update.log")
+LOG_FILE = os.getenv("BLUESHIFT_UPDATE_LOG", "/opt/blueshift/data/update.log")
 # Socket do docker montado no portal (o container irmao fala com o daemon por ele)
 DOCKER_SOCK = "/var/run/docker.sock"
 
@@ -360,6 +360,13 @@ def status(info: dict | None = None) -> dict:
             progresso = pct
             etapa = rotulo
     concluido = "Update concluido" in trecho
+    # O marcador "Update concluido" muitas vezes NAO chega ao log: o rebuild
+    # recria o portal no meio e o relay do stdout do container irmao morre
+    # antes da ultima linha (a saida passa pelo processo do portal antigo).
+    # Detecta o termino pelo estado aplicado do check(): houve marcador de
+    # inicio E o codigo rodando ja e a versao do repo => o update terminou.
+    if not concluido and trecho and info.get("aplicado"):
+        concluido = True
     if concluido:
         progresso = 100
         etapa = "Atualizacao concluida."

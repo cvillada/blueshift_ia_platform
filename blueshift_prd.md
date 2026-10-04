@@ -1,7 +1,7 @@
 # CL Agents — Product Requirements Document (PRD)
 
 **Produto:** BlueShift IA Platform · **Marca de exibição:** **CL Agents** (by BlueShift IA Platform)
-**Versão do documento:** 0.7 (alinhado à versão 0.11.14 do produto)
+**Versão do documento:** 0.7 (alinhado à versão 0.11.15 do produto)
 **Data:** 2026-10-03
 **Autor:** Nei
 **Base tecnológica:** Flask standalone, Python puro (sem dependência de motor externo de IA)
@@ -299,6 +299,7 @@ Passo a passo completo: **`README.md`**.
 | Ação destrutiva nunca por `GET`: excluir/suspender/revogar/regenerar/pausar saem de link e viram formulário `POST` com token da sessão (13 rotas; `GET` responde 405); campo de formulário não numérico deixa de gerar 500 | ✅ v0.11.10 | — |
 | **Mestre + Workers**: um agente orquestra **agentes folha** (cada worker roda só os conectores da área dele, em paralelo, e o mestre consolida); worker herda o modelo do mestre e usa **skill própria** para organizar o dado da área; worker que falha devolve bloco de erro honesto; Rastreio dos conectores sem `undefined` (objeto/leitura/erro); prompt do SQL com **critério explícito** (`ORDER BY` com direção, coluna do critério e do filtro no `SELECT`, contagem sem `JOIN` que multiplica) e **repetição** quando o SELECT gerado não existe no banco; resposta afirma a ordem quando o bloco traz o critério e reporta **empate** em vez de vencedor único | ✅ v0.11.11 | Escolha do conector entre o fixo e o inteligente ainda varia entre execuções (critério de seleção) |
 | Confirmação (sim/não) e **barra de progresso** na tela Atualizações (etapas do log + endpoint de status) e mensagem "baixado mas não aplicado" reescrita; parâmetro ausente de um conector não **enterra** a resposta já trazida por outro | ✅ v0.11.14 | — |
+| Corrige a barra de progresso (log no volume de dados — não regride quando o rebuild recria o portal) e o popup de confirmação (cor do tema) | ✅ v0.11.15 | — |
 | Snowflake | ⏳ decisão pendente | Dependência pesada (`snowflake-connector-python`) x REST com polling — decidir com o cliente |
 | A2A completo (streaming e multi-turno) | ⏳ fase 2 | Implementar quando houver caso de uso |
 | Modelo de roteamento embutido na plataforma | ⏳ avaliado | Hoje: modelo externo dedicado (LM Studio/llama-server); embutir exigiria binário + pesos na imagem |

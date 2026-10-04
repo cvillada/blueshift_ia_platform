@@ -5493,10 +5493,7 @@ def atualizacoes():
                       f"reiniciará ao concluir.", "ok")
         else:
             flash(f"Não aplicada: {res.get('motivo')}", "bad")
-        _dest = url_for("portal.atualizacoes")
-        if res.get("ok") and not res.get("dry_run"):
-            _dest = url_for("portal.atualizacoes", atualizando=1)
-        return redirect(_dest)
+        return redirect(url_for("portal.atualizacoes"))
     from blueshift_layer import __version__
     # ── Card de licenca da plataforma ──
     import os as _os
@@ -5591,7 +5588,7 @@ git describe --tags</pre>
       <p class="muted" style="font-size:12px;margin:8px 0 0">Linux sem Docker (processo direto): <code>bash update_bare.sh vX.Y.Z</code> (reinicia o serviço via systemd). <b>Nunca</b> rode <code>docker compose down -v</code> — apaga o volume de dados. Se o botão acusar repo não encontrado, rode no host: <code>docker exec blueshift-platform bash -c 'git config --global --add safe.directory /opt/blueshift/repo'</code> (dubious ownership — o entrypoint já configura, o container irmão do update pula o entrypoint).</p>
     </div>"""
     estado = update_client.status(info)
-    _em_update = bool(estado["em_andamento"] or request.args.get("atualizando"))
+    _em_update = bool(estado["em_andamento"])
     _js_progresso = """<script>
 (function(){var bar=document.getElementById('up-bar'),eta=document.getElementById('up-etapa'),lg=document.getElementById('up-log');function poll(){fetch('/portal/atualizacoes/status',{headers:{'Accept':'application/json'}}).then(function(r){return r.json()}).then(function(d){if(bar)bar.style.width=(d.progresso||0)+'%';if(eta)eta.textContent=(d.etapa||'')+' ('+(d.progresso||0)+'%)';if(lg)lg.textContent=d.log||'';if(d.concluido||d.aplicado){setTimeout(function(){location.reload()},1200)}else{setTimeout(poll,2500)}}).catch(function(){setTimeout(poll,4000)})}poll()})();
 </script>"""
@@ -5637,7 +5634,8 @@ git describe --tags</pre>
             'onclick="document.getElementById(\'confirma-update\').showModal()">'
             'Aplicar atualização</button></div>'
             '<dialog id="confirma-update" style="border:1px solid var(--line-soft);'
-            'border-radius:10px;padding:20px;max-width:440px;background:var(--bg)">'
+            'border-radius:10px;padding:20px;max-width:440px;background:var(--panel);'
+            'color:var(--txt)">'
             '<h3 style="margin-top:0">Confirmar atualização</h3>'
             '<p style="margin:8px 0">Deseja aplicar ' + _desc + ' <b>'
             + templates.h(str(_alvo)) + '</b>? Os containers serão reconstruídos e '

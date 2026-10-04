@@ -12,6 +12,20 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.15 (2026-10-03) — corrige a barra de progresso e o popup do update**
+
+### Correções
+- **Barra de progresso não regride mais**: o log do update ficava no layer
+  efêmero do container e sumia quando o rebuild recriava o portal — a barra
+  subia até ~60% e voltava a 6%. O log agora fica em
+  `/opt/blueshift/data/update.log` (volume de dados persistente) e o término é
+  detectado também pelo estado "aplicado" (repo == versão em execução), já que
+  a linha final "Update concluido" é cortada pelo rebuild. A barra chega a
+  100% e a página recarrega sozinha.
+- **Popup de confirmação legível**: o diálogo "Sim, atualizar / Não, cancelar"
+  não seguia a cor do tema (texto escuro sobre fundo escuro). Agora usa
+  `color` e fundo do tema (`--txt` / `--panel`), legível no claro e no escuro.
+
 **v0.11.14 (2026-10-03) — confirmação e progresso no update; parâmetro ausente não bloqueia resposta**
 
 ### Novo

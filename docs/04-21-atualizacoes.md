@@ -17,11 +17,17 @@ remoto. Admin-only.
   cancelar") antes de rodar `update.sh <tag>` em background:
   `git fetch` + `git checkout <tag>` + `docker compose up -d --build`
   (dados preservados — volumes intactos). O portal reinicia ao concluir;
-  log em `/opt/blueshift/update.log`. Durante o rebuild a tela mostra uma
+  log em `/opt/blueshift/data/update.log` (no volume de dados — sobrevive
+  ao rebuild; antes ficava no layer efêmero do container e a barra voltava
+  a zero no meio). Durante o rebuild a tela mostra uma
   **barra de progresso** — as etapas vêm dos marcadores do log (`git fetch`,
-  `git checkout`, `docker compose up`, `Update concluido`) — e o log ao vivo;
-  o endpoint interno `GET /portal/atualizacoes/status` devolve o progresso em
-  JSON para o polling da tela
+  `git checkout`, `docker compose up`) — e o log ao vivo; o endpoint interno
+  `GET /portal/atualizacoes/status` devolve o progresso em JSON para o
+  polling da tela. O término é detectado também pelo estado **aplicado**
+  (repo == versão em execução): a linha final "Update concluido" muitas vezes
+  não chega ao log, porque o rebuild recria o portal e corta o relay da saída
+  do container irmão — a barra chega a 100% e a página recarrega sozinha
+  mesmo assim
 - A configuração da instalação (ex.: `BLUESHIFT_LICENSE_URL`, chave de
   licença, roteador) é **repassada ao portal recriado** via env do próprio
   container em execução — o update não depende do compose ler o `.env` do
