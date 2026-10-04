@@ -12,7 +12,7 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
-**v0.11.12 (2026-10-03) — confirmação e progresso no update; parâmetro ausente não bloqueia resposta**
+**v0.11.14 (2026-10-03) — confirmação e progresso no update; parâmetro ausente não bloqueia resposta**
 
 ### Novo
 - **Atualizações com confirmação e barra de progresso**: o botão "Aplicar
