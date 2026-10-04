@@ -41,6 +41,8 @@
 
 A **BlueShift IA Platform** é uma plataforma de inteligência artificial projetada para ser instalada **dentro da infraestrutura do cliente** — datacenter, servidor dedicado ou nuvem privada. Diferente de SaaS onde os dados saem da empresa, aqui **tudo fica dentro do ambiente do cliente**: dados, agentes, memória dos usuários e histórico.
 
+> **⚠️ Entrada e saída nesta versão:** a plataforma processa **apenas texto** como entrada (incluindo PDF→texto). **Não há suporte a imagem, áudio ou vídeo como input.** A saída é **texto**, com gráficos gerados automaticamente a partir dos dados dos conectores.
+
 ### 🎯 Diferenciais
 
 | Característica | BlueShift |

@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@c6f9a34b964b | checar: python tools/readme_check.py -->
+<!-- sync: README.md@b2e31d29267a | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · **English** · [Español](README.es.md)
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -40,6 +40,8 @@
 ## 🚀 Overview
 
 **BlueShift IA Platform** is an artificial intelligence platform designed to be installed **inside the client's infrastructure** — datacenter, dedicated server or private cloud. Unlike SaaS, where data leaves the company, here **everything stays inside the client's environment**: data, agents, user memory and history.
+
+> **⚠️ Input and output in this version:** the platform processes **text only** as input (including PDF→text). **There is no support for image, audio or video as input.** The output is **text**, with charts generated automatically from connector data.
 
 ### 🎯 Differentiators
 

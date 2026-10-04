@@ -1,4 +1,4 @@
-<!-- sync: 00-visao-geral.md@69b7e780ab31 | checar: python tools/readme_check.py -->
+<!-- sync: 00-visao-geral.md@caf08fd39ad8 | checar: python tools/readme_check.py -->
 🌐 [Português](../00-visao-geral.md) · **English** · [Español](../es/00-visao-geral.md)
 
 # 📘 CL Agents — Documentation
@@ -18,6 +18,11 @@ customer's infrastructure): data, agents, memory and history stay 100% in the
 customer's environment. Pure Python application (Flask + SQLite), with no external
 dependency on an AI engine — models can be local (vLLM, LM Studio, Ollama) or
 external (OpenAI, DeepSeek, OpenRouter) via an OpenAI-compatible API.
+
+> **⚠️ Input and output in this version:** the platform processes **text only**
+> as input (including PDF→text). **There is no support for image, audio or video
+> as input.** The output is **text**, with charts generated automatically from
+> connector data.
 
 Main components:
 

@@ -1,4 +1,4 @@
-<!-- sync: 00-visao-geral.md@69b7e780ab31 | checar: python tools/readme_check.py -->
+<!-- sync: 00-visao-geral.md@caf08fd39ad8 | checar: python tools/readme_check.py -->
 🌐 [Português](../00-visao-geral.md) · [English](../en/00-visao-geral.md) · **Español**
 
 # 📘 CL Agents — Documentación
@@ -19,6 +19,11 @@ historial quedan 100% en el entorno del cliente. Aplicación Python pura (Flask 
 SQLite), sin dependencia externa de motor de IA — los modelos pueden ser locales
 (vLLM, LM Studio, Ollama) o externos (OpenAI, DeepSeek, OpenRouter) vía API
 compatible con OpenAI.
+
+> **⚠️ Entrada y salida en esta versión:** la plataforma procesa **solo texto**
+> como entrada (incluido PDF→texto). **No hay soporte para imagen, audio o vídeo
+> como entrada.** La salida es **texto**, con gráficos generados automáticamente
+> a partir de los datos de los conectores.
 
 Componentes principales:
 

@@ -16,6 +16,11 @@ no ambiente do cliente. Aplicação Python pura (Flask + SQLite), sem dependênc
 externa de motor de IA — os modelos podem ser locais (vLLM, LM Studio, Ollama)
 ou externos (OpenAI, DeepSeek, OpenRouter) via API compatível com OpenAI.
 
+> **⚠️ Entrada e saída nesta versão:** a plataforma processa **apenas texto**
+> como entrada (incluindo PDF→texto). **Não há suporte a imagem, áudio ou vídeo
+> como input.** A saída é **texto**, com gráficos gerados automaticamente a
+> partir dos dados dos conectores.
+
 Componentes principais:
 
 | Componente | Função |

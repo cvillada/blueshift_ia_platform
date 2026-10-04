@@ -14,6 +14,12 @@ momento do release aparecem como `—`.
 
 **v0.11.16 (2026-10-03) — corrige a barra de progresso e o popup do update**
 
+### Documentação
+- **Entrada/saída declarada no início dos documentos**: README (pt/en/es) e
+  Visão Geral da doc deixam claro que a plataforma processa **apenas texto**
+  como entrada (incluindo PDF→texto) — sem suporte a imagem, áudio ou vídeo —
+  e que a saída é texto, com gráficos gerados automaticamente dos conectores.
+
 ### Correções
 - **Barra de progresso não regride mais**: o log do update ficava no layer
   efêmero do container e sumia quando o rebuild recriava o portal — a barra
