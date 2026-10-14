@@ -279,7 +279,31 @@ def _resposta_openai(resposta: str, modelo: str, gw_id: int,
     }
 
 
+# Teto PADRAO de rodadas de ferramenta por TAREFA (configuravel por gateway na
+# tela Gateway: `max_rodadas_tools`). Teto de seguranca: sem ele um cliente
+# mal-comportado conversa com o agente indefinidamente — responder texto
+# encerra o laco. A contagem e por TAREFA (ver _rodadas_da_tarefa), nao da
+# conversa inteira.
 MAX_RODADAS_TOOLS = 8
+
+
+def _rodadas_da_tarefa(messages: list[dict]) -> int:
+    """Rodadas de ferramenta DA TAREFA ATUAL (nao da conversa inteira).
+
+    O cliente agentico resenvia o historico completo a cada rodada: contar
+    todas as mensagens `role:"tool"` fazia o teto ACUMULAR entre perguntas —
+    depois de N rodadas somadas, qualquer pergunta nova ja nascia bloqueada
+    (medido no piloto, 14/10). O teto existe para o laco de UMA tarefa.
+
+    Corte = ultima mensagem de usuario COM texto; o que veio depois dela sao
+    as rodadas da tarefa em curso. Historico sem nenhuma mensagem de usuario
+    com texto cai no comportamento antigo (conta tudo).
+    """
+    corte = 0
+    for i, m in enumerate(messages):
+        if m.get("role") == "user" and (m.get("content") or "").strip():
+            corte = i
+    return sum(1 for m in messages[corte + 1:] if m.get("role") == "tool")
 
 
 def _tool_results_de(messages: list[dict]) -> list[dict]:
@@ -493,13 +517,14 @@ def create_app() -> Flask:
         tool_choice = body.get("tool_choice")
         if not gw.get("permite_tools"):
             tools, tool_choice = None, None   # gateway sem a permissao: ignora
-        rodadas = sum(1 for m in messages if m.get("role") == "tool")
-        if tools and rodadas >= MAX_RODADAS_TOOLS:
+        max_rodadas = int(gw.get("max_rodadas_tools") or MAX_RODADAS_TOOLS)
+        rodadas = _rodadas_da_tarefa(messages)
+        if tools and rodadas >= max_rodadas:
             # Teto de seguranca: sem isso um cliente mal-comportado conversa
             # com o agente indefinidamente. Responder texto encerra o laco.
             out = {"ok": True, "resposta":
-                   f"Limite de {MAX_RODADAS_TOOLS} rodadas de ferramenta por "
-                   "conversa atingido — respondi com o que ja tenho.",
+                   f"Limite de {max_rodadas} rodadas de ferramenta por tarefa "
+                   "atingido — respondi com o que ja tenho.",
                    "modelo": gw["agente_nome"] or "blueshift", "tool_calls": None}
         else:
             out = _chamar_canal(

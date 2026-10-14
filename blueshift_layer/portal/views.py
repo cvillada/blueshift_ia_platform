@@ -5330,14 +5330,15 @@ def gateway():
             max_msg = max(1, min(_int_form("max_mensagens", 6), 100))
             max_tok = max(1, min(_int_form("max_tokens", 400), 64000))
             max_chars = max(100, min(_int_form("max_chars_msg", 400), 20000))
+            max_rod = max(1, min(_int_form("max_rodadas_tools", 8), 100))
         except ValueError:
-            max_msg, max_tok, max_chars = 6, 400, 400
+            max_msg, max_tok, max_chars, max_rod = 6, 400, 400, 8
         if not nome or not canal_id:
             flash("Nome e canal são obrigatórios.", "warn")
             return redirect(url_for("portal.gateway"))
         gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo,
                                max_mensagens=max_msg, max_tokens=max_tok,
-                               max_chars_msg=max_chars,
+                               max_chars_msg=max_chars, max_rodadas_tools=max_rod,
                                permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "criar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
@@ -5385,6 +5386,7 @@ def gateway():
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="6" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
           <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="400" min="1" max="64000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
           <div><label>Máx. caracteres por mensagem</label><input type="number" name="max_chars_msg" value="400" min="100" max="20000" title="Corte de CADA mensagem do histórico (chars). A pergunta atual não é cortada; os resultados de ferramenta têm limite próprio"><div class="muted" style="font-size:11px">Cada mensagem do histórico (padrão 400)</div></div>
+          <div><label>Máx. rodadas de ferramenta por tarefa</label><input type="number" name="max_rodadas_tools" value="8" min="1" max="100" title="Só vale com 'Permitir tool calling' ligado: teto de chamadas de ferramenta do cliente em UMA tarefa (ao estourar, o gateway responde texto para encerrar o laço). Cliente agêntico costuma precisar de mais (ex: 40)"><div class="muted" style="font-size:11px">Teto por tarefa, só com tool calling (padrão 8)</div></div>
         </div>
         <div style="margin-top:12px"><button class="btn" type="submit">Ativar gateway</button></div>
       </form>
@@ -5413,13 +5415,15 @@ def gateway_editar(gid: int):
             max_msg = max(1, min(_int_form("max_mensagens", g.get("max_mensagens", 6)), 100))
             max_tok = max(1, min(_int_form("max_tokens", g.get("max_tokens", 400)), 64000))
             max_chars = max(100, min(_int_form("max_chars_msg", g.get("max_chars_msg", 400)), 20000))
+            max_rod = max(1, min(_int_form("max_rodadas_tools", g.get("max_rodadas_tools", 8)), 100))
         except ValueError:
             max_msg = int(g.get("max_mensagens", 6))
             max_tok = int(g.get("max_tokens", 400))
             max_chars = int(g.get("max_chars_msg", 400))
+            max_rod = int(g.get("max_rodadas_tools", 8))
         db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo,
                              max_mensagens=max_msg, max_tokens=max_tok,
-                             max_chars_msg=max_chars,
+                             max_chars_msg=max_chars, max_rodadas_tools=max_rod,
                              permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "editar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
@@ -5445,6 +5449,7 @@ def gateway_editar(gid: int):
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="{g.get('max_mensagens', 6)}" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
           <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="{g.get('max_tokens', 400)}" min="1" max="64000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
           <div><label>Máx. caracteres por mensagem</label><input type="number" name="max_chars_msg" value="{g.get('max_chars_msg', 400)}" min="100" max="20000" title="Corte de CADA mensagem do histórico (chars). A pergunta atual não é cortada; os resultados de ferramenta têm limite próprio"><div class="muted" style="font-size:11px">Cada mensagem do histórico (padrão 400)</div></div>
+          <div><label>Máx. rodadas de ferramenta por tarefa</label><input type="number" name="max_rodadas_tools" value="{g.get('max_rodadas_tools', 8)}" min="1" max="100" title="Só vale com 'Permitir tool calling' ligado: teto de chamadas de ferramenta do cliente em UMA tarefa (ao estourar, o gateway responde texto para encerrar o laço). Cliente agêntico costuma precisar de mais (ex: 40)"><div class="muted" style="font-size:11px">Teto por tarefa, só com tool calling (padrão 8)</div></div>
         </div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>

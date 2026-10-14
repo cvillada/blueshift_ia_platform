@@ -12,6 +12,26 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.19 (2026-10-14) — teto de rodadas de ferramenta por tarefa e configurável por gateway**
+
+### Correções
+- **O teto de rodadas de ferramenta contava a CONVERSA inteira**: como o cliente
+  agêntico reenvia o histórico completo a cada rodada, o contador acumulava
+  entre perguntas — depois de 8 rodadas somadas, qualquer pergunta nova já
+  nascia bloqueada com "Limite de 8 rodadas de ferramenta por conversa
+  atingido" (relato do Hermes, 14/10). A contagem agora é por **tarefa** (as
+  rodadas posteriores à última pergunta do usuário), que é o laço que o teto
+  existe para conter. Medido antes: duas tarefas de 5 rodadas na mesma sessão
+  somavam 10 e a segunda era cortada na 4ª rodada.
+
+### Novo
+- **"Máx. rodadas de ferramenta por tarefa" na tela Gateway**
+  (`max_rodadas_tools`, padrão 8, faixa 1–100; só vale com `permitir tool
+  calling` ligado): cliente agêntico que executa mais passos por tarefa (ex:
+  40) deixa de receber a resposta de corte. A mensagem de corte cita o valor
+  configurado, e a coluna nova entra com 8 nos gateways existentes (nada muda
+  até alguém mexer na tela).
+
 **v0.11.18 (2026-10-14) — o gateway fala usage real e publica a janela do motor**
 
 ### Novo

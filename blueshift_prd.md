@@ -1,7 +1,7 @@
 # CL Agents — Product Requirements Document (PRD)
 
 **Produto:** BlueShift IA Platform · **Marca de exibição:** **CL Agents** (by BlueShift IA Platform)
-**Versão do documento:** 0.7 (alinhado à versão 0.11.18 do produto)
+**Versão do documento:** 0.7 (alinhado à versão 0.11.19 do produto)
 **Data:** 2026-10-03
 **Autor:** Nei
 **Base tecnológica:** Flask standalone, Python puro (sem dependência de motor externo de IA)
@@ -302,6 +302,7 @@ Passo a passo completo: **`README.md`**.
 | Corrige a barra de progresso (log no volume de dados — não regride quando o rebuild recria o portal) e o popup de confirmação (cor do tema) | ✅ v0.11.16 | — |
 | Gateway: **limite de contexto por mensagem** (`max_chars_msg` na tela, padrão 400) + orçamento até **64000** tokens + teto do resultado de ferramenta por env (`BLUESHIFT_TOOL_RESULT_MAX`) | ✅ v0.11.17 | — |
 | Gateway: **`usage` real** (tokens do provedor, JSON e SSE com `include_usage`), **`GET /v1/models/<id>`** e **`context_length`** do motor (`BLUESHIFT_CONTEXT_WINDOW`) — contrato para cliente agêntico | ✅ v0.11.18 | Primeiro token de prompt grande continua limitado pelo prefill do motor (~241 tok/s medidos no piloto) |
+| Gateway: teto de rodadas de ferramenta **por tarefa** (não acumula entre perguntas) e **configurável na tela** (`max_rodadas_tools`, padrão 8, faixa 1–100) | ✅ v0.11.19 | — |
 | Snowflake | ⏳ decisão pendente | Dependência pesada (`snowflake-connector-python`) x REST com polling — decidir com o cliente |
 | A2A completo (streaming e multi-turno) | ⏳ fase 2 | Implementar quando houver caso de uso |
 | Modelo de roteamento embutido na plataforma | ⏳ avaliado | Hoje: modelo externo dedicado (LM Studio/llama-server); embutir exigiria binário + pesos na imagem |

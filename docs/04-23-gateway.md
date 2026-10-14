@@ -27,6 +27,7 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 | Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro). Teto do campo: `64000` |
 | Máx. caracteres por mensagem (`max_chars_msg`) | ❌ | `400` — corte de **cada** mensagem do histórico (faixa 100–20000). Suba junto com o orçamento para histórico rico (ex: `8000`) |
 | Permitir tool calling | ❌ | checkbox (`permite_tools`) — repassa os `tools` do cliente ao agente e devolve `tool_calls`; **quem executa a ferramenta é o cliente**. Padrão: desligado |
+| Máx. rodadas de ferramenta por tarefa (`max_rodadas_tools`) | ❌ | `8` — teto por **tarefa** (faixa 1–100); só vale com tool calling ligado. Cliente agêntico costuma precisar de mais (ex: `40`) |
 | Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
 
 - **Streaming**: o canal devolve a resposta completa; o gateway a envia
@@ -42,8 +43,13 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   (`finish_reason: "tool_calls"`) ou em SSE (`delta.tool_calls`), conforme o
   `stream` do cliente. **Quem executa a ferramenta é o cliente**: a plataforma
   não roda nada; o resultado volta na chamada seguinte como mensagem
-  `role: "tool"` e entra no prompt do modelo. Teto de **8 rodadas** por conversa
-  (ao estourar, resposta em texto para encerrar o laço). Vale o aviso: o modelo
+  `role: "tool"` e entra no prompt do modelo. Teto de rodadas de ferramenta por
+  **tarefa** (`max_rodadas_tools` na tela, padrão 8, faixa 1–100; ao estourar,
+  o gateway responde texto para encerrar o laço). O teto é por TAREFA — as
+  rodadas depois da última pergunta do usuário — e não da conversa inteira: o
+  cliente agêntico reenvia o histórico, e contar a conversa fazia o teto
+  acumular entre perguntas. Cliente que executa mais passos por tarefa (ex:
+  Hermes) precisa do campo maior. Vale o aviso: o modelo
   do agente precisa **emitir tool call** — modelos pequenos "instruct"
   normalmente respondem texto e nunca chamam a ferramenta.
 - **Sem tool calling (padrão)**: o gateway repassa a pergunta ao agente e
