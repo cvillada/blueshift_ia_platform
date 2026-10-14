@@ -87,6 +87,13 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   `BLUESHIFT_SKILL_BODY_MAX`. Suba essa env no container da plataforma
   para tool output grande (arquivo, CLI, web) — ela vale para qualquer
   consumidor da API do canal que mande `tool_results`.
+- **Escopo dos resultados**: o gateway envia os resultados de ferramenta da
+  **tarefa atual** (as rodadas posteriores à última pergunta do usuário), não
+  do histórico inteiro. O portal injeta um bloco por resultado recebido, então
+  reenviar o histórico fazia o prompt crescer sem limite a cada rodada (medido:
+  40 rodadas × 2.000 chars ≈ 20 mil tokens ≈ 84 s de prefill só nesse bloco).
+  O que as tarefas anteriores produziram já está no texto que o assistente
+  devolveu nelas.
 - **usage no protocolo**: o gateway repassa os tokens que o portal leu do
   provedor — `usage` na resposta JSON (resposta normal e `tool_calls`) e, no
   SSE, no chunk de `finish_reason` e também num chunk com `choices: []` quando

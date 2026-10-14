@@ -28,6 +28,13 @@ remoto. Admin-only.
   não chega ao log, porque o rebuild recria o portal e corta o relay da saída
   do container irmão — a barra chega a 100% e a página recarrega sozinha
   mesmo assim
+- **Duplo clique não entra duas vezes**: enquanto uma atualização está em
+  curso o botão de aplicar fica **desabilitado** ("Atualização em andamento…")
+  e o "Sim, atualizar" se desabilita ao ser clicado; no servidor, aplicar é
+  **recusado** se o log mostra um update iniciado e ainda não concluído
+  (janela de 30 min — passado isso, o marcador é tratado como execução
+  interrompida e não trava a tela). Sem essa guarda, dois cliques disparavam
+  dois `update.sh` em paralelo e quebravam o ambiente
 - A configuração da instalação (ex.: `BLUESHIFT_LICENSE_URL`, chave de
   licença, roteador) é **repassada ao portal recriado** via env do próprio
   container em execução — o update não depende do compose ler o `.env` do

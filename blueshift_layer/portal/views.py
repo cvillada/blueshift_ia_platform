@@ -1000,6 +1000,26 @@ def agentes():
     return templates.page("Agentes", content, active="agentes", user=_user())
 
 
+def _celula_texto(texto, limite: int = 300) -> str:
+    """Conteudo de celula de tabela: ESCAPADO e com clamp visual.
+
+    Texto de memoria/vetor e conteudo livre (o agente pode salvar uma pagina
+    inteira): sem escape ele vira HTML na tela (XSS) e sem clamp uma resposta
+    longa ocupa a pagina toda e esconde as outras linhas — foi o que
+    aconteceu com a landing page salva na memoria (14/10). Acima do limite o
+    texto sai num <details> "ver mais", sem JS.
+    """
+    t = (texto or "").strip()
+    if not t:
+        return '<span class="muted">—</span>'
+    if len(t) <= limite:
+        return templates.h(t)
+    return ('<details><summary style="cursor:pointer">' + templates.h(t[:limite])
+            + '… <span class="muted">ver mais</span></summary>'
+            + '<div style="margin-top:6px;white-space:pre-wrap">'
+            + templates.h(t) + '</div></details>')
+
+
 def _resposta_html(texto: str) -> str:
     """Converte a resposta em HTML: escapa tudo e transforma a imagem
     data-URI (grafico gerado) em <img> renderizavel."""
@@ -4029,9 +4049,9 @@ def memoria():
     for m in pagina_atual:
         body += f"""<tr>
           <td>{templates.badge(m['tipo'])}</td>
-          <td>{m['conteudo']}</td>
-          <td>{m['usuario']}</td>
-          <td class="muted">{m['criado_em']}</td>
+          <td>{_celula_texto(m['conteudo'])}</td>
+          <td>{templates.h(m['usuario'])}</td>
+          <td class="muted">{templates.h(m['criado_em'])}</td>
         </tr>"""
 
     pag_btns = ""
@@ -5634,9 +5654,15 @@ git describe --tags</pre>
             + templates.h(str(info.get('codigo', ''))) + '</b> (' + _nao_aplicado_desc
             + '). Use o botão abaixo para reconstruir os containers.</div>'
         )
-    # botao + confirmacao (sim/nao)
+    # botao + confirmacao (sim/nao). Durante uma atualizacao o botao vira um
+    # aviso DESABILITADO: antes ele continuava na tela e o operador clicava de
+    # novo, entrando duas atualizacoes em paralelo (relato 14/10).
     _botao_update = ""
-    if info.get("disponivel") or info.get("aplicado") is False:
+    if _em_update:
+        _botao_update = (
+            '<div style="margin-top:12px"><button class="btn" type="button" disabled '
+            'style="opacity:.6;cursor:not-allowed">Atualização em andamento…</button></div>')
+    elif info.get("disponivel") or info.get("aplicado") is False:
         _alvo = info.get("disponivel_version") if info.get("disponivel") else info.get("atual", "")
         _desc = "a nova versão" if info.get("disponivel") else "os containers (versão já baixada)"
         _botao_update = (
@@ -5656,7 +5682,8 @@ git describe --tags</pre>
             '<button class="btn ghost" type="button" '
             'onclick="this.closest(\'dialog\').close()">Não, cancelar</button>'
             '<button class="btn" type="button" '
-            'onclick="document.getElementById(\'form-update\').submit()">Sim, atualizar</button>'
+            'onclick="this.disabled=true;this.textContent=\'Atualizando…\';'
+            'document.getElementById(\'form-update\').submit()">Sim, atualizar</button>'
             '</div></dialog>'
         )
     if _em_update:

@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import __version__ as CURRENT_VERSION
 
@@ -168,6 +169,15 @@ def apply(version: str | None = None) -> dict:
     dry-run (so mostra o comando), para nao derrubar o ambiente.
     """
     info = check()
+    # Guarda contra DUPLO CLIQUE: o botao da tela continua visivel enquanto a
+    # atualizacao roda (o rebuild recria o portal e o operador ve a mesma
+    # pagina), e dois update.sh em paralelo quebram o ambiente. O log e o
+    # unico estado compartilhado entre o portal e o update — basta o marcador
+    # de inicio sem o de termino para saber que ha uma em curso.
+    if em_andamento():
+        return {"ok": False, "motivo": "atualizacao_em_andamento",
+                "mensagem": "Ja existe uma atualizacao em andamento — aguarde "
+                            "concluir (o portal reinicia sozinho)."}
     if not version:
         version = info.get("disponivel_version")
     if not version:
@@ -382,3 +392,25 @@ def status(info: dict | None = None) -> dict:
         "atual": info.get("atual"),
         "container_status": info.get("container_status"),
     }
+
+
+# Janela de validade do marcador de "em andamento": o rebuild pode demorar e o
+# relay do log morre quando o portal e recriado, entao um marcador antigo sem
+# termino e tratado como execucao interrompida — passado esse tempo ele NAO
+# bloqueia (senao a tela ficaria travada para sempre depois de um update falho).
+_TRAVA_UPDATE_SEGUNDOS = 1800
+
+
+def em_andamento() -> bool:
+    """True se ha atualizacao em CURSO (guarda contra aplicar duas vezes).
+
+    Base: marcador de inicio no log sem o de termino E log ainda fresco. Log
+    velho (ou ausente) = nenhuma atualizacao rodando.
+    """
+    try:
+        if not status().get("em_andamento"):
+            return False
+        idade = time.time() - os.path.getmtime(LOG_FILE)
+    except OSError:
+        return False
+    return idade < _TRAVA_UPDATE_SEGUNDOS

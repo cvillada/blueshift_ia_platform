@@ -12,6 +12,28 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.20 (2026-10-14) — ferramentas só da tarefa atual, memória legível e atualização sem duplo clique**
+
+### Correções
+- **Memória com conteúdo cru (e sem clamp)**: a célula da tela de Memória era a
+  única do portal que renderizava texto livre sem escape — uma página inteira
+  salva na memória virava HTML na tela (porta para HTML/JS injetado) e ocupava
+  a página toda, escondendo as outras memórias (relato do Nei, 14/10). Agora o
+  conteúdo é escapado e, acima de ~300 caracteres, entra num "ver mais"
+  (recurso nativo do navegador, sem JavaScript).
+- **Duas atualizações em paralelo**: o botão "Aplicar atualização" continuava na
+  tela enquanto a atualização rodava e `apply()` não tinha nenhuma guarda de
+  "já em andamento" — dois cliques disparavam dois `update.sh`, que é o que
+  quebrava o ambiente. Agora o botão fica desabilitado durante o update, o
+  "Sim, atualizar" se desabilita ao clique e o servidor **recusa** aplicar de
+  novo enquanto o log mostra um update iniciado e não concluído (janela de
+  30 min, para um marcador órfão não travar a tela para sempre).
+- **Bloco de ferramentas crescia sem limite**: o portal injeta no prompt um
+  bloco por resultado recebido e o gateway mandava o histórico inteiro — com 40
+  rodadas de 2.000 chars isso dava ~20 mil tokens (~84 s de prefill) só nesse
+  bloco. Agora só a **tarefa atual** é enviada (o resultado das tarefas
+  anteriores já está no texto que o assistente devolveu nelas).
+
 **v0.11.19 (2026-10-14) — teto de rodadas de ferramenta por tarefa e configurável por gateway**
 
 ### Correções

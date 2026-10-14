@@ -287,6 +287,30 @@ def _resposta_openai(resposta: str, modelo: str, gw_id: int,
 MAX_RODADAS_TOOLS = 8
 
 
+def _inicio_da_tarefa(messages: list[dict]) -> int:
+    """Indice da ultima mensagem de usuario COM texto (inicio da tarefa atual).
+
+    O cliente agentico reenvia o historico inteiro a cada rodada; tudo o que
+    veio DEPOIS desta mensagem pertence a tarefa em curso (as rodadas de
+    ferramenta e os resultados delas).
+
+    Excecao importante: a mensagem de usuario que vem LOGO DEPOIS de um
+    resultado de ferramenta. Varios clientes mandam uma "continuacao"
+    sintetica nesse ponto ("continue", "prossiga"): trata-la como pergunta
+    nova jogaria fora o resultado da tarefa em curso e o agente responderia
+    sem o dado que acabou de receber. Nesse caso o inicio continua sendo a
+    pergunta anterior.
+    """
+    corte = 0
+    for i, m in enumerate(messages):
+        if m.get("role") != "user" or not (m.get("content") or "").strip():
+            continue
+        if i and messages[i - 1].get("role") == "tool":
+            continue          # continuacao sintetica, nao pergunta nova
+        corte = i
+    return corte
+
+
 def _rodadas_da_tarefa(messages: list[dict]) -> int:
     """Rodadas de ferramenta DA TAREFA ATUAL (nao da conversa inteira).
 
@@ -299,11 +323,8 @@ def _rodadas_da_tarefa(messages: list[dict]) -> int:
     as rodadas da tarefa em curso. Historico sem nenhuma mensagem de usuario
     com texto cai no comportamento antigo (conta tudo).
     """
-    corte = 0
-    for i, m in enumerate(messages):
-        if m.get("role") == "user" and (m.get("content") or "").strip():
-            corte = i
-    return sum(1 for m in messages[corte + 1:] if m.get("role") == "tool")
+    return sum(1 for m in messages[_inicio_da_tarefa(messages) + 1:]
+               if m.get("role") == "tool")
 
 
 def _tool_results_de(messages: list[dict]) -> list[dict]:
@@ -312,10 +333,16 @@ def _tool_results_de(messages: list[dict]) -> list[dict]:
     No contrato OpenAI cada execucao volta como {"role":"tool",
     "tool_call_id":..., "content":...}; o NOME da ferramenta esta na
     mensagem do assistente (tool_calls) que veio antes.
+
+    So a TAREFA ATUAL: o portal injeta no prompt um bloco por resultado, e
+    mandar o historico inteiro faz o bloco crescer sem limite a cada rodada
+    (medido: 40 rodadas x 2.000 chars ~ 20 mil tokens = ~84s de prefill so
+    nesse bloco). O resultado das tarefas anteriores ja esta refletido no
+    texto que o assistente devolveu nelas — reenviar nao acrescenta.
     """
     nomes: dict[str, str] = {}
     saida: list[dict] = []
-    for m in messages:
+    for m in messages[_inicio_da_tarefa(messages):]:
         role = m.get("role")
         if role == "assistant":
             for tc in (m.get("tool_calls") or []):
