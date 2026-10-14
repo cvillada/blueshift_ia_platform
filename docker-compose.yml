@@ -64,9 +64,6 @@ services:
       # no prompt (cliente agentico via gateway com tool calling). Default
       # 2000; 0 desliga o corte. O gateway manda o conteudo integro.
       BLUESHIFT_TOOL_RESULT_MAX: "${BLUESHIFT_TOOL_RESULT_MAX:-2000}"
-      # Janela do MOTOR (tokens) publicada como context_length em /v1/models
-      # (o cliente agentico mede a conversa por ela). Vazio = campo omitido.
-      BLUESHIFT_CONTEXT_WINDOW: "${BLUESHIFT_CONTEXT_WINDOW:-}"
     # Sobrescreve o CMD default (blueshift status) para subir o Portal do Cliente
     command: ["blueshift", "portal"]
     volumes:
@@ -96,6 +93,10 @@ services:
     environment:
       BLUESHIFT_PORTAL_DB: "/opt/blueshift/data/portal.db"
       GATEWAY_PORTAL_URL: "http://blueshift-platform:8080"
+      # Janela do MOTOR (tokens) publicada como context_length em /v1/models —
+      # e o cliente agentico que le, ao consultar o modelo. Quem le a env e o
+      # GATEWAY (nao o portal): por isso ela vive aqui. Vazio = campo omitido.
+      BLUESHIFT_CONTEXT_WINDOW: "${BLUESHIFT_CONTEXT_WINDOW:-}"
     command: ["blueshift", "gateway", "--port", "9003"]
     volumes:
       - blueshift-data:/opt/blueshift/data

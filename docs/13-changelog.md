@@ -12,6 +12,16 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.21 (2026-10-14) — `BLUESHIFT_CONTEXT_WINDOW` chega ao container certo**
+
+### Correções
+- **A env da janela do motor não chegava ao gateway**: `BLUESHIFT_CONTEXT_WINDOW`
+  (publica `context_length` em `/v1/models`) entrou na v0.11.18 no bloco de
+  ambiente do **portal** no `docker-compose.yml`, mas quem lê a env é o
+  **gateway** — numa instalação real ela nunca chegaria lá e o catálogo
+  continuaria sem o campo (o cliente seguiria no palpite próprio). Agora a env
+  está no serviço `gateway`. Sem mudança de código: só o compose.
+
 **v0.11.20 (2026-10-14) — ferramentas só da tarefa atual, memória legível e atualização sem duplo clique**
 
 ### Correções
