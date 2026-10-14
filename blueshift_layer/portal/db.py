@@ -365,6 +365,7 @@ def init_db() -> None:
                 modo        TEXT NOT NULL DEFAULT 'completa',  -- completa | streaming
                 max_mensagens INTEGER NOT NULL DEFAULT 6,      -- ultimas N mensagens de contexto
                 max_tokens  INTEGER NOT NULL DEFAULT 400,      -- orcamento de contexto (tokens aprox.)
+                max_chars_msg INTEGER NOT NULL DEFAULT 400,    -- corte por mensagem do historico (chars)
                 permite_tools INTEGER NOT NULL DEFAULT 0,      -- aceita `tools` do cliente (tool calling)
                 ativo       INTEGER NOT NULL DEFAULT 1,
                 criado_em   TEXT NOT NULL,
@@ -475,6 +476,7 @@ def _migrar_colunas() -> None:
         "gateway_config": [
             ("max_mensagens", "INTEGER DEFAULT 6"),
             ("max_tokens", "INTEGER DEFAULT 400"),
+            ("max_chars_msg", "INTEGER DEFAULT 400"),
             ("permite_tools", "INTEGER DEFAULT 0"),
         ],
     }
@@ -1886,16 +1888,18 @@ def atualizar_canal(canal_id: int, **campos) -> None:
 
 def criar_gateway(nome: str, canal_id: int, modo: str = "completa",
                   ativo: int = 1, max_mensagens: int = 6,
-                  max_tokens: int = 400, permite_tools: int = 0) -> int:
+                  max_tokens: int = 400, max_chars_msg: int = 400,
+                  permite_tools: int = 0) -> int:
     ts = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO gateway_config (nome, canal_id, modo, max_mensagens,
-                                           max_tokens, permite_tools, ativo,
+                                           max_tokens, max_chars_msg,
+                                           permite_tools, ativo,
                                            criado_em, atualizado_em)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (nome, canal_id, modo, max_mensagens, max_tokens, permite_tools,
-             ativo, ts, ts),
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nome, canal_id, modo, max_mensagens, max_tokens, max_chars_msg,
+             permite_tools, ativo, ts, ts),
         )
         return cur.lastrowid
 

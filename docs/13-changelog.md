@@ -12,6 +12,38 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.17 (2026-10-14) — limite de contexto por mensagem no gateway e resultado de ferramenta preservado**
+
+### Novo
+- **"Máx. caracteres por mensagem" na tela Gateway** (`max_chars_msg`): o
+  corte de cada mensagem do histórico era fixo em **400 chars** e não existia
+  na tela — com 40 mensagens o teto real do contexto ficava em ~16,6 mil
+  chars (~4 mil tokens) e o orçamento configurado nunca era alcançado. Agora é
+  campo da tela (padrão 400, faixa 100–20000) e o **teto do orçamento subiu de
+  8000 para 64000 tokens** (~256 mil chars) — o motor atrás suporta muito mais;
+  o limite era 100% da camada gateway.
+- **Teto do resultado de ferramenta por env** (`BLUESHIFT_TOOL_RESULT_MAX`,
+  padrão 2000 chars por resultado; `0` desliga o corte): o retorno de um
+  cliente agêntico (CLI, arquivo, web) era cortado em 2000 chars e o agente
+  via o próprio trabalho pela metade. O gateway já mandava o conteúdo
+  íntegro — o corte, que agora é do portal e vale para qualquer consumidor da
+  API do canal, é que era fixo.
+
+### Correções
+- **Gateway novo + banco ainda não migrado não derruba mais as chamadas**: a
+  configuração do gateway passou a ser lida com `g.*` e cada campo ausente cai
+  no seu padrão — na janela de deploy (gateway atualizado, banco ainda não
+  migrado pelo portal) uma coluna nova no `SELECT` explícito responderia erro
+  em toda chamada até a migração rodar.
+
+### Notas
+- **Gateways existentes seguem idênticos**: a coluna nova entra com 400, que é
+  o comportamento de hoje, e o orçamento continua sendo lido sem clamp.
+- O que **não** entra no contexto continua igual: mensagens `role:"system"` do
+  cliente (vale o prompt do próprio agente) e mensagens `assistant` que só
+  carregam `tool_calls` — o contrato de execução segue por `tool_results`, com
+  o teto de 8 rodadas de ferramenta inalterado.
+
 **v0.11.16 (2026-10-03) — corrige a barra de progresso e o popup do update**
 
 ### Documentação

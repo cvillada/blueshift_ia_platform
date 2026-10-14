@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@b2e31d29267a | checar: python tools/readme_check.py -->
+<!-- sync: README.md@3866fbaa1666 | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · **English** · [Español](README.es.md)
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -651,8 +651,11 @@ To connect **Open WebUI** (container on the same machine):
 - **The gateway executes no tools:** to use one agent as a tool of another agent
   (the opposite direction), use the **portal API**
 - **Conversation context:** the gateway forwards the previous messages
-  (limits configurable on the screen: max. messages + token budget);
-  memory/RAG always store the last real question/answer
+  (limits configurable on the screen: max. messages + token budget — up to
+  64000 — + max. characters per message); memory/RAG always store the last
+  real question/answer. Tool results do not go through the context: they
+  enter the prompt in their own block, with a cut adjustable through the
+  `BLUESHIFT_TOOL_RESULT_MAX` env var
 - Chat from another machine on the network: `http://IP_DO_SERVIDOR:9003/v1`
 - Without Docker: `set -a; . ./.env; set +a` + `blueshift gateway --port 9003`
 

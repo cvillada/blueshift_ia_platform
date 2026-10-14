@@ -650,8 +650,11 @@ Para conectar o **Open WebUI** (container na mesma máquina):
 - **O gateway não executa ferramentas:** para usar um agente como ferramenta de
   outro agente (o sentido inverso), use a **API do portal**
 - **Contexto da conversa:** o gateway repassa as mensagens anteriores
-  (limites configuráveis na tela: máx. mensagens + orçamento em tokens);
-  a memória/RAG gravam sempre a última pergunta/resposta real
+  (limites configuráveis na tela: máx. mensagens + orçamento em tokens — até
+  64000 — + máx. caracteres por mensagem); a memória/RAG gravam sempre a
+  última pergunta/resposta real. Resultado de ferramenta não passa pelo
+  contexto: entra no prompt em bloco próprio, com corte ajustável pela env
+  `BLUESHIFT_TOOL_RESULT_MAX`
 - Chat em outra máquina da rede: `http://IP_DO_SERVIDOR:9003/v1`
 - Sem Docker: `set -a; . ./.env; set +a` + `blueshift gateway --port 9003`
 

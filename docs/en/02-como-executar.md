@@ -1,4 +1,4 @@
-<!-- sync: 02-como-executar.md@40e9694b6133 | checar: python tools/readme_check.py -->
+<!-- sync: 02-como-executar.md@586d64802810 | checar: python tools/readme_check.py -->
 🌐 [Português](../02-como-executar.md) · **English** · [Español](../es/02-como-executar.md)
 
 ## 3. How to Run
@@ -69,6 +69,7 @@ Access: `http://localhost:8090/portal/login`
 | `BLUESHIFT_SQL_MODEL` | empty | **SMART QUERY** (text-to-SQL of the SQL connectors, see §5.8) model: **ID or NAME** of the model; empty = the same routing model. If the SELECT does not run, the platform **escalates once** to the agent's **main model** (the small one handles the common case in ~0.6 s; the robust one only steps in on failure) |
 | `GATEWAY_PORT` | 9003 | Published port of the OpenAI-compatible Gateway (external chats) |
 | `GATEWAY_PUBLIC_URL` | empty | Public gateway URL shown on the screen (e.g. `http://192.168.0.10:9003/v1`) — without it, the request host is used. External chat in Docker on the same machine: `http://host.docker.internal:9003/v1` |
+| `BLUESHIFT_TOOL_RESULT_MAX` | 2000 | Cut of **each** client tool result (`tool_results`, agentic client with tool calling) injected into the agent prompt; `0` disables the cut. The gateway sends the content intact — the cut belongs to the portal (see §5.23 Gateway) |
 | `BLUESHIFT_PORTAL_SECRET` | empty | Portal SESSION key — must be **FIXED across deploys** (without it, every rebuild generates a new key and takes down all logins; the logged-in user is dropped, with a redirect to the login on the next click). Change it in production and keep it stable |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = XPTO demo data (dev); `0` = clean database → the first entry becomes Initial setup (Configuração inicial) (end customer) |
 | `BLUESHIFT_DEV` | 0 | **Production/customer = 0** (the Updates screen applies for real; `BS-DEV-*` keys are NOT valid); dev = 1 (dry-run + BS-DEV-* license) |

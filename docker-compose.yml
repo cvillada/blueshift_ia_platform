@@ -60,6 +60,10 @@ services:
       # Limite de chars do CORPO da skill no prompt do agente (default 8000;
       # cobre o catalogo inteiro — o maior corpo real tem ~5.3k chars).
       BLUESHIFT_SKILL_BODY_MAX: "${BLUESHIFT_SKILL_BODY_MAX:-8000}"
+      # Limite de chars de CADA resultado de ferramenta do cliente injetado
+      # no prompt (cliente agentico via gateway com tool calling). Default
+      # 2000; 0 desliga o corte. O gateway manda o conteudo integro.
+      BLUESHIFT_TOOL_RESULT_MAX: "${BLUESHIFT_TOOL_RESULT_MAX:-2000}"
     # Sobrescreve o CMD default (blueshift status) para subir o Portal do Cliente
     command: ["blueshift", "portal"]
     volumes:

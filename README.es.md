@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- sync: README.md@b2e31d29267a | checar: python tools/readme_check.py -->
+<!-- sync: README.md@3866fbaa1666 | checar: python tools/readme_check.py -->
 🌐 [Português](README.md) · [English](README.en.md) · **Español**
 
 # 🔷 CL Agents - BlueShift IA Platform
@@ -650,8 +650,11 @@ Para conectar **Open WebUI** (container en la misma máquina):
 - **El gateway no ejecuta herramientas:** para usar un agente como herramienta de
   otro agente (el sentido inverso), use la **API del portal**
 - **Contexto de la conversación:** el gateway reenvía los mensajes anteriores
-  (límites configurables en la pantalla: máx. mensajes + presupuesto en tokens);
-  la memoria/RAG graban siempre la última pregunta/respuesta real
+  (límites configurables en la pantalla: máx. mensajes + presupuesto en tokens
+  — hasta 64000 — + máx. caracteres por mensaje); la memoria/RAG graban
+  siempre la última pregunta/respuesta real. El resultado de herramienta no
+  pasa por el contexto: entra en el prompt en su propio bloque, con corte
+  ajustable por la variable `BLUESHIFT_TOOL_RESULT_MAX`
 - Chat en otra máquina de la red: `http://IP_DO_SERVIDOR:9003/v1`
 - Sin Docker: `set -a; . ./.env; set +a` + `blueshift gateway --port 9003`
 

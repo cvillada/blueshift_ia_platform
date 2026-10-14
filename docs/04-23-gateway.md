@@ -24,7 +24,8 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
 | Canal vinculado | ✅ | `API Vendas` (o token autentica o chat externo) |
 | Modo de resposta | ✅ | `completa` (JSON) / `streaming` (SSE) — é o **padrão**; o campo `stream` da requisição tem prioridade |
 | Máx. mensagens de contexto | ❌ | `6` (últimas N mensagens enviadas ao agente) |
-| Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro) |
+| Limite de contexto (tokens, aprox.) | ❌ | `400` (~4 chars = 1 token; corta as mensagens mais antigas primeiro). Teto do campo: `64000` |
+| Máx. caracteres por mensagem (`max_chars_msg`) | ❌ | `400` — corte de **cada** mensagem do histórico (faixa 100–20000). Suba junto com o orçamento para histórico rico (ex: `8000`) |
 | Permitir tool calling | ❌ | checkbox (`permite_tools`) — repassa os `tools` do cliente ao agente e devolve `tool_calls`; **quem executa a ferramenta é o cliente**. Padrão: desligado |
 | Gateway ativo | ❌ | checkbox (pausa/reativa o endpoint) |
 
@@ -56,9 +57,30 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   dele?") sem repetir o ID. O trabalho de enviar o histórico é do
   sistema solicitante (Open WebUI já o faz). A memória e o RAG gravam
   apenas a última pergunta/resposta real (sem o contexto concatenado).
-  Limites configuráveis por gateway (tela): **máx. mensagens** (padrão
-  6) e **orçamento em tokens** (padrão 400 — ~4 chars = 1 token; as
-  mensagens mais RECENTES entram primeiro, as antigas são cortadas).
+  Três limites configuráveis por gateway (tela): **máx. mensagens**
+  (padrão 6 — últimas N), **orçamento em tokens** (padrão 400, teto do
+  campo 64000 — ~4 chars = 1 token) e **máx. caracteres por mensagem**
+  (`max_chars_msg`, padrão 400, faixa 100–20000 — corte de CADA mensagem
+  do histórico). As mensagens mais RECENTES entram primeiro, as antigas
+  são cortadas. Atenção ao diagnóstico: com o padrão 400 o gargalo é a
+  **truncação por mensagem**, não o orçamento (que só passa a morder
+  acima de ~77 mensagens nesse valor) — um cliente de agente perde
+  tool output e trechos grandes. Para histórico rico, suba
+  `max_chars_msg` (ex: 8000) **e** o orçamento junto, senão o orçamento
+  corta as antigas. O que **não** entra no contexto: mensagens
+  `role:"system"` do cliente (vale o prompt do próprio agente) e as
+  mensagens `assistant` que só carregam `tool_calls` (o contrato de
+  execução vai por `tool_results`).
+- **Resultado de ferramenta no prompt**: com `permitir tool calling`
+  ligado, os `role:"tool"` do cliente **não** passam pelo contexto —
+  chegam ao agente pelo bloco "RESULTADO DAS FERRAMENTAS", com o nome
+  resolvido pelo `tool_call_id` e o conteúdo **íntegro** vindo do
+  gateway (sem duplicação no contexto). O corte por resultado é do
+  portal, não é por gateway: env `BLUESHIFT_TOOL_RESULT_MAX` (padrão
+  2000 chars por resultado; `0` desliga o corte), mesma mecânica de
+  `BLUESHIFT_SKILL_BODY_MAX`. Suba essa env no container da plataforma
+  para tool output grande (arquivo, CLI, web) — ela vale para qualquer
+  consumidor da API do canal que mande `tool_results`.
 - **Segurança**: o `Authorization` do chat externo precisa ser o token de
   um canal com gateway ATIVO (`Bearer bs_chan_*`) — o `model` escolhe o
   agente; o token valida a autenticação. Token inválido ou de canal sem

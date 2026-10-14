@@ -5328,14 +5328,16 @@ def gateway():
         ativo = 1 if request.form.get("ativo") else 0
         try:
             max_msg = max(1, min(_int_form("max_mensagens", 6), 100))
-            max_tok = max(1, min(_int_form("max_tokens", 400), 8000))
+            max_tok = max(1, min(_int_form("max_tokens", 400), 64000))
+            max_chars = max(100, min(_int_form("max_chars_msg", 400), 20000))
         except ValueError:
-            max_msg, max_tok = 6, 400
+            max_msg, max_tok, max_chars = 6, 400, 400
         if not nome or not canal_id:
             flash("Nome e canal são obrigatórios.", "warn")
             return redirect(url_for("portal.gateway"))
         gid = db.criar_gateway(nome, int(canal_id), modo=modo, ativo=ativo,
                                max_mensagens=max_msg, max_tokens=max_tok,
+                               max_chars_msg=max_chars,
                                permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "criar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
@@ -5381,7 +5383,8 @@ def gateway():
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" checked style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div class="form-row" style="margin-top:6px">
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="6" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
-          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="400" min="1" max="8000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="400" min="1" max="64000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+          <div><label>Máx. caracteres por mensagem</label><input type="number" name="max_chars_msg" value="400" min="100" max="20000" title="Corte de CADA mensagem do histórico (chars). A pergunta atual não é cortada; os resultados de ferramenta têm limite próprio"><div class="muted" style="font-size:11px">Cada mensagem do histórico (padrão 400)</div></div>
         </div>
         <div style="margin-top:12px"><button class="btn" type="submit">Ativar gateway</button></div>
       </form>
@@ -5408,12 +5411,15 @@ def gateway_editar(gid: int):
         ativo = 1 if request.form.get("ativo") else 0
         try:
             max_msg = max(1, min(_int_form("max_mensagens", g.get("max_mensagens", 6)), 100))
-            max_tok = max(1, min(_int_form("max_tokens", g.get("max_tokens", 400)), 8000))
+            max_tok = max(1, min(_int_form("max_tokens", g.get("max_tokens", 400)), 64000))
+            max_chars = max(100, min(_int_form("max_chars_msg", g.get("max_chars_msg", 400)), 20000))
         except ValueError:
             max_msg = int(g.get("max_mensagens", 6))
             max_tok = int(g.get("max_tokens", 400))
+            max_chars = int(g.get("max_chars_msg", 400))
         db.atualizar_gateway(gid, nome=nome, canal_id=canal_id, modo=modo, ativo=ativo,
                              max_mensagens=max_msg, max_tokens=max_tok,
+                             max_chars_msg=max_chars,
                              permite_tools=1 if request.form.get("permite_tools") else 0)
         db.registrar_auditoria(_user()["login"], "admin", "editar_gateway", alvo=nome,
                                cliente_id=1, ip=request.remote_addr)
@@ -5437,7 +5443,8 @@ def gateway_editar(gid: int):
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;margin:12px 0 0;font-weight:400;font-size:13px"><input type="checkbox" name="ativo" {"checked" if g['ativo'] else ''} style="width:auto;margin:0;vertical-align:middle"> Gateway ativo</label>
         <div class="form-row" style="margin-top:6px">
           <div><label>Máx. mensagens de contexto</label><input type="number" name="max_mensagens" value="{g.get('max_mensagens', 6)}" min="1" max="100" title="Últimas N mensagens da conversa enviadas ao agente"><div class="muted" style="font-size:11px">Últimas N mensagens (padrão 6)</div></div>
-          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="{g.get('max_tokens', 400)}" min="1" max="8000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+          <div><label>Limite de contexto (tokens, aprox.)</label><input type="number" name="max_tokens" value="{g.get('max_tokens', 400)}" min="1" max="64000" title="Orçamento total do contexto (~4 chars = 1 token); corta as mensagens mais antigas primeiro"><div class="muted" style="font-size:11px">Orçamento total; corta as antigas primeiro (padrão 400)</div></div>
+          <div><label>Máx. caracteres por mensagem</label><input type="number" name="max_chars_msg" value="{g.get('max_chars_msg', 400)}" min="100" max="20000" title="Corte de CADA mensagem do histórico (chars). A pergunta atual não é cortada; os resultados de ferramenta têm limite próprio"><div class="muted" style="font-size:11px">Cada mensagem do histórico (padrão 400)</div></div>
         </div>
         <div style="margin-top:16px;display:flex;gap:10px">
           <button class="btn" type="submit">Salvar</button>

@@ -66,6 +66,7 @@ Acesso: `http://localhost:8090/portal/login`
 | `BLUESHIFT_SQL_MODEL` | vazio | Modelo da **CONSULTA INTELIGENTE** (text-to-SQL dos conectores SQL, ver §5.8): **ID ou NOME** do modelo; vazio = o mesmo modelo de roteamento. Se o SELECT não rodar, a plataforma **escala uma vez** para o modelo **principal do agente** (o pequeno resolve o caso comum em ~0,6 s; o robusto entra só na falha) |
 | `GATEWAY_PORT` | 9003 | Porta publicada do Gateway OpenAI-compatível (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vazio | URL pública do gateway exibida na tela (ex: `http://192.168.0.10:9003/v1`) — sem ela, usa o host da requisição. Chat externo em Docker na mesma máquina: `http://host.docker.internal:9003/v1` |
+| `BLUESHIFT_TOOL_RESULT_MAX` | 2000 | Corte de **cada** resultado de ferramenta do cliente (`tool_results`, cliente agentico com tool calling) injetado no prompt do agente; `0` desliga o corte. O gateway manda o conteúdo íntegro — o corte é do portal (ver §5.23 Gateway) |
 | `BLUESHIFT_PORTAL_SECRET` | vazio | Chave da SESSÃO do portal — deve ser **FIXA entre deploys** (sem ela, cada rebuild gera uma chave nova e derruba todos os logins; usuário logado cai com redirecionamento para o login no próximo clique). Trocar em produção e manter estável |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = dados demo XPTO (dev); `0` = banco limpo → primeira entrada vira Configuração inicial (cliente final) |
 | `BLUESHIFT_DEV` | 0 | **Produção/cliente = 0** (a tela Atualizações aplica de verdade; chaves `BS-DEV-*` NÃO valem); dev = 1 (dry-run + licença BS-DEV-*) |

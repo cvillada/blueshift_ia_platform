@@ -53,9 +53,13 @@ def _con():
 def _gateways_ativos() -> list[dict]:
     """Gateways ativos com canal+token+agente (para /v1/models e roteamento)."""
     with _con() as con:
+        # g.* (e nao a lista de colunas): o gateway le a config de um banco que
+        # e migrado pelo PORTAL. Numa janela de deploy (gateway novo + banco
+        # ainda sem a coluna) a lista explicita derrubaria TODA chamada com
+        # OperationalError; com g.* a coluna que faltar cai no default do
+        # `gw.get(...) or <padrao>` no ponto de uso (ex: max_chars_msg -> 400).
         rows = con.execute(
-            """SELECT g.id, g.nome, g.modo, g.max_mensagens, g.max_tokens,
-                      g.permite_tools,
+            """SELECT g.*,
                       c.token AS canal_token,
                       a.nome AS agente_nome, a.area AS agente_area
                FROM gateway_config g
@@ -398,6 +402,7 @@ def create_app() -> Flask:
                     messages,
                     max_msg=int(gw.get("max_mensagens") or 6),
                     max_tokens=int(gw.get("max_tokens") or 400),
+                    max_chars_msg=int(gw.get("max_chars_msg") or 400),
                 ),
                 tools=tools, tool_choice=tool_choice,
                 tool_results=_tool_results_de(messages) if tools else None)

@@ -182,6 +182,24 @@ def _skill_body_max() -> int:
         return _SKILL_BODY_MAX
 
 
+# Corte de cada resultado de ferramenta do CLIENTE injetado no prompt (bloco
+# "RESULTADO DAS FERRAMENTAS", fim de responder()). O gateway manda o conteudo
+# INTEGRO; o corte vive aqui. Historico: 2000 fixo cortava EM SILENCIO o retorno
+# de um cliente agentico — tool output de CLI/arquivo/web raramente cabe em 2000
+# chars e o agente via o proprio trabalho pela metade (mesma classe de bug do
+# corpo da skill). Ajustavel por env (BLUESHIFT_TOOL_RESULT_MAX) sem rebuild.
+_TOOL_RESULT_MAX = 2000
+
+
+def _tool_result_max() -> int:
+    """Limite efetivo de cada resultado de ferramenta (env > constante)."""
+    try:
+        return max(0, int(os.environ.get("BLUESHIFT_TOOL_RESULT_MAX", "").strip()
+                          or _TOOL_RESULT_MAX))
+    except (TypeError, ValueError):
+        return _TOOL_RESULT_MAX
+
+
 # Formato da resposta (v0.11.8). O modelo principal (reasoning) gastava a maior
 # parte da geracao "pensando em voz alta" e recapitulando os dados: medido na
 # prod, 4.471 tokens gerados para 121 chars de resposta (41,8s de espera).
@@ -1453,11 +1471,16 @@ def responder(agente: dict, pergunta: str, usuario: str, id_cliente: str = "",
         )
     if tool_results:
         _linhas = []
+        _limite = _tool_result_max()
         for r in tool_results:
             if not isinstance(r, dict):
                 continue
-            _linhas.append(f"- {r.get('name') or 'ferramenta'}: "
-                           f"{str(r.get('content') or '')[:2000]}")
+            _conteudo = str(r.get("content") or "")
+            # limite 0/negativo = SEM corte (cortar para 0 apagaria o dado e o
+            # agente responderia "nao encontrei" com o resultado na mao).
+            if _limite > 0:
+                _conteudo = _conteudo[:_limite]
+            _linhas.append(f"- {r.get('name') or 'ferramenta'}: {_conteudo}")
         if _linhas:
             user_content += ("\n\nRESULTADO DAS FERRAMENTAS (executadas pelo "
                              "cliente):\n" + "\n".join(_linhas) +
