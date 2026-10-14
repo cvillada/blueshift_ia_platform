@@ -12,6 +12,30 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.18 (2026-10-14) — o gateway fala usage real e publica a janela do motor**
+
+### Novo
+- **`usage` real no protocolo**: o gateway repassa os tokens que o portal leu do
+  provedor — na resposta JSON (normal e `tool_calls`) e, no SSE, no chunk de
+  `finish_reason`, mais o chunk com `choices: []` quando o cliente pede
+  `stream_options.include_usage`. Até a v0.11.17 o usage era zero fixo: um
+  cliente agêntico ficava sem medidor de contexto e de custo e decidia
+  compactação no escuro (relato do Hermes: "usage=unavailable" em 100% das
+  chamadas).
+- **`GET /v1/models/<id>`** (mesmo objeto da lista; 401 sem token, 404 com
+  `code: model_not_found` para id inexistente) e **`context_length`** no
+  catálogo, alimentado pela env `BLUESHIFT_CONTEXT_WINDOW` — a janela do
+  **motor** em tokens. Sem a env o campo é **omitido de propósito**: a
+  plataforma não descobre a janela do modelo do agente e inventar seria pior.
+  O 404 na consulta por id fazia o cliente cair no palpite próprio (no piloto,
+  chute de 256k).
+
+### Notas
+- Provedor que não devolve usage continua devolvendo zeros — zero honesto, sem
+  número inventado.
+- `context_length` é a janela do **motor**, não o orçamento de contexto do
+  gateway (`max_tokens` da tela Gateway): são contas diferentes.
+
 **v0.11.17 (2026-10-14) — limite de contexto por mensagem no gateway e resultado de ferramenta preservado**
 
 ### Novo

@@ -81,6 +81,23 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   `BLUESHIFT_SKILL_BODY_MAX`. Suba essa env no container da plataforma
   para tool output grande (arquivo, CLI, web) — ela vale para qualquer
   consumidor da API do canal que mande `tool_results`.
+- **usage no protocolo**: o gateway repassa os tokens que o portal leu do
+  provedor — `usage` na resposta JSON (resposta normal e `tool_calls`) e, no
+  SSE, no chunk de `finish_reason` e também num chunk com `choices: []` quando
+  o cliente pede `stream_options.include_usage` (contrato OpenAI). Provedor
+  que não informa usage devolve zeros — não há número inventado. Até a
+  v0.11.17 o usage era zero fixo, o que cegava o medidor de contexto e de
+  custo de um cliente agêntico.
+- **Catálogo de modelos**: `GET /v1/models` (lista) e `GET /v1/models/<id>`
+  (um modelo — ex: `agente:Agente Vendas`); os dois exigem o token do canal.
+  O objeto traz `id`, `object`, `created`, `owned_by` e, **quando
+  configurada**, `context_length`: a janela do **motor** em tokens, definida
+  pelo operador na env `BLUESHIFT_CONTEXT_WINDOW` (ex: `32768`, `262144`).
+  Sem a env o campo é **omitido de propósito** — a plataforma não descobre a
+  janela do modelo do agente e inventar seria pior: o cliente cai no palpite
+  próprio (no piloto, chute de 256k). Atenção: `context_length` é a janela do
+  motor, **não** o orçamento de contexto do gateway (`max_tokens` da tela) —
+  são contas diferentes.
 - **Segurança**: o `Authorization` do chat externo precisa ser o token de
   um canal com gateway ATIVO (`Bearer bs_chan_*`) — o `model` escolhe o
   agente; o token valida a autenticação. Token inválido ou de canal sem

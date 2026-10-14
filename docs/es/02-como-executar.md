@@ -1,4 +1,4 @@
-<!-- sync: 02-como-executar.md@586d64802810 | checar: python tools/readme_check.py -->
+<!-- sync: 02-como-executar.md@9804b0c0a330 | checar: python tools/readme_check.py -->
 🌐 [Português](../02-como-executar.md) · [English](../en/02-como-executar.md) · **Español**
 
 ## 3. Cómo ejecutar
@@ -70,6 +70,7 @@ Acceso: `http://localhost:8090/portal/login`
 | `GATEWAY_PORT` | 9003 | Puerto publicado del Gateway compatible con OpenAI (chats externos) |
 | `GATEWAY_PUBLIC_URL` | vacío | URL pública del gateway mostrada en la pantalla (ej.: `http://192.168.0.10:9003/v1`) — sin ella, se usa el host de la petición. Chat externo en Docker en la misma máquina: `http://host.docker.internal:9003/v1` |
 | `BLUESHIFT_TOOL_RESULT_MAX` | 2000 | Corte de **cada** resultado de herramienta del cliente (`tool_results`, cliente agéntico con tool calling) inyectado en el prompt del agente; `0` desactiva el corte. El gateway envía el contenido íntegro — el corte es del portal (ver §5.23 Gateway) |
+| `BLUESHIFT_CONTEXT_WINDOW` | vacío | Ventana de contexto del **motor** (tokens) publicada como `context_length` en `/v1/models` — es el número que el cliente agéntico usa para medir su propia conversación (ej.: `32768`, `262144`). Vacío = campo omitido (el cliente usa su propia estimación). No confundir con el presupuesto de contexto del gateway (§5.23) |
 | `BLUESHIFT_PORTAL_SECRET` | vacío | Clave de la SESIÓN del portal — debe ser **FIJA entre despliegues** (sin ella, cada rebuild genera una clave nueva y tumba todos los inicios de sesión; el usuario conectado se cae con redirección al login en el siguiente clic). Cambiar en producción y mantener estable |
 | `BLUESHIFT_SEED_DEMO` | 1 | `1` = datos demo XPTO (dev); `0` = base limpia → la primera entrada pasa a ser la Configuración inicial (Configuração inicial) (cliente final) |
 | `BLUESHIFT_DEV` | 0 | **Producción/cliente = 0** (la pantalla Actualizaciones aplica de verdad; las claves `BS-DEV-*` NO valen); dev = 1 (dry-run + licencia BS-DEV-*) |

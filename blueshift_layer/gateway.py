@@ -74,7 +74,8 @@ def _gateways_ativos() -> list[dict]:
 def _chamar_canal(token: str, pergunta: str, contexto: str = "",
                   tools: list | None = None, tool_choice=None,
                   tool_results: list | None = None) -> dict:
-    """Chama a API do canal e devolve {ok, resposta, modelo, tool_calls, erro}.
+    """Chama a API do canal e devolve {ok, resposta, modelo, tool_calls,
+    tokens, tempo_ms, erro}.
 
     contexto: mensagens anteriores da conversa (entram so no prompt do
     LLM; a memoria/trace gravam apenas a pergunta real).
@@ -104,7 +105,11 @@ def _chamar_canal(token: str, pergunta: str, contexto: str = "",
         if out.get("ok"):
             return {"ok": True, "resposta": out.get("resposta", ""),
                     "modelo": out.get("modelo") or "blueShift",
-                    "tool_calls": out.get("tool_calls") or None}
+                    "tool_calls": out.get("tool_calls") or None,
+                    # tokens/tempo_ms vem da API do canal (o portal le do
+                    # provedor). Descartar aqui zerava o usage do protocolo.
+                    "tokens": out.get("tokens") or {},
+                    "tempo_ms": out.get("tempo_ms") or 0}
         return {"ok": False, "resposta": "", "erro": out.get("erro") or "falha no agente"}
     except urllib.error.HTTPError as e:
         return {"ok": False, "resposta": "", "erro": f"HTTP {e.code}"}
@@ -198,7 +203,67 @@ def _titulo_do_historico(pergunta: str) -> str:
     return "Conversa BlueShift"
 
 
-def _resposta_openai(resposta: str, modelo: str, gw_id: int) -> dict:
+_ZERO_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def _usage_de(out: dict) -> dict:
+    """usage no formato OpenAI a partir do que o CANAL informou.
+
+    O portal devolve `tokens` na resposta da API do canal (o llm_client le o
+    usage do provedor). Ate a v0.11.17 o gateway descartava esse dado e
+    devolvia usage zerado fixo — o cliente agentico ficava sem medidor de
+    contexto/custo e sem base para decidir compactacao (relato do Hermes,
+    14/10: "usage=unavailable" em 100% das chamadas). Provedor que nao informa
+    (alguns servidores locais) continua zero: zero honesto > numero inventado.
+    """
+    t = out.get("tokens") or {}
+    pin = int(t.get("prompt_tokens", 0) or 0)
+    pout = int(t.get("completion_tokens", 0) or 0)
+    return {"prompt_tokens": pin, "completion_tokens": pout,
+            "total_tokens": int(t.get("total_tokens", 0) or 0) or (pin + pout)}
+
+
+def _quer_usage(body: dict) -> bool:
+    """`stream_options.include_usage` do cliente (contrato OpenAI)."""
+    so = body.get("stream_options")
+    return bool(isinstance(so, dict) and so.get("include_usage"))
+
+
+def _context_length() -> int | None:
+    """Janela do MOTOR (tokens) publicada no catalogo, se configurada.
+
+    A plataforma nao tem como descobrir a janela do modelo do agente (quem
+    configura e o motor atras) e inventar um numero seria pior que omitir —
+    omitido, o cliente cai no palpite proprio. Com BLUESHIFT_CONTEXT_WINDOW
+    definida (o operador mede no motor dele; ex: 32768, 262144) o catalogo
+    publica `context_length` e o cliente para de chutar.
+
+    ATENCAO: este numero e a janela do MOTOR, nao o orcamento de contexto do
+    gateway (`gateway_config.max_tokens`) — sao contas diferentes.
+    """
+    try:
+        v = int(os.environ.get("BLUESHIFT_CONTEXT_WINDOW", "").strip() or 0)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _modelo_openai(gw: dict) -> dict:
+    """Objeto `model` do protocolo (mesma forma na lista e no GET por id)."""
+    item = {
+        "id": f"agente:{gw['agente_nome'] or 'gateway'}",   # model id p/ o chat
+        "object": "model",
+        "created": int(time.time()),
+        "owned_by": "blueshift",
+    }
+    ctx = _context_length()
+    if ctx:
+        item["context_length"] = ctx    # extensao (estilo OpenRouter)
+    return item
+
+
+def _resposta_openai(resposta: str, modelo: str, gw_id: int,
+                     usage: dict | None = None) -> dict:
     """Monta o corpo no formato OpenAI (resposta completa)."""
     return {
         "id": f"chatcmpl-bs-{gw_id}",
@@ -210,7 +275,7 @@ def _resposta_openai(resposta: str, modelo: str, gw_id: int) -> dict:
             "message": {"role": "assistant", "content": resposta},
             "finish_reason": "stop",
         }],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "usage": usage or dict(_ZERO_USAGE),
     }
 
 
@@ -240,15 +305,36 @@ def _tool_results_de(messages: list[dict]) -> list[dict]:
     return saida
 
 
-def _chunk(gw_id: int, modelo: str, delta: dict, finish: str | None = None) -> str:
-    """Um pedaco SSE no formato OpenAI (chat.completion.chunk)."""
+def _chunk(gw_id: int, modelo: str, delta: dict, finish: str | None = None,
+           usage: dict | None = None) -> str:
+    """Um pedaco SSE no formato OpenAI (chat.completion.chunk).
+
+    `usage` no chunk e campo do proprio schema do chunk (a OpenAI so preenche
+    no ultimo, quando `stream_options.include_usage`); clientes que leem usage
+    do chunk final passam a ter o numero em vez de nada.
+    """
     corpo = {"id": f"chatcmpl-bs-{gw_id}", "object": "chat.completion.chunk",
              "created": int(time.time()), "model": modelo,
              "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+    if usage is not None:
+        corpo["usage"] = usage
     return f"data: {json.dumps(corpo, ensure_ascii=False)}\n\n"
 
 
-def _resposta_openai_tools(tool_calls: list, modelo: str, gw_id: int) -> dict:
+def _sse_usage(gw_id: int, modelo: str, usage: dict) -> str:
+    """Chunk final de usage (contrato OpenAI com `stream_options.include_usage`).
+
+    Vem com `choices: []` — e assim que o cliente OpenAI-parseado le a
+    contagem sem confundir com conteudo.
+    """
+    corpo = {"id": f"chatcmpl-bs-{gw_id}", "object": "chat.completion.chunk",
+             "created": int(time.time()), "model": modelo, "choices": [],
+             "usage": usage}
+    return f"data: {json.dumps(corpo, ensure_ascii=False)}\n\n"
+
+
+def _resposta_openai_tools(tool_calls: list, modelo: str, gw_id: int,
+                           usage: dict | None = None) -> dict:
     """Corpo OpenAI com tool_calls (finish_reason=tool_calls, content nulo)."""
     limpos = [{
         "id": tc.get("id") or f"call_bs_{gw_id}_{i}",
@@ -266,11 +352,12 @@ def _resposta_openai_tools(tool_calls: list, modelo: str, gw_id: int) -> dict:
             "message": {"role": "assistant", "content": None, "tool_calls": limpos},
             "finish_reason": "tool_calls",
         }],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "usage": usage or dict(_ZERO_USAGE),
     }
 
 
-def _sse_tool_calls(gw_id: int, modelo: str, tool_calls: list):
+def _sse_tool_calls(gw_id: int, modelo: str, tool_calls: list,
+                    usage: dict | None = None, include_usage: bool = False):
     """SSE de tool_calls — o cliente monta nome/arguments a partir do delta."""
     def gen():
         yield _chunk(gw_id, modelo, {"role": "assistant"})
@@ -285,7 +372,12 @@ def _sse_tool_calls(gw_id: int, modelo: str, tool_calls: list):
                 "function": {"name": fn.get("name") or "",
                              "arguments": fn.get("arguments") or "{}"},
             }]})
-        yield _chunk(gw_id, modelo, {}, finish="tool_calls")
+        if usage is not None:
+            yield _chunk(gw_id, modelo, {}, finish="tool_calls", usage=usage)
+        else:
+            yield _chunk(gw_id, modelo, {}, finish="tool_calls")
+        if include_usage and usage is not None:
+            yield _sse_usage(gw_id, modelo, usage)
         yield "data: [DONE]\n\n"
     return gen()
 
@@ -306,13 +398,27 @@ def create_app() -> Flask:
         if _auth_token() not in {g["canal_token"] for g in gws}:
             return jsonify({"error": {"message": "token invalido",
                                       "type": "authentication_error"}}), 401
-        data = [{
-            "id": f"agente:{g['agente_nome'] or 'gateway'}",  # model id p/ o chat
-            "object": "model",
-            "created": int(time.time()),
-            "owned_by": "blueshift",
-        } for g in gws]
-        return jsonify({"object": "list", "data": data})
+        return jsonify({"object": "list", "data": [_modelo_openai(g) for g in gws]})
+
+    @app.get("/v1/models/<path:model_id>")
+    def v1_model(model_id: str):
+        """Um modelo do catalogo (mesmo objeto da lista).
+
+        Existia so a LISTA: cliente agentico que consulta o modelo por id
+        (pratica comum para ler a janela de contexto) recebia 404 e caia no
+        palpite proprio (relato Hermes, 14/10: chute de 256k).
+        """
+        gws = _gateways_ativos()
+        if _auth_token() not in {g["canal_token"] for g in gws}:
+            return jsonify({"error": {"message": "token invalido",
+                                      "type": "authentication_error"}}), 401
+        alvo = (model_id or "").removeprefix("agente:")
+        gw = next((g for g in gws if (g["agente_nome"] or "") == alvo), None)
+        if gw is None:
+            return jsonify({"error": {"message": f"modelo '{model_id}' nao encontrado",
+                                      "type": "invalid_request_error",
+                                      "code": "model_not_found"}}), 404
+        return jsonify(_modelo_openai(gw))
 
     @app.post("/v1/chat/completions")
     def v1_chat():
@@ -411,14 +517,20 @@ def create_app() -> Flask:
                                       "type": "server_error"}}), 502
 
         modelo = out.get("modelo") or gw["agente_nome"] or "blueshift"
+        # usage REAL (tokens do provedor, via canal). Antes: zero fixo em toda
+        # resposta e nenhum usage no stream.
+        usage = _usage_de(out)
+        inc_usage = _quer_usage(body)
 
         # O agente decidiu CHAMAR uma ferramenta: repassa no contrato OpenAI
         # (JSON ou SSE com delta.tool_calls) — quem executa e o cliente.
         if out.get("tool_calls"):
             if _quer_stream(body, gw):
-                return Response(_sse_tool_calls(gw["id"], modelo, out["tool_calls"]),
+                return Response(_sse_tool_calls(gw["id"], modelo, out["tool_calls"],
+                                                usage, inc_usage),
                                 mimetype="text/event-stream")
-            return jsonify(_resposta_openai_tools(out["tool_calls"], modelo, gw["id"]))
+            return jsonify(_resposta_openai_tools(out["tool_calls"], modelo, gw["id"],
+                                                 usage))
 
         if _quer_stream(body, gw):
             # Streaming SIMULADO: envia a resposta completa em chunks (SSE)
@@ -432,14 +544,14 @@ def create_app() -> Flask:
                     pj = json.dumps({"content": p}, ensure_ascii=False)
                     yield f'data: {{"id":"chatcmpl-bs-{gw["id"]}","object":"chat.completion.chunk","model":"{modelo}","choices":[{{"index":0,"delta":{pj},"finish_reason":null}}]}}\n\n'
                     time.sleep(0.015)
-                yield 'data: {"id":"chatcmpl-bs-%d","object":"chat.completion.chunk",' \
-                      '"model":"%s","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' \
-                      % (gw["id"], modelo)
+                yield _chunk(gw["id"], modelo, {}, finish="stop", usage=usage)
+                if inc_usage:
+                    yield _sse_usage(gw["id"], modelo, usage)
                 yield "data: [DONE]\n\n"
 
             return Response(gen(), mimetype="text/event-stream")
 
-        return jsonify(_resposta_openai(out["resposta"], modelo, gw["id"]))
+        return jsonify(_resposta_openai(out["resposta"], modelo, gw["id"], usage))
 
     return app
 
