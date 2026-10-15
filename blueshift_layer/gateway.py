@@ -61,10 +61,12 @@ def _gateways_ativos() -> list[dict]:
         rows = con.execute(
             """SELECT g.*,
                       c.token AS canal_token,
-                      a.nome AS agente_nome, a.area AS agente_area
+                      a.nome AS agente_nome, a.area AS agente_area,
+                      m.base_url AS modelo_base_url
                FROM gateway_config g
                JOIN canais c ON c.id = g.canal_id
                LEFT JOIN agentes a ON a.id = c.agente_id
+               LEFT JOIN modelos m ON m.id = a.modelo_id
                WHERE g.ativo = 1 AND c.ativo = 1
                ORDER BY g.id"""
         ).fetchall()
@@ -229,23 +231,85 @@ def _quer_usage(body: dict) -> bool:
     return bool(isinstance(so, dict) and so.get("include_usage"))
 
 
-def _context_length() -> int | None:
-    """Janela do MOTOR (tokens) publicada no catalogo, se configurada.
+def _nctx_props(d: dict) -> int | None:
+    """n_ctx no /props do llama.cpp."""
+    try:
+        return int((d.get("default_generation_settings") or {}).get("n_ctx") or 0) or None
+    except (TypeError, ValueError):
+        return None
 
-    A plataforma nao tem como descobrir a janela do modelo do agente (quem
-    configura e o motor atras) e inventar um numero seria pior que omitir —
-    omitido, o cliente cai no palpite proprio. Com BLUESHIFT_CONTEXT_WINDOW
-    definida (o operador mede no motor dele; ex: 32768, 262144) o catalogo
-    publica `context_length` e o cliente para de chutar.
+
+def _nctx_models(d: dict) -> int | None:
+    """n_ctx no meta do primeiro item de /v1/models (llama.cpp recente)."""
+    try:
+        item = (d.get("data") or [{}])[0]
+        return int((item.get("meta") or {}).get("n_ctx") or 0) or None
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+# Cache do probe por endpoint (motor nao muda de janela em producao) — evita
+# pagar a latencia do probe a cada chamada de /v1/models.
+_JANELA_CACHE: dict[str, tuple[float, int | None]] = {}
+_JANELA_TTL = 600
+_JANELA_TIMEOUT = 2
+
+
+def _janela_do_motor(base_url: str | None) -> int | None:
+    """Le a janela do MOTOR (n_ctx) direto no endpoint do modelo.
+
+    Medido no piloto: llama.cpp publica `default_generation_settings.n_ctx` em
+    `/props` e `meta.n_ctx` em `/v1/models`. Motores que nao publicam (vLLM,
+    OpenAI) devolvem nada — nesse caso a env `BLUESHIFT_CONTEXT_WINDOW` (ou o
+    campo omitido) e a resposta. Resultado negativo tambem entra no cache: sem
+    isso, motor fora do ar atrasaria toda chamada do catalogo.
+    """
+    if not base_url:
+        return None
+    raiz = base_url.strip().rstrip("/")
+    if raiz.endswith("/v1"):
+        raiz = raiz[:-3]
+    if not raiz:
+        return None
+    agora = time.time()
+    guardado = _JANELA_CACHE.get(raiz)
+    if guardado and agora - guardado[0] < _JANELA_TTL:
+        return guardado[1]
+    valor = None
+    for url, extrair in ((f"{raiz}/props", _nctx_props),
+                         (f"{raiz}/v1/models", _nctx_models)):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=_JANELA_TIMEOUT) as resp:
+                valor = extrair(json.loads(resp.read().decode("utf-8", "ignore")))
+        except Exception:  # noqa: BLE001 — motor fora/rota inexistente: sem janela
+            valor = None
+        if valor:
+            break
+    _JANELA_CACHE[raiz] = (agora, valor)
+    return valor
+
+
+def _context_length(gw: dict | None = None) -> int | None:
+    """Janela do MOTOR (tokens) publicada no catalogo.
+
+    Precedencia: env explicita `BLUESHIFT_CONTEXT_WINDOW` (o operador manda)
+    > janela lida do motor do AGENTE daquele gateway > campo omitido. Motivo de
+    existir: a plataforma nao tem como adivinhar a janela e inventar um numero e
+    pior que omitir — omitido, o cliente cai no palpite proprio (relato Hermes:
+    chute de 256k). E o valor certo NAO pode ser chutado: cliente agentico valida
+    (o Hermes recusa modelo com menos de 64K declarados).
 
     ATENCAO: este numero e a janela do MOTOR, nao o orcamento de contexto do
     gateway (`gateway_config.max_tokens`) — sao contas diferentes.
     """
     try:
         v = int(os.environ.get("BLUESHIFT_CONTEXT_WINDOW", "").strip() or 0)
+        if v > 0:
+            return v
     except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
+        pass
+    return _janela_do_motor((gw or {}).get("modelo_base_url"))
 
 
 def _modelo_openai(gw: dict) -> dict:
@@ -256,7 +320,7 @@ def _modelo_openai(gw: dict) -> dict:
         "created": int(time.time()),
         "owned_by": "blueshift",
     }
-    ctx = _context_length()
+    ctx = _context_length(gw)
     if ctx:
         item["context_length"] = ctx    # extensao (estilo OpenRouter)
     return item

@@ -47,6 +47,22 @@ def _int_form(campo: str, default: int = 0) -> int:
     return _int_ou(request.form.get(campo), default)
 
 
+def _max_tokens_saida(valor) -> int | None:
+    """Teto de SAIDA por chamada no cadastro do modelo: 1..32768 (ou None).
+
+    Este campo e o teto de tokens GERADOS por resposta — nao e a janela de
+    contexto (essa e do motor; no catalogo do gateway ela aparece como
+    `context_length`). Valor de contexto aqui (250000) tira o unico freio
+    contra geracao descontrolada e provedor externo recusa acima do limite
+    proprio dele com erro 400 em vez de responder.
+    """
+    try:
+        v = int(str(valor).strip())
+    except (TypeError, ValueError):
+        return None
+    return min(v, 32768) if v > 0 else None
+
+
 def _user() -> dict | None:
     if not session.get("user_id"):
         return None
@@ -4595,7 +4611,7 @@ def modelos():
                             preco_output=float(request.form.get("preco_output", 0) or 0),
                             tipo=request.form.get("tipo", "local"),
                             api_key=request.form.get("api_key") or None,
-                            max_tokens=request.form.get("max_tokens") or None,
+                            max_tokens=_max_tokens_saida(request.form.get("max_tokens")),
                             temperatura=temperatura,
                             modo=(request.form.get("modo") or "openai_chat").strip().lower())
             db.registrar_auditoria(_user()["login"], _user()["papel"], "cadastrar_modelo",
@@ -4648,7 +4664,8 @@ def modelos():
           </select>
         <div class="muted" style="font-size:11px;margin-top:4px">No modo Responses a base_url é o endpoint completo do agente (ex: <code>https://gateway.aidp.&lt;região&gt;.oci.oraclecloud.com/agentendpoint/&lt;id&gt;/chat</code>) — a plataforma posta direto nele, sem acrescentar /v1/chat/completions.</div>
         <label>API Key (opcional)</label><input name="api_key" placeholder="deixe em branco se não usar">
-        <label>Max tokens</label><input name="max_tokens" type="number" value="4096" placeholder="4096" style="width:200px">
+        <label>Max tokens (saída por resposta)</label><input name="max_tokens" type="number" value="4096" placeholder="4096" min="1" max="32768" style="width:200px">
+        <div class="muted" style="font-size:11px">Teto de tokens GERADOS por resposta (padrão 4096; thinking: 8192–16384). Não é a janela de contexto — essa vem do motor. Timeout: 180s.</div>
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking/reasoning (ex: 8192, 16384). Timeout: 180s.</div>
         <label>Temperatura</label><input name="temperatura" type="number" step="0.1" value="0.3" placeholder="0.3" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Criatividade da resposta (0.0 = determinístico, 1.0 = criativo). Padrão: 0.3. O roteador de conectores e o extrator de parâmetros usam 0.0 sempre.</div>
@@ -4680,7 +4697,7 @@ def modelo_editar(mid: int):
             campos["api_key"] = api_key
         max_tok = request.form.get("max_tokens") or None
         if max_tok is not None:
-            campos["max_tokens"] = int(max_tok)
+            campos["max_tokens"] = _max_tokens_saida(max_tok)
         temp_raw = (request.form.get("temperatura") or "").strip()
         if temp_raw:
             try:
@@ -4728,7 +4745,8 @@ def modelo_editar(mid: int):
           </select>
         <label>API Key</label><input name="api_key" value="" placeholder="deixe em branco para manter a atual" autocomplete="off">
         <div class="muted" style="font-size:11px;margin-top:4px">Chave atual: {_mascara or 'nenhuma (modelo local — sem chave)'}. Preencha apenas para trocar; vazio mantém a atual.</div>
-        <label>Max tokens</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" style="width:200px">
+        <label>Max tokens (saída por resposta)</label><input name="max_tokens" type="number" value="{m.get('max_tokens') or 4096}" min="1" max="32768" style="width:200px">
+        <div class="muted" style="font-size:11px">Teto de tokens GERADOS por resposta (padrão 4096; thinking: 8192–16384). Não é a janela de contexto — essa vem do motor. Timeout: 180s.</div>
         <div class="muted" style="font-size:11px;margin-top:4px">Aumente para modelos com thinking (8192, 16384). Timeout: 180s.</div>
         <label>Temperatura</label><input name="temperatura" type="number" step="0.1" value="{m.get('temperatura') if m.get('temperatura') is not None else ''}" placeholder="0.3" style="width:200px">
         <div class="muted" style="font-size:11px;margin-top:4px">Criatividade da resposta (0.0 = determinístico, 1.0 = criativo). Vazio = padrão 0.3. O roteador de conectores e o extrator de parâmetros usam 0.0 sempre.</div>
@@ -5622,7 +5640,27 @@ git describe --tags</pre>
     estado = update_client.status(info)
     _em_update = bool(estado["em_andamento"])
     _js_progresso = """<script>
-(function(){var bar=document.getElementById('up-bar'),eta=document.getElementById('up-etapa'),lg=document.getElementById('up-log');function poll(){fetch('/portal/atualizacoes/status',{headers:{'Accept':'application/json'}}).then(function(r){return r.json()}).then(function(d){if(bar)bar.style.width=(d.progresso||0)+'%';if(eta)eta.textContent=(d.etapa||'')+' ('+(d.progresso||0)+'%)';if(lg)lg.textContent=d.log||'';if(d.concluido||d.aplicado){setTimeout(function(){location.reload()},1200)}else{setTimeout(poll,2500)}}).catch(function(){setTimeout(poll,4000)})}poll()})();
+(function(){
+  var bar=document.getElementById('up-bar'),eta=document.getElementById('up-etapa'),lg=document.getElementById('up-log');
+  function poll(){
+    fetch('/portal/atualizacoes/status',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        // O cartao de progresso so existe se o update ja estava detectado no
+        // carregamento da pagina. Se o update comecou DEPOIS (marcador escrito
+        // no meio do POST, sessao recarregada, etc.), o poll recarrega UMA vez
+        // para o cartao entrar — sem isso a tela fica estatica com a
+        // atualizacao rodando e o operador clica de novo (relato 14/10).
+        if(d.em_andamento&&!bar){setTimeout(function(){location.reload()},1500);return}
+        if(bar)bar.style.width=(d.progresso||0)+'%';
+        if(eta)eta.textContent=(d.etapa||'')+' ('+(d.progresso||0)+'%)';
+        if(lg)lg.textContent=d.log||'(aguardando o log do update...)';
+        if(d.concluido||d.aplicado){setTimeout(function(){location.reload()},1200)}
+        else{setTimeout(poll,2500)}
+      })
+      .catch(function(){setTimeout(poll,4000)})
+  }
+  poll()})();
 </script>"""
     _progresso_ui = ""
     if _em_update:
@@ -5708,6 +5746,7 @@ git describe --tags</pre>
     {card_manual}
     {card_licenca}
     {card_ambiente}
+    {_js_progresso}
     """
     return templates.page("Atualizações", content, active="atualizacoes", user=_user())
 

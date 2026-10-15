@@ -1993,14 +1993,11 @@ def seed_demo() -> None:
     with get_conn() as conn:
         ja_tem = _row(conn, "SELECT COUNT(*) AS n FROM clientes")
         if ja_tem["n"] > 0:
-            # DB existente: garante contrato demo se nao tiver (migracao conceitual)
-            primeiro = _row(conn, "SELECT id FROM clientes ORDER BY id LIMIT 1")
-            if primeiro:
-                cid = primeiro["id"]
-                ct = _row(conn, "SELECT id FROM contratos WHERE cliente_id=? LIMIT 1", (cid,))
-                if not ct:
-                    criar_contrato(cid, valor_anual=120000.00, moeda="BRL",
-                                   inicio="2026-07-01", fim="2027-06-30", status="ativo")
+            # Banco EXISTENTE: nao escreve NADA. O seed e de demonstracao e este
+            # banco pode ser de cliente — daqui saia um "contrato demo"
+            # (R$ 120.000/ano, XPTO) gravado no banco do cliente a cada boot em
+            # que ele estivesse sem contrato, bastando a env SEED_DEMO ter
+            # ficado ligada (relato de producao, 14/10).
             return
     cid = criar_cliente("xpto", "XPTO Seguros (Piloto)", "XPTO Seguro S/A", "ti@xpto.com.br")
     # Senhas ALEATORIAS (nunca fixas no codigo) — impressas UMA vez no log do

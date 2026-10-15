@@ -35,6 +35,13 @@ remoto. Admin-only.
   (janela de 30 min — passado isso, o marcador é tratado como execução
   interrompida e não trava a tela). Sem essa guarda, dois cliques disparavam
   dois `update.sh` em paralelo e quebravam o ambiente
+- **A barra de progresso não fica mais parada**: o poll de
+  `GET /portal/atualizacoes/status` roda em **toda** visita à tela (antes só
+  existia quando o update já estava detectado no carregamento, e uma página
+  carregada antes do marcador ficava estática sem barra e sem log); quando ele
+  percebe um update em andamento sem o painel na tela, recarrega uma vez para
+  o painel entrar. O log vazio mostra "aguardando o log do update..." em vez de
+  nada
 - A configuração da instalação (ex.: `BLUESHIFT_LICENSE_URL`, chave de
   licença, roteador) é **repassada ao portal recriado** via env do próprio
   container em execução — o update não depende do compose ler o `.env` do

@@ -103,14 +103,17 @@ conectores, skills, RAG, LGPD). O gateway sobe junto com a plataforma
   custo de um cliente agêntico.
 - **Catálogo de modelos**: `GET /v1/models` (lista) e `GET /v1/models/<id>`
   (um modelo — ex: `agente:Agente Vendas`); os dois exigem o token do canal.
-  O objeto traz `id`, `object`, `created`, `owned_by` e, **quando
-  configurada**, `context_length`: a janela do **motor** em tokens, definida
-  pelo operador na env `BLUESHIFT_CONTEXT_WINDOW` (ex: `32768`, `262144`).
-  Sem a env o campo é **omitido de propósito** — a plataforma não descobre a
-  janela do modelo do agente e inventar seria pior: o cliente cai no palpite
-  próprio (no piloto, chute de 256k). Atenção: `context_length` é a janela do
-  motor, **não** o orçamento de contexto do gateway (`max_tokens` da tela) —
-  são contas diferentes.
+  O objeto traz `id`, `object`, `created`, `owned_by` e, **quando conhecida**,
+  `context_length`: a janela do **motor** em tokens. A ordem é: env
+  `BLUESHIFT_CONTEXT_WINDOW` (o operador manda) → **leitura direta no motor**
+  do agente (`/props` e `meta.n_ctx` do llama.cpp, com cache de 10 min) →
+  campo omitido. Omitido de propósito quando nada responde: a plataforma não
+  inventa janela e o cliente cai no palpite próprio (no piloto, chute de 256k).
+  Nunca declare um valor MENOR que a janela real: cliente agêntico valida
+  (o Hermes recusa modelo com menos de 64K declarados) e o valor existe para o
+  cliente medir a própria conversa, não para forçar compactação. Atenção:
+  `context_length` é a janela do motor, **não** o orçamento de contexto do
+  gateway (`max_tokens` da tela) — são contas diferentes.
 - **Segurança**: o `Authorization` do chat externo precisa ser o token de
   um canal com gateway ATIVO (`Bearer bs_chan_*`) — o `model` escolhe o
   agente; o token valida a autenticação. Token inválido ou de canal sem

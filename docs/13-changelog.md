@@ -12,6 +12,36 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.22 (2026-10-14) — janela do motor lida sozinha, seed sem dado falso e progresso do update visível**
+
+### Novo
+- **A plataforma lê a janela do motor** (`context_length` em `/v1/models`):
+  com a env `BLUESHIFT_CONTEXT_WINDOW` vazia, o gateway consulta o motor do
+  agente (`/props` e `meta.n_ctx` do llama.cpp) e publica o número real —
+  com cache de 10 min e timeout de 2 s. Ordem: env explícita → leitura do
+  motor → campo omitido. Ninguém mais precisa acertar esse valor na mão.
+
+### Correções
+- **Seed não escreve mais no banco do cliente**: o ramo "banco já existe" do
+  `seed_demo()` gravava um **contrato demo** (R$ 120.000/ano, XPTO) para o
+  primeiro cliente sem contrato a cada boot com `BLUESHIFT_SEED_DEMO=1` — que
+  era exatamente o estado da produção do piloto. Agora banco existente não
+  recebe escrita nenhuma do seed.
+- **Progresso do update não fica mais parado**: o poll de status passou a
+  rodar em toda visita à tela Atualizações (antes o JS só existia quando o
+  update já estava detectado no carregamento — página aberta antes do marcador
+  ficava sem barra e sem log, o que induzia ao segundo clique). Quando o poll
+  vê um update em andamento sem o painel na página, recarrega uma vez; log
+  vazio mostra "aguardando o log do update...".
+- **`Max tokens` do modelo com faixa e aviso**: o campo é o teto de **saída**
+  por resposta e aceitava qualquer valor (havia um 250000 = janela de contexto
+  no lugar). Agora clampa em 1–32768 e o rótulo/texto diz o que é.
+
+### Documentação
+- `.env.example` ganhou `BLUESHIFT_UPDATE_URL` (o compose lê a env e o exemplo
+  não a tinha) e o aviso de que a janela declarada não pode ser menor que a
+  real (cliente agêntico recusa abaixo de 64K).
+
 **v0.11.21 (2026-10-14) — `BLUESHIFT_CONTEXT_WINDOW` chega ao container certo**
 
 ### Correções
