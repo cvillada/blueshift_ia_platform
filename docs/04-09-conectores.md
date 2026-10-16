@@ -39,8 +39,9 @@ caixa **Ativo** no cadastro/edição — a mudança é registrada na Auditoria.
 4. Preencha a **Finalidade do tratamento (Art. 26 LGPD)** — obrigatória quando
    o cliente tem a LGPD ligada para conectores em Configurações → LGPD.
 5. Salve. O conector entra ativo para a área.
-6. Valide: **🗄️ SQL** tem o botão **🔌 Testar Conexão** (roda a query e mostra
-   OK/erro); **API/A2A/MCP** são validados pelo chat de teste do agente
+6. Valide: **🗄️ SQL** tem o botão **🔌 Testar Conexão** (confere a conexão e a
+   credencial; a query sem `{param}` também é executada — ver **Botões e
+   validação**); **API/A2A/MCP** são validados pelo chat de teste do agente
    (Agentes → testar, ou Canal → testar) com uma pergunta que use o conector.
 7. Acompanhe **Status** e **Heartbeat** na lista. Se der erro, veja
    "Problemas comuns" no fim desta seção.
@@ -291,11 +292,23 @@ pergunta: `{id_cliente}`, `{id_colab}`, `{id_pedido}`, `{email}`, `{data}`,
 `{pergunta}` (texto integral da pergunta — útil no A2A) e qualquer `chave=valor`
 informado na pergunta. ⚠️ Use **um placeholder por conector** quando a fonte não
 aceitar múltiplos valores na mesma posição (consultas multi-valor podem travar).
+⚠️ Placeholder em posição numérica — `LIMIT {limite}`, `OFFSET {n}`,
+`TOP {n}` (SQL Server), `FETCH FIRST {n} ROWS` (Oracle/Postgres) e
+`ROWNUM <= {n}` (Oracle) — precisa receber **número inteiro**: nesses lugares o
+banco não aceita texto (`LIMIT '5'` é erro de sintaxe no MySQL) e a plataforma
+liga o valor como inteiro. Se o valor não for inteiro, o conector responde
+`parametro_nao_numerico` em vez de mandar a string. Nos demais campos
+(`WHERE ano = {ano}`, `{cep}`, `{id}`) o valor vai como texto, como sempre.
 
 **Botões e validação:**
-- **🔌 Testar Conexão** (tipo SQL, admin): abre a conexão e roda a query
-  informada, mostrando OK/erro — valida driver, host, porta, credenciais,
-  **SSL mode** e **wallet** do Oracle. É o teste mais rápido antes de salvar.
+- **🔌 Testar Conexão** (tipo SQL, admin): confere a conexão e a credencial,
+  mostrando OK/erro — valida driver, host, porta, credenciais, **SSL mode** e
+  **wallet** do Oracle. Com `{param}` na query, ele **não executa a query** (ela
+  roda pelo agente, com os valores da pergunta) e diz isso na tela: o `{param}`
+  literal não vai ao banco, então o resultado do teste não deve ser lido como
+  "a query falhou". Sem `{param}`, a query é executada inteira, como sempre. É o
+  teste mais rápido antes de salvar — e, para validar a consulta de verdade,
+  use o chat de teste do agente.
 - **🤖 Gerar Query com IA** (tipo SQL): um modelo cadastrado escreve a query a
   partir de uma descrição em linguagem natural ("listar clientes ativos com saldo
   acima de 1000"); o resultado é revisado por você antes de entrar no campo.
@@ -320,6 +333,7 @@ aceitar múltiplos valores na mesma posição (consultas multi-valor podem trava
 | HTTP 401/403 na API | Auth não configurada ou token vencido | Usar `bearer`/`oauth2` (ou mandar o `Authorization` nos Headers); conferir Client ID/Secret e Scope |
 | HTTP 400/415 | Faltou `Content-Type: application/json` | Adicionar nos Headers (o produto já envia JSON, mas alguns gateways exigem o header explícito) |
 | Conector não devolve dados | Área errada, placeholder não casou com a pergunta, ou status de erro no job | Conferir a área do agente, a grafia do `{param}` e, em polling, o par **Status concluído/Status de erro** |
+| Conector SQL com `{param}` em `LIMIT` dá "não há valores" / erro 1064 | Valor do placeholder chegava como texto (`LIMIT '5'`) — defeito das versões **0.11.9 a 0.11.22** (corrigido na **0.11.23**) | Atualizar para a 0.11.23; em versão antiga, reescrever a query com janela: `ROW_NUMBER() OVER (ORDER BY ...) AS rn` + `WHERE rn <= {limite}` (exige MySQL 8+ / Postgres) ou tirar o placeholder do `LIMIT` |
 | Timeout / demora | API lenta ou job longo | Aumentar **Timeout**; em job assíncrono, ajustar **Máximo (s)** e **Intervalo** |
 | Resposta enorme poluindo a resposta do agente | JSON inteiro indo ao modelo | Preencher **Mapear resposta** (ex.: `data.rows`) |
 | Erro de SSL no Postgres/Databricks | TLS exigido | Preencher **SSL mode** (`require`) |

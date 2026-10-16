@@ -710,6 +710,76 @@ def _executar_sql_conector(nome: str, config: dict, params: dict, pergunta: str,
     return fixa
 
 
+# Placeholder em posicao SINTATICA que exige constante inteira (v0.11.23).
+#
+# Nestas posicoes o valor NAO e' comparado — ele e' o LIMITE da consulta, e o
+# banco exige constante inteira ali. O MySQL recusa string (`LIMIT '5'` ->
+# 1064) e o pymysql monta o texto no cliente (nao ha prepared statement), logo
+# o TIPO do parametro decide o SQL final. Aqui entram: LIMIT/OFFSET
+# (MySQL/PG/SQL Server), TOP (SQL Server), FETCH FIRST/NEXT (Oracle/PG/SQL
+# Server) e ROWNUM <= n (Oracle).
+#
+# O WHERE (ano, cep, id) continua indo como STRING de proposito: a comparacao
+# aceita texto nos quatro bancos (o proprio MySQL coage '2025' contra coluna
+# numerica) e o zero a esquerda do CEP ('03679040') e' significativo — ligar
+# int ali perderia o zero (03679040 -> 3679040 = zero linhas em silencio).
+_RE_NUM_KEYWORD = re.compile(
+    r"\b(?:limit|offset|top|rownum)\s*[\(<>=]{0,2}\s*\{(\w+)\}", re.IGNORECASE)
+_RE_NUM_FETCH = re.compile(r"\bfetch\s+(?:first|next)\s+\{(\w+)\}", re.IGNORECASE)
+_RE_NUM_SEGUNDO = re.compile(r"\blimit\s+\{\w+\}\s*,\s*\{(\w+)\}", re.IGNORECASE)
+
+# Qual placeholder e' o TETO de linhas da consulta (o que vai no criterio).
+_RE_CAP_LINHAS = (
+    _RE_NUM_SEGUNDO,                                        # LIMIT a, b -> b
+    re.compile(r"\blimit\s+\{(\w+)\}", re.IGNORECASE),
+    re.compile(r"\btop\s*\(?\s*\{(\w+)\}", re.IGNORECASE),
+    _RE_NUM_FETCH,
+    re.compile(r"\brownum\s*<=?\s*\{(\w+)\}", re.IGNORECASE),
+)
+
+
+def placeholders_da_consulta(texto: str) -> list[str]:
+    """Nomes dos placeholders `{param}` de um trecho de conector, na ordem."""
+    return re.findall(r"\{(\w+)\}", texto or "")
+
+
+def _placeholders_numericos(query: str) -> set[str]:
+    """Placeholders `{param}` que estao em LIMIT/OFFSET/TOP/FETCH/ROWNUM <= n."""
+    chaves: set[str] = set()
+    for rx in (_RE_NUM_KEYWORD, _RE_NUM_FETCH, _RE_NUM_SEGUNDO):
+        chaves.update(rx.findall(query or ""))
+    return chaves
+
+
+def _como_inteiro(valor) -> int | None:
+    """O valor como int, ou None quando nao e' um inteiro valido.
+
+    bool e' subclasse de int em Python e nao pode virar `LIMIT True`.
+    """
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, int):
+        return valor
+    if isinstance(valor, str) and re.fullmatch(r"[+-]?\d+", valor.strip()):
+        return int(valor.strip())
+    return None
+
+
+def _numericos_invalidos(query: str, params: dict) -> list[str]:
+    """Placeholders de LIMIT/OFFSET/... cujo valor informado nao e' inteiro."""
+    return sorted(k for k in _placeholders_numericos(query)
+                  if k in params and _como_inteiro(params[k]) is None)
+
+
+def _teto_de_linhas(query: str, params: dict) -> int | None:
+    """Valor do teto de linhas da query fixa (LIMIT/TOP/FETCH {n}), ou None."""
+    for rx in _RE_CAP_LINHAS:
+        m = rx.search(query or "")
+        if m:
+            return _como_inteiro(params.get(m.group(1)))
+    return None
+
+
 def _parametrizar_sql(query: str, params: dict, driver: str) -> tuple[str, list]:
     """Troca cada `{placeholder}` pelo marcador de parametro do driver (v0.11.9).
 
@@ -721,9 +791,18 @@ def _parametrizar_sql(query: str, params: dict, driver: str) -> tuple[str, list]
     Oracle usa marcador numerico (`:1`, `:2`); os demais usam `%s` (estilo
     pyformat). Em pyformat, `%` literal da query vira `%%` — senao o driver
     tentaria interpretar (ex: query fixa com `LIKE 'vendas%'`).
+
+    v0.11.23 — posicao numerica: o valor de um placeholder em LIMIT/OFFSET/
+    TOP/FETCH vai como INTEIRO. Esse valor sai do extrator sempre como string
+    (agente.py) e o pymysql monta o SQL no cliente: `LIMIT '5'` (com aspas) e'
+    erro 1064 no MySQL. Continua sendo PARAMETRO do driver — a protecao de
+    injecao da v0.11.9 nao muda; o que muda e' o tipo (5 e' o que o MySQL
+    espera em LIMIT). Valor nao inteiro nessa posicao e' barrado ANTES por
+    `_numericos_invalidos` (em `_executar_sql`).
     """
     if not params or "{" not in query:
         return query, []
+    pos_num = _placeholders_numericos(query)     # ANTES do escape de `%`
     numerico = driver == "oracle"
     if not numerico:
         query = query.replace("%", "%%")
@@ -733,7 +812,12 @@ def _parametrizar_sql(query: str, params: dict, driver: str) -> tuple[str, list]
         chave = m.group(1)
         if chave not in params:
             return m.group(0)      # placeholder sem valor: barrado antes (P3)
-        valores.append(params[chave])
+        valor = params[chave]
+        if chave in pos_num:
+            _n = _como_inteiro(valor)
+            if _n is not None:
+                valor = _n
+        valores.append(valor)
         return f":{len(valores)}" if numerico else "%s"
 
     return re.sub(r"\{(\w+)\}", _repl, query), valores
@@ -775,9 +859,24 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
     if ausentes:
         return {"erro": f"parametro_ausente: {', '.join(ausentes)}"}
 
+    # Guarda v0.11.23: placeholder em LIMIT/OFFSET/TOP/FETCH com valor nao
+    # inteiro. Melhor dizer isso do que mandar string e colher 1064 do banco
+    # (`LIMIT '5'`) — o erro do banco nao explica que o defeito e' o formato do
+    # valor. O prefixo NAO e' `parametro_ausente` de proposito: o dado veio, o
+    # que nao serve e' o tipo (quem le isso e' o prompt do agente, via motivo).
+    _nao_num = _numericos_invalidos(query, params)
+    if _nao_num:
+        return {"erro": ("parametro_nao_numerico: " + ", ".join(_nao_num)
+                         + " (o placeholder esta em LIMIT/OFFSET/TOP/FETCH — "
+                           "esse valor tem que ser um numero inteiro)")}
+
     # v0.11.9 — BINDING: o valor do placeholder vira PARAMETRO do driver, nunca
     # texto na query (antes: _aplicar_params, que permitia injecao SQL).
     sql, valores = _parametrizar_sql(query, params, driver)
+    # v0.11.23 — o valor do LIMIT saiu do texto do SQL (virou `%s`); sem passar
+    # o numero, o criterio da consulta perdia "no maximo N linha(s)" — que e' o
+    # que autoriza o modelo a dizer "os 5 mais vendidos".
+    _teto = _teto_de_linhas(query, params)
 
     def _rodar():
         conn = _conectar_sql(config)
@@ -785,7 +884,7 @@ def _executar_sql(nome: str, config: dict, params: dict, pergunta: str) -> dict:
             rows = _rodar_select(conn, sql, driver, params=valores)
             conn.commit()
             return {"tool": "sql:query", "args": sql, "valores": valores,
-                    "criterio": _criterio_da_consulta(sql),
+                    "criterio": _criterio_da_consulta(sql, linhas=_teto),
                     "resultado": rows, "truncado": len(rows) >= _LIMITE_LINHAS}
         finally:
             conn.close()
@@ -1038,7 +1137,7 @@ def _mesmo_alvo(a: dict | None, b: dict | None) -> bool:
     return _chave(a) == _chave(b)
 
 
-def _criterio_da_consulta(sql: str) -> str:
+def _criterio_da_consulta(sql: str, linhas: int | None = None) -> str:
     """Criterio LEGIVEL da consulta: o que ela ordenou e quantas linhas pediu.
 
     Vai no bloco de dados NO LUGAR do SQL (v0.11.11). Motivo medido: sem o SQL o
@@ -1046,6 +1145,11 @@ def _criterio_da_consulta(sql: str) -> str:
     recebeu 1 linha de uma consulta "ORDER BY rental_date DESC LIMIT 1" e
     respondeu com ressalva "nao veio classificada"); com o SQL ele RECITAVA a
     consulta na resposta. O criterio entrega a informacao sem o texto do SQL.
+
+    `linhas` (v0.11.23): teto de linhas quando o LIMIT/TOP/FETCH veio de
+    placeholder — desde o binding (v0.11.9) o valor nao esta no texto do SQL
+    (`LIMIT %s`), entao o regex de `limit (\\d+)` nao acha nada e o bloco perdia
+    o "no maximo N linha(s)". Quem calcula o numero e' `_executar_sql`.
     """
     s = " ".join(str(sql or "").split())
     if not s:
@@ -1068,6 +1172,11 @@ def _criterio_da_consulta(sql: str) -> str:
          or re.search(r"\btop\s+(\d+)", s, re.IGNORECASE))
     if m:
         partes.append(f"no maximo {m.group(1)} linha(s)")
+    elif linhas is not None:
+        # v0.11.23 — o teto veio de placeholder: o numero esta no valor ligado
+        # ao driver, nao no texto do SQL. Dizer o numero mantem o criterio
+        # igual ao da consulta com literal (e ao do SQL gerado por IA).
+        partes.append(f"no maximo {int(linhas)} linha(s)")
     if re.search(r"\bgroup\s+by\b", s, re.IGNORECASE) and re.search(
             r"\b(count|sum|avg|min|max)\s*\(", s, re.IGNORECASE):
         partes.append("uma linha por grupo, com contagem/agregacao")

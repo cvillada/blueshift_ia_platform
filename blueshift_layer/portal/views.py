@@ -2359,7 +2359,7 @@ def conectores():
           b.textContent = '🔌 Testar Conexão';
           b.disabled = false;
           r.innerHTML = d.ok
-            ? '<span style="color:var(--ok)">✅ Conexão OK</span>'
+            ? '<span style="color:var(--ok)">✅ ' + (d.aviso || 'Conexão OK') + '</span>'
             : '<span style="color:var(--bad)">❌ ' + d.erro + '</span>';
         }})
         .catch(function(e){{
@@ -2426,6 +2426,24 @@ def conector_testar_conexao():
     if not query:
         query = "SELECT 1"
 
+    # v0.11.23 — query PARAMETRIZADA nao roda aqui. Com o `{param}` literal o
+    # banco devolve erro de sintaxe (MySQL: 1064) e a tela mostrava isso como
+    # falha de CONEXAO — quando o erro vem do servidor significa que conectou e
+    # autenticou (diagnostico errado, medido no conector "Top Produtos").
+    # Resolver o placeholder com valor de exemplo seria executar consulta real
+    # no banco do cliente com numero inventado, entao o teste confere SO a
+    # conexao/credencial e diz exatamente isso. Query sem placeholder roda
+    # inteira, como sempre.
+    from ..connector_pack import registry as _registry  # import tardio: evita ciclo
+    _ph = _registry.placeholders_da_consulta(query)
+    aviso = ""
+    if _ph:
+        query = "SELECT 1"
+        aviso = ("Conexão OK — a query é parametrizada ("
+                 + ", ".join(f"{{{p}}}" for p in _ph[:3])
+                 + ") e roda pelo agente com os valores da pergunta; "
+                   "este teste confere só a conexão")
+
     try:
         if driver == "postgresql":
             import psycopg
@@ -2471,7 +2489,7 @@ def conector_testar_conexao():
             with conn.cursor() as cur:
                 cur.execute(query)
             conn.commit()
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "aviso": aviso})
         finally:
             conn.close()
     except ImportError:
@@ -2882,7 +2900,7 @@ def conector_editar(cid: int):
         .then(function(d){{
           b.textContent = '🔌 Testar Conexão';
           b.disabled = false;
-          r.innerHTML = d.ok ? '<span style="color:var(--ok)">✅ Conexão OK</span>' : '<span style="color:var(--bad)">❌ ' + d.erro + '</span>';
+          r.innerHTML = d.ok ? '<span style="color:var(--ok)">✅ ' + (d.aviso || 'Conexão OK') + '</span>' : '<span style="color:var(--bad)">❌ ' + d.erro + '</span>';
         }})
         .catch(function(e){{
           b.textContent = '🔌 Testar Conexão';

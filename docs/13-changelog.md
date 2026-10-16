@@ -12,6 +12,36 @@ momento do release aparecem como `—`.
 
 ### Últimas versões — destaques
 
+**v0.11.23 (2026-10-16) — placeholder em `LIMIT` volta a funcionar (regressão da v0.11.9)**
+
+### Correções
+- **Conector SQL com `{param}` no `LIMIT` voltou a responder** (regressão da
+  v0.11.9): o binding de parâmetro mandava o valor do placeholder **sempre como
+  string** e o driver do MySQL monta o SQL no cliente — a consulta chegava ao
+  servidor como `LIMIT '5'` (com aspas), que é **erro 1064** ("near ''5''"), e o
+  agente respondia "não foi possível obter os dados". Agora o valor de um
+  placeholder em **`LIMIT`, `OFFSET`, `TOP`, `FETCH FIRST/NEXT` e `ROWNUM <= n`**
+  vai ligado como **INTEIRO**. Continua sendo **parâmetro do driver** — a
+  proteção de injeção da v0.11.9 não muda; muda só o tipo, que é o que o banco
+  espera nessa posição. Os demais placeholders (`WHERE ano = {ano}`, `{cep}`,
+  `{id}`) seguem como string, de propósito: aceitam texto nos quatro bancos e o
+  zero à esquerda do CEP (`03679040`) é significativo (como inteiro seria
+  3679040 = zero linhas em silêncio).
+- **Valor não inteiro na posição numérica tem erro claro**: o conector devolve
+  `parametro_nao_numerico: <param>` em vez de mandar a string para o banco e
+  devolver o 1064 cru (o agente explica o que falta em vez de mostrar erro de
+  sintaxe).
+- **O critério da consulta recupera o teto de linhas**: com o valor fora do
+  texto do SQL, o bloco de dados havia perdido o "no máximo N linha(s)" — o
+  número voltou a aparecer, e é ele que autoriza a resposta a afirmar "os 5
+  mais vendidos".
+- **🔌 Testar Conexão não confunde mais erro de SQL com falha de conexão**:
+  quando a query tem `{param}`, o botão confere só a conexão e a credencial
+  (`SELECT 1`) e a tela diz exatamente isso. Antes ele rodava a query com o
+  `{param}` literal, o banco devolvia erro de sintaxe e a tela mostrava como se
+  a **conexão** tivesse falhado — quando o erro vem do servidor é sinal de que
+  conectou e autenticou. Query sem placeholder continua sendo executada inteira.
+
 **v0.11.22 (2026-10-14) — janela do motor lida sozinha, seed sem dado falso e progresso do update visível**
 
 ### Novo

@@ -1,7 +1,7 @@
 # CL Agents — Product Requirements Document (PRD)
 
 **Produto:** BlueShift IA Platform · **Marca de exibição:** **CL Agents** (by BlueShift IA Platform)
-**Versão do documento:** 0.7 (alinhado à versão 0.11.22 do produto)
+**Versão do documento:** 0.7 (alinhado à versão 0.11.23 do produto)
 **Data:** 2026-10-03
 **Autor:** Nei
 **Base tecnológica:** Flask standalone, Python puro (sem dependência de motor externo de IA)
